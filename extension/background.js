@@ -10,7 +10,7 @@ function openInTerminal(tabUrl) {
 
   const params = new URLSearchParams({
     cwd: PROJECT_DIR,
-    cmd: `claude "process: ${tabUrl}"`,
+    cmd: `cd /d "${PROJECT_DIR}" && claude "process: ${tabUrl}"`,
     title: "ChromeScribe"
   });
 
