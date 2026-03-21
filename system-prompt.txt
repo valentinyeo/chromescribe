@@ -90,3 +90,4 @@ Do NOT print the article or transcript to the terminal — that's what the file 
 - The Article is a web article, NOT a topic-by-topic mirror of the video structure. Synthesize and reorganize by importance.
 - If `transcribe` fails, report the error and suggest checking if the CLI is installed.
 - If a URL is unreachable, report the error clearly.
+- NEVER commit or push to git. Output files are local only.
