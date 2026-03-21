@@ -16,7 +16,7 @@ You will receive a message like: `process: <url>`
 ### Video URLs
 
 1. Run: `transcribe <url>`
-2. Find the generated `.srt` file in the current directory
+2. Find the generated `.srt` file in the current directory (transcribe outputs to cwd)
 3. Read the `.srt` file completely
 4. Produce the structured output (see Step 3)
 
@@ -92,3 +92,10 @@ Do NOT print the article or transcript to the terminal — that's what the file 
 - The Article is a web article, NOT a topic-by-topic mirror of the video structure. Synthesize and reorganize by importance.
 - If `transcribe` fails, report the error and suggest checking if the CLI is installed.
 - If a URL is unreachable, report the error clearly.
+
+## Dev Notes (not part of processing flow)
+
+- `transcribe` CLI = `@illyism/transcribe` v3.1.0 — uses OpenAI Whisper API (cloud, ~$0.006/min)
+- Extension at `extension/` — Manifest V3, uses `localhost:7681` web terminal (VPSManager)
+- Extension invokes: `claude --dangerously-skip-permissions --model haiku "process: <url>"`
+- Potential optimization: `yt-dlp --write-sub --write-auto-sub` to grab YouTube captions before paying for Whisper
