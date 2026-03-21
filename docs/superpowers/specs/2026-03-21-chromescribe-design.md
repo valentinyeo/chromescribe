@@ -41,26 +41,22 @@ Transcribing videos and summarizing web content with Claude Code requires: openi
 - Reject `about:`, `edge://`, `chrome://`, `chrome-extension://`, `file://`, `data:` URLs
 - If invalid, do nothing (silent no-op)
 
-**URL sanitization:** The terminal shell is **cmd.exe** (Windows), so `cd /d` and backslash paths are correct. To prevent shell injection from special characters in URLs, the extension must:
-- Escape cmd.exe meta-characters (`&`, `|`, `>`, `<`, `^`, `%`, `"`) with `^` prefix
-- Double any `%` characters (e.g., `%` → `%%`) to prevent variable expansion
-- Wrap the URL in double quotes after escaping
-
 **URL construction logic (background.js):**
 ```js
-const projectDir = "C:\\Users\\valen\\Documents\\GitHub\\chromescribe";
+const projectDir = "C:/Users/valen/Documents/GitHub/chromescribe";
 const terminalBase = "http://localhost:7681/";
 
-// Sanitize URL for cmd.exe: escape meta-characters with ^
-function sanitizeForCmd(url) {
-  return url.replace(/[&|><^"%]/g, '^$&').replace(/%/g, '%%');
-}
-
-const safeUrl = sanitizeForCmd(tabUrl);
-const cmd = `cd /d ${projectDir} && claude "process: ${safeUrl}"`;
-const url = `${terminalBase}?cmd=${encodeURIComponent(cmd)}`;
+// Use ?cwd= for directory, ?cmd= for the claude command
+// encodeURIComponent handles all special characters safely
+const params = new URLSearchParams({
+  cwd: projectDir,
+  cmd: `claude "process: ${tabUrl}"`
+});
+const url = `${terminalBase}?${params.toString()}`;
 chrome.tabs.create({ url });
 ```
+
+Using `URLSearchParams` handles all encoding automatically — no manual sanitization needed since special characters in the URL get properly encoded in the query string.
 
 ### Component 2: Project Directory
 
@@ -112,7 +108,7 @@ The local web terminal at `http://localhost:7681` is served by VPSManager (Go ap
 
 Supported query parameters:
 - `?cmd=<command>` — auto-executes command after shell initialization (2s delay)
-- `?cwd=<path>` — sets working directory (currently buggy due to ConPTY; workaround: use `cd /d` in cmd)
+- `?cwd=<path>` — sets working directory (use forward slashes: `C:/Users/...`)
 - `?title=<text>` — sets browser tab title
 
 The extension uses only the `cmd` param with an inline `cd /d` for reliability.
