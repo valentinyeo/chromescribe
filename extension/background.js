@@ -10,7 +10,7 @@ function openInTerminal(tabUrl) {
 
   const params = new URLSearchParams({
     cwd: PROJECT_DIR,
-    cmd: `cd /d "${PROJECT_DIR}" && claude --bare --dangerously-skip-permissions --model haiku --system-prompt-file system-prompt.txt --tools "Bash,Read,Write,Glob,WebFetch" "process: ${tabUrl}"`,
+    cmd: `cd /d "${PROJECT_DIR}" && claude --dangerously-skip-permissions --model haiku --system-prompt-file system-prompt.txt --tools "Bash,Read,Write,Glob,WebFetch" --disable-slash-commands --setting-sources "" "process: ${tabUrl}"`,
     title: "ChromeScribe"
   });
 
