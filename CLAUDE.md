@@ -32,7 +32,7 @@ Create the `output/` directory if it doesn't exist: `mkdir -p output`
 
 Derive a filename slug from the content title. Save to: `output/YYYY-MM-DD-<slug>.md`
 
-The output file MUST have three sections in this exact order:
+The output file MUST have these sections in this exact order:
 
 ```markdown
 # <Content Title>
@@ -45,25 +45,23 @@ The output file MUST have three sections in this exact order:
 
 ## TL;DR
 
-<3-5 bullet points capturing the key takeaways. Be concise. This is for someone who has 30 seconds.>
+<3-5 bullet points capturing the key takeaways. This is a 30-second read. Be direct and specific — names, numbers, claims. No filler.>
 
 ---
 
-## Detailed Summary
+## The Article
 
-<Analyze the content and break it into logical topic sections. Each section covers one major theme or argument from the content.>
+<A 1-2 page web article (roughly 800-1500 words) that captures the full substance of the content. Written using the pyramid principle: lead with the single most important insight or argument, then build outward with supporting points in descending order of importance.>
 
-### <Topic 1 Title>
+<Structure for web reading:>
+<- Short paragraphs (2-4 sentences max)>
+<- **Bold key phrases** so scanners catch the important bits>
+<- Subheadings every 2-3 paragraphs to break up the wall of text>
+<- Front-load each paragraph — the first sentence carries the point>
 
-<2-4 paragraphs covering this topic in depth. Include specific claims, data points, examples, and quotes from the content. Write it like a well-structured article — not bullet points. The reader should understand this topic fully without watching/reading the original.>
+<This should read like a standalone article. Someone who reads only this section should walk away understanding everything important from the original content. Include specific claims, data, quotes, and examples — not vague summaries.>
 
-### <Topic 2 Title>
-
-<Same depth as above. Continue for every major topic.>
-
-### <Topic N Title>
-
-<Continue until all major topics are covered.>
+<Scale length to content: a 5-minute video gets ~800 words, a 60-minute deep-dive gets ~1500 words. Never pad.>
 
 ---
 
@@ -81,17 +79,16 @@ The output file MUST have three sections in this exact order:
 
 After saving, print to the terminal:
 1. The TL;DR section
-2. A list of the topic section titles (so the user knows what's covered)
-3. The file path where the full document was saved
+2. The file path where the full document was saved
 
-Do NOT print the entire detailed summary or transcript to the terminal — that's what the file is for.
+Do NOT print the article or transcript to the terminal — that's what the file is for.
 
 ## Rules
 
 - NEVER ask clarifying questions. Just process the URL.
 - NEVER skip saving to file.
-- ALWAYS include all three sections: TL;DR, Detailed Summary, and Full Transcript.
-- The Detailed Summary MUST use prose paragraphs, not bullet lists. Write like a journalist.
-- Topic sections MUST be derived from the actual content structure, not generic labels.
+- ALWAYS include all three sections: TL;DR, The Article, and Full Transcript.
+- The Article MUST use the pyramid principle: most important insight first, then descending importance.
+- The Article is a web article, NOT a topic-by-topic mirror of the video structure. Synthesize and reorganize by importance.
 - If `transcribe` fails, report the error and suggest checking if the CLI is installed.
 - If a URL is unreachable, report the error clearly.
