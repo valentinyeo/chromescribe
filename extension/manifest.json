@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChromeScribe",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "One-click send current URL to Claude Code for transcription or summarization",
   "permissions": ["activeTab", "contextMenus"],
   "background": {
@@ -13,6 +13,6 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Send to Claude"
+    "default_title": "ChromeScribe"
   }
 }

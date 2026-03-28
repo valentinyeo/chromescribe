@@ -1,0 +1,21 @@
+name = "chromescribe-dashboard"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+account_id = "7865043d9ae730882b77f3d5d670c158"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "chromescribe"
+database_id = "08532531-b2b5-4922-9e88-7cfdd074928a"
+
+[[r2_buckets]]
+binding = "TRANSCRIPTS"
+bucket_name = "chromescribe-transcripts"
+
+[ai]
+binding = "AI"
+
+[vars]
+ENVIRONMENT = "production"

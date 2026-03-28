@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChromeScribe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --foreground: #fff;
+      --background: #030303;
+      --border: #27272a;
+      --muted: #71717a;
+      --text: #a1a1aa;
+      --accent: #0057ff;
+      --accent-hover: #0066ff;
+      --error: #ef4444;
+      --success: #22c55e;
+      --card: #090909;
+      --card-hover: #111111;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    html {
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    body {
+      min-height: 100vh;
+    }
+    
+    /* Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+    }
+    
+    .header-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      color: var(--foreground);
+      text-decoration: none;
+    }
+    
+    .logo svg {
+      width: 28px;
+      height: 28px;
+      fill: var(--foreground);
+    }
+    
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    
+    .stats {
+      font-size: 13px;
+      color: var(--muted);
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    }
+    
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 36px;
+      padding: 0 14px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    
+    .btn-primary {
+      background: var(--foreground);
+      color: var(--background);
+    }
+    
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+    
+    .btn-secondary {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    
+    .btn-secondary:hover {
+      background: var(--card-hover);
+      color: var(--foreground);
+    }
+    
+    .btn-danger {
+      background: transparent;
+      color: var(--error);
+    }
+    
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+    
+    .btn svg {
+      width: 16px;
+      height: 16px;
+    }
+    
+    /* Main Content */
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+    
+    /* Search */
+    .search-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    
+    .search-input {
+      flex: 1;
+      height: 40px;
+      padding: 0 16px;
+      font-size: 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--foreground);
+      outline: none;
+      transition: border-color 0.15s ease;
+      font-family: inherit;
+    }
+    
+    .search-input::placeholder {
+      color: var(--muted);
+    }
+    
+    .search-input:focus {
+      border-color: var(--text);
+    }
+    
+    .search-input:focus-visible {
+      box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--accent);
+    }
+    
+    select {
+      height: 40px;
+      padding: 0 12px;
+      font-size: 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      outline: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+    
+    .card:hover {
+      background: var(--card-hover);
+      border-color: var(--muted);
+    }
+    
+    .card-thumb {
+      position: relative;
+      aspect-ratio: 16/9;
+      overflow: hidden;
+      background: #000;
+    }
+    
+    .card-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .card-duration {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 500;
+      background: rgba(0, 0, 0, 0.8);
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Monaco', monospace;
+    }
+    
+    .card-body {
+      padding: 16px;
+    }
+    
+    .card-title {
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: var(--foreground);
+      margin-bottom: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .card-channel {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    
+    .card-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text);
+      font-family: 'SF Mono', 'Monaco', monospace;
+      margin-bottom: 16px;
+    }
+    
+    .card-actions {
+      display: flex;
+      gap: 8px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    
+    .card-actions .btn {
+      flex: 1;
+      height: 32px;
+      font-size: 13px;
+    }
+    
+    /* 3-dot menu */
+    .menu-wrapper {
+      position: relative;
+    }
+    
+    .menu-btn {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    
+    .menu-btn:hover {
+      background: var(--card-hover);
+      color: var(--foreground);
+    }
+    
+    .menu-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px;
+      min-width: 140px;
+      z-index: 100;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    
+    .menu-dropdown.show {
+      display: block;
+    }
+    
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      background: none;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--text);
+      text-align: left;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    
+    .menu-item:hover {
+      background: var(--card-hover);
+      color: var(--foreground);
+    }
+    
+    .menu-item.danger {
+      color: var(--error);
+    }
+    
+    .menu-item.danger:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+    
+    .menu-item svg {
+      width: 16px;
+      height: 16px;
+    }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 80px 24px;
+      color: var(--muted);
+    }
+    
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+    
+    .empty-state h3 {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    
+    .empty-state p {
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow: auto;
+    }
+    
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .modal-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    .modal-close {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    
+    .modal-close:hover {
+      background: var(--card-hover);
+      color: var(--foreground);
+    }
+    
+    .modal-body {
+      padding: 24px;
+    }
+    
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    
+    .form-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 14px;
+      font-size: 14px;
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--foreground);
+      outline: none;
+      font-family: inherit;
+    }
+    
+    .form-input:focus {
+      border-color: var(--text);
+    }
+    
+    textarea.form-input {
+      height: auto;
+      padding: 12px 14px;
+      resize: vertical;
+      font-family: 'SF Mono', 'Monaco', monospace;
+      font-size: 13px;
+    }
+    
+    .form-error {
+      color: var(--error);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    
+    .modal-footer {
+      display: flex;
+      gap: 12px;
+      padding: 20px 24px;
+      border-top: 1px solid var(--border);
+    }
+    
+    .modal-footer .btn {
+      flex: 1;
+      height: 40px;
+    }
+    
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      z-index: 200;
+    }
+    
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    
+    .toast-inner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--foreground);
+      color: var(--background);
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .toast svg {
+      width: 18px;
+      height: 18px;
+    }
+    
+    .toast-success svg { color: var(--success); }
+    .toast-error svg { color: var(--error); }
+    
+    /* Loading */
+    .skeleton {
+      background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    
+    .skeleton-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    .skeleton-thumb { height: 180px; }
+    .skeleton-text { height: 14px; margin: 12px; border-radius: 4px; }
+    .skeleton-text-sm { height: 10px; width: 60%; margin: 8px 12px 12px; }
+    
+    /* Hide */
+    .hidden { display: none !important; }
+    
+    /* Mobile */
+    @media (max-width: 640px) {
+      .header-inner {
+        padding: 12px 16px;
+      }
+      
+      main {
+        padding: 20px 16px;
+      }
+      
+      .search-bar {
+        flex-direction: column;
+      }
+      
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 24 24">
+          <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+        </svg>
+        ChromeScribe
+      </a>
+      
+      <div class="header-actions">
+        <span id="stats" class="stats"></span>
+        <button onclick="openAddModal()" class="btn btn-primary">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add Video
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main>
+    <div class="search-bar">
+      <input type="text" id="searchInput" class="search-input" placeholder="Search transcripts..." onkeyup="handleSearch(this.value)">
+      <select id="sortSelect" onchange="renderTranscripts()">
+        <option value="newest">Newest First</option>
+        <option value="oldest">Oldest First</option>
+        <option value="title">By Title</option>
+        <option value="duration">By Duration</option>
+      </select>
+    </div>
+
+    <div id="videoGrid" class="grid"></div>
+
+    <div id="emptyState" class="empty-state hidden">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+      </svg>
+      <h3>No transcriptions yet</h3>
+      <p>Add your first video to start building your library</p>
+      <button onclick="openAddModal()" class="btn btn-primary">Add Your First Video</button>
+    </div>
+
+    <div id="loadingState" class="grid hidden">
+      <div class="skeleton-card"><div class="skeleton skeleton-thumb"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text-sm"></div></div>
+      <div class="skeleton-card"><div class="skeleton skeleton-thumb"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text-sm"></div></div>
+      <div class="skeleton-card"><div class="skeleton skeleton-thumb"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text-sm"></div></div>
+    </div>
+  </main>
+
+  <!-- Add Modal -->
+  <div id="addModal" class="modal-backdrop hidden" onclick="if(event.target===this)closeAddModal()">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Add Video</h2>
+        <button class="modal-close" onclick="closeAddModal()">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <form id="addForm" onsubmit="handleAdd(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">YouTube URL</label>
+            <input type="url" id="videoUrl" class="form-input" placeholder="https://youtube.com/watch?v=..." required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Title (optional)</label>
+            <input type="text" id="videoTitle" class="form-input" placeholder="Custom title">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Channel (optional)</label>
+            <input type="text" id="videoChannel" class="form-input" placeholder="Channel name">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Content (optional)</label>
+            <textarea id="srtContent" class="form-input" rows="4" placeholder="Paste transcript content..."></textarea>
+          </div>
+          <div id="addError" class="form-error hidden"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" onclick="closeAddModal()" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Video</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- View Modal -->
+  <div id="viewModal" class="modal-backdrop hidden" onclick="if(event.target===this)closeViewModal()">
+    <div class="modal" style="max-width: 800px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h2 id="viewTitle"></h2>
+          <p id="viewMeta" style="font-size: 13px; color: var(--muted); margin-top: 4px;"></p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <a id="viewDownload" href="#" download class="btn btn-secondary">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            Download
+          </a>
+          <button class="modal-close" onclick="closeViewModal()">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div style="flex: 1; overflow: auto; padding: 24px;">
+        <pre id="transcriptContent" style="font-family: 'SF Mono', 'Monaco', monospace; font-size: 13px; line-height: 1.7; white-space: pre-wrap; color: var(--text);"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast">
+    <div class="toast-inner">
+      <span id="toastIcon"></span>
+      <span id="toastMessage"></span>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api';
+    let transcripts = [];
+
+    document.addEventListener('DOMContentLoaded', loadTranscripts);
+
+    async function loadTranscripts() {
+      showLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/transcripts`);
+        const { data } = await res.json();
+        transcripts = data || [];
+        renderTranscripts();
+      } catch (err) {
+        showToast('Failed to load transcripts', 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    function renderTranscripts() {
+      const grid = document.getElementById('videoGrid');
+      const empty = document.getElementById('emptyState');
+      
+      if (transcripts.length === 0) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        document.getElementById('stats').textContent = '';
+        return;
+      }
+      
+      empty.classList.add('hidden');
+      
+      const sorted = [...transcripts].sort((a, b) => {
+        const sort = document.getElementById('sortSelect').value;
+        if (sort === 'newest') return new Date(b.created_at) - new Date(a.created_at);
+        if (sort === 'oldest') return new Date(a.created_at) - new Date(b.created_at);
+        if (sort === 'title') return a.title.localeCompare(b.title);
+        if (sort === 'duration') return b.duration - a.duration;
+        return 0;
+      });
+
+      grid.innerHTML = sorted.map(t => `
+        <div class="card">
+          <a href="transcript.html?id=${t.id}" style="text-decoration: none; display: block;">
+            <div class="card-thumb">
+              <img src="${t.thumbnail_url || 'https://via.placeholder.com/640x360?text=No+Thumbnail'}" alt="${escapeHtml(t.title)}" onerror="this.src='https://via.placeholder.com/640x360/111/333?text=No+Thumbnail'">
+              <span class="card-duration">${t.duration_formatted}</span>
+            </div>
+            <div class="card-body">
+              <h3 class="card-title">${escapeHtml(t.title)}</h3>
+              <p class="card-channel">${escapeHtml(t.channel)}</p>
+              <div class="card-meta">
+                <span>${t.word_count} words</span>
+                <span>${t.created_at_formatted}</span>
+              </div>
+            </div>
+          </a>
+          <div class="card-actions" style="padding: 12px 16px; justify-content: space-between;">
+            <a href="transcript.html?id=${t.id}" class="btn btn-secondary" style="flex: 1; margin-right: 8px;">View</a>
+            <div class="menu-wrapper">
+              <button class="menu-btn" onclick="toggleMenu(event, ${t.id})">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                </svg>
+              </button>
+              <div id="menu-${t.id}" class="menu-dropdown">
+                <a href="transcript.html?id=${t.id}" class="menu-item">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                  View
+                </a>
+                <a href="https://youtube.com/watch?v=${t.video_id}" target="_blank" class="menu-item">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                  Watch on YouTube
+                </a>
+                <button onclick="deleteTranscript(${t.id},'${escapeHtml(t.title)}')" class="menu-item danger">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('stats').textContent = `${transcripts.length} video${transcripts.length !== 1 ? 's' : ''}`;
+    }
+
+    async function viewTranscript(id) {
+      const transcript = transcripts.find(t => t.id === id);
+      if (!transcript) return;
+
+      document.getElementById('viewTitle').textContent = transcript.title;
+      document.getElementById('viewMeta').textContent = `${transcript.channel} · ${transcript.word_count} words`;
+      document.getElementById('viewDownload').href = `${API_BASE}/transcript/${id}/content`;
+
+      try {
+        const res = await fetch(`${API_BASE}/transcript/${id}/content`);
+        document.getElementById('transcriptContent').textContent = await res.text();
+      } catch (err) {
+        document.getElementById('transcriptContent').textContent = 'Failed to load transcript.';
+      }
+
+      document.getElementById('viewModal').classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeViewModal() {
+      document.getElementById('viewModal').classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+
+    async function deleteTranscript(id, title) {
+      if (!confirm(`Delete "${title}"?`)) return;
+      try {
+        await fetch(`${API_BASE}/transcripts/${id}`, { method: 'DELETE' });
+        showToast('Deleted', 'success');
+        loadTranscripts();
+      } catch (err) {
+        showToast('Failed to delete', 'error');
+      }
+    }
+
+    function openAddModal() {
+      document.getElementById('addModal').classList.remove('hidden');
+      document.getElementById('addForm').reset();
+      document.getElementById('addError').classList.add('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeAddModal() {
+      document.getElementById('addModal').classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+
+    async function handleAdd(e) {
+      e.preventDefault();
+      const error = document.getElementById('addError');
+      const btn = e.target.querySelector('button[type="submit"]');
+      
+      btn.disabled = true;
+      btn.textContent = 'Adding...';
+
+      try {
+        const res = await fetch(`${API_BASE}/transcribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: document.getElementById('videoUrl').value,
+            title: document.getElementById('videoTitle').value,
+            channel: document.getElementById('videoChannel').value,
+            srt_content: document.getElementById('srtContent').value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        showToast('Added!', 'success');
+        closeAddModal();
+        loadTranscripts();
+      } catch (err) {
+        error.textContent = err.message;
+        error.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add Video';
+      }
+    }
+
+    let searchTimeout;
+    async function handleSearch(query) {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(async () => {
+        if (!query.trim()) { loadTranscripts(); return; }
+        try {
+          const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+          transcripts = (await res.json()).data || [];
+          renderTranscripts();
+        } catch (err) {}
+      }, 300);
+    }
+
+    function showLoading(show) {
+      document.getElementById('loadingState').classList.toggle('hidden', !show);
+      document.getElementById('videoGrid').classList.toggle('hidden', show);
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const icon = document.getElementById('toastIcon');
+      icon.innerHTML = type === 'success' 
+        ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+        : '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+      document.getElementById('toastMessage').textContent = message;
+      toast.className = `toast toast-${type} show`;
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeAddModal(); closeViewModal(); closeAllMenus(); }
+    });
+    
+    // Close menus when clicking outside
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.menu-wrapper')) {
+        closeAllMenus();
+      }
+    });
+    
+    function toggleMenu(e, id) {
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = document.getElementById(`menu-${id}`);
+      const isOpen = menu.classList.contains('show');
+      closeAllMenus();
+      if (!isOpen) {
+        menu.classList.add('show');
+      }
+    }
+    
+    function closeAllMenus() {
+      document.querySelectorAll('.menu-dropdown').forEach(m => m.classList.remove('show'));
+    }
+  </script>
+</body>
+</html>

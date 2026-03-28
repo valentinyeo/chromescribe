@@ -30,39 +30,50 @@ function cleanPageTitle(title) {
   return title.replace(/\s*[-|]\s*YouTube\s*$/i, "").trim() || null;
 }
 
+function buildCmd(tabUrl) {
+  return `cd /d "${PROJECT_DIR}" && pi --provider minimax --model MiniMax-M2.5-highspeed --no-session --append-system-prompt @system-prompt-pi.txt "process: ${tabUrl}"`;
+}
+
 function openInTerminal(tabUrl, pageTitle) {
   if (!isValidUrl(tabUrl)) return;
 
   const title = (pageTitle && `CS: ${pageTitle}`) || deriveTitle(tabUrl);
-
   const params = new URLSearchParams({
     cwd: PROJECT_DIR,
-    cmd: `cd /d "${PROJECT_DIR}" && claude --dangerously-skip-permissions --model haiku --system-prompt-file system-prompt.txt --tools "Bash,Read,Write,Glob,WebFetch" --disable-slash-commands --setting-sources "" "process: ${tabUrl}"`,
+    cmd: buildCmd(tabUrl),
     title
   });
 
   chrome.tabs.create({ url: `${TERMINAL_BASE}?${params.toString()}` });
 }
 
-// Toolbar icon click — tab.title has the page title
+// Icon click — open terminal directly
 chrome.action.onClicked.addListener((tab) => {
-  openInTerminal(tab.url, cleanPageTitle(tab.title));
+  const url = tab.url;
+  const pageTitle = cleanPageTitle(tab.title);
+  openInTerminal(url, pageTitle);
+});
+
+// Popup button clicks (for fallback)
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action === "process" && msg.tab) {
+    const url = msg.tab.url;
+    const pageTitle = cleanPageTitle(msg.tab.title);
+    openInTerminal(url, pageTitle);
+  }
 });
 
 // Context menu
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: "send-to-claude",
-    title: "Send to Claude",
+    id: "send-to-pi",
+    title: "Process with Pi",
     contexts: ["page", "link"]
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "send-to-claude") {
-    const url = info.linkUrl || info.pageUrl || tab.url;
-    // Use page title if processing the current page, otherwise fall back to URL-based
-    const pageTitle = !info.linkUrl ? cleanPageTitle(tab.title) : null;
-    openInTerminal(url, pageTitle);
-  }
+  const url = info.linkUrl || info.pageUrl || tab.url;
+  const pageTitle = !info.linkUrl ? cleanPageTitle(tab.title) : null;
+  openInTerminal(url, pageTitle);
 });
