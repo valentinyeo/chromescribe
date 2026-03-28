@@ -64,6 +64,19 @@
     
     .btn:hover { background: #444; }
     
+    .btn-retranscribe {
+      background: #2d5a2d;
+    }
+    
+    .btn-retranscribe:hover {
+      background: #3d7a3d;
+    }
+    
+    .btn-retranscribe:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
     .video-wrapper {
       flex: 1;
       position: relative;
@@ -206,6 +219,7 @@
         <div class="header-btns">
           <button class="btn" onclick="copyText()">Copy</button>
           <button class="btn" onclick="downloadMd()">Download MD</button>
+          <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
         </div>
       </header>
       <div class="video-wrapper">
@@ -300,6 +314,47 @@
       a.href = URL.createObjectURL(blob);
       a.download = 'transcript.md';
       a.click();
+    }
+    
+    async function retranscribe() {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      if (!id) return;
+      
+      const btn = document.querySelector('.btn-retranscribe');
+      btn.disabled = true;
+      btn.textContent = '⏳ Retranscribing...';
+      
+      try {
+        // Get original URL from markdown
+        const sourceMatch = markdown.match(/\*\*Source:\*\*\s*(https?:\/\/[^\s]+)/);
+        const sourceUrl = sourceMatch ? sourceMatch[1] : null;
+        
+        if (!sourceUrl) {
+          alert('Could not find original URL to retranscribe');
+          btn.disabled = false;
+          btn.textContent = '♻️ Retranscribe';
+          return;
+        }
+        
+        // Open terminal with retranscribe command
+        const projectDir = 'C:/Users/valen/Documents/GitHub/chromescribe';
+        const cmd = `cd /d "${projectDir}" && pi --provider minimax --model MiniMax-M2.5-highspeed --no-session --append-system-prompt @system-prompt-pi.txt "process: ${sourceUrl}"`;
+        const terminalUrl = `http://localhost:7681/?cwd=${encodeURIComponent(projectDir)}&cmd=${encodeURIComponent(cmd)}&title=Retranscribe`;
+        
+        window.open(terminalUrl, '_blank');
+        
+        btn.textContent = '✅ Opened in Pi';
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = '♻️ Retranscribe';
+        }, 3000);
+        
+      } catch (e) {
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = '♻️ Retranscribe';
+      }
     }
     
     init();

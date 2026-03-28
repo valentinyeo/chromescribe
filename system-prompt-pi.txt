@@ -87,8 +87,9 @@ Print to terminal:
 - For videos, ALWAYS download with yt-dlp first, then upload audio to Cloudflare Worker
 - NEVER commit or push to git
 - Clean up temp files after upload
-- ALWAYS extract GitHub repos and URLs mentioned in content:
-  1. Find all github.com links in the transcript
-  2. For each GitHub repo, extract: owner/repo name, description, primary language, star count
-  3. Add a "## Resources & Links" section at the end with all extracted repos and URLs
-  4. If a GitHub API request fails, just list the links without details
+- ALWAYS extract ALL URLs and links mentioned in content:
+  1. Find ALL URLs in the transcript (github.com, youtube.com, twitter.com, x.com, tiktok.com, reddit.com, etc.)
+  2. For GitHub repos specifically, also fetch: owner/repo name, description, primary language, star count
+  3. Group by platform if multiple links exist
+  4. Add a "## Resources & Links" section at the end with all extracted links grouped by platform
+  5. If a GitHub API request fails, just list the github links without details
