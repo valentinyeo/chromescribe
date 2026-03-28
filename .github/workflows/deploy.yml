@@ -1,0 +1,33 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy Dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload static files to R2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: r2 object put "index.html" --file=./dashboard/public/index.html --bucket=chromescribe-transcripts
+          workingDirectory: dashboard
+
+      - name: Upload transcript.html to R2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: r2 object put "transcript.html" --file=./dashboard/public/transcript.html --bucket=chromescribe-transcripts
+          workingDirectory: dashboard
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: dashboard
