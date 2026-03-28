@@ -219,11 +219,15 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         if (markdown_content) {
           const wordCount = markdown_content.split(/\s+/).filter(w => w.length > 0).length;
 
+          // Extract title from markdown content if title looks like a file name
+          const mdTitleMatch = markdown_content.match(/^#\s+(.+)$/m);
+          let mdTitle = mdTitleMatch ? mdTitleMatch[1].trim() : null;
+
           const srtPath = `content/${parsed.id}.md`;
           await env.TRANSCRIPTS.put(srtPath, markdown_content);
 
           // Get video info if available
-          let videoTitle = title || `Video ${parsed.id}`;
+          let videoTitle = title || mdTitle || `Video ${parsed.id}`;
           let videoChannel = parsed.platform === 'tiktok' ? 'TikTok' : 'YouTube';
           let noembedThumbnail: string | undefined;
 
@@ -232,7 +236,10 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
             if (infoRes.ok) {
               const info = await infoRes.json() as any;
               if (!info.error) {
-                videoTitle = info.title || videoTitle;
+                // Only use noembed title if our title is a file name
+                if (!mdTitle || title) {
+                  videoTitle = info.title || videoTitle;
+                }
                 videoChannel = info.author_name || videoChannel;
                 noembedThumbnail = info.thumbnail_url;
               }
