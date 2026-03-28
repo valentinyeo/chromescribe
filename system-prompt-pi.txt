@@ -15,47 +15,20 @@ You will receive a message like: `process: <url>`
 
 ## Step 2: Process
 
-### Video URLs - NEW CLOUDFLARE AI FLOW
+### Video URLs - CLOUDFLARE AI FLOW
 
 1. Download audio locally using yt-dlp:
-   ```bash
+   ```
    yt-dlp -x --audio-format mp3 -o "temp_audio.mp3" "<url>"
    ```
-2. Upload to Cloudflare AI for transcription:
-   ```javascript
-   // Use Node.js to upload audio to dashboard
-   const formData = new URLSearchParams();
-   formData.append('url', '<original_url>');
-   formData.append('title', '<video_title>');
-   
-   // Create multipart form data manually
-   const boundary = '----FormBoundary' + Math.random().toString(36).substring(2);
-   let body = `--${boundary}\r\n`;
-   body += `Content-Disposition: form-data; name="url"\r\n\r\n${'<original_url>'}\r\n`;
-   body += `--${boundary}\r\n`;
-   body += `Content-Disposition: form-data; name="title"\r\n\r\n${'<video_title>'}\r\n`;
-   body += `--${boundary}\r\n`;
-   body += `Content-Disposition: form-data; name="audio"; filename="audio.mp3"\r\n`;
-   body += `Content-Type: audio/mpeg\r\n\r\n`;
-   // Read audio file and append
-   body += `\r\n--${boundary}--\r\n`;
-   
-   fetch('https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcribe', {
-     method: 'POST',
-     headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-     body: body
-   })
+2. Upload to Cloudflare AI for transcription using curl:
    ```
-   
-   Actually, use curl instead (more reliable):
-   ```bash
-   curl -X POST "https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcribe" \
-     -F "url=<original_url>" \
-     -F "title=<video_title>" \
-     -F "audio=@temp_audio.mp3;type=audio/mpeg"
+   curl -X POST "https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcribe" -F "url=<original_url>" -F "title=<video_title>" -F "audio=@temp_audio.mp3;type=audio/mpeg"
    ```
 3. Save markdown locally to `output/YYYY-MM-DD-<slug>.md`
 4. Print the TL;DR, local file path, and dashboard URL from the response
+
+**IMPORTANT: Always run the curl upload command after downloading. Do NOT skip the upload.**
 
 ### Article URLs
 

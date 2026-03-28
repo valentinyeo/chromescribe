@@ -156,7 +156,14 @@
     }
     
     .transcript-content strong { color: #fff; }
-    .transcript-content a { color: #3ea6ff; }
+    .transcript-content a { 
+      color: #3ea6ff; 
+      text-decoration: none;
+      word-break: break-all;
+    }
+    .transcript-content a:hover { 
+      text-decoration: underline;
+    }
     
     .transcript-content blockquote {
       border-left: 2px solid #444;
@@ -283,6 +290,10 @@
     }
     
     function parseMarkdown(text) {
+      // Convert plain URLs to clickable links first
+      const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`\[\]]+)/g;
+      text = text.replace(urlRegex, '<a href="$1" target="_blank">$1</a>');
+      
       return text
         .replace(/^# .+$/gm, '') // Remove main title
         .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -290,7 +301,6 @@
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.+?)\*/g, '<em>$1</em>')
         .replace(/`(.+?)`/g, '<code>$1</code>')
-        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>')
         .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
         .replace(/^---$/gm, '<hr>')
         .replace(/^- (.+)$/gm, '<li>$1</li>')
