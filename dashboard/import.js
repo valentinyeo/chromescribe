@@ -63,12 +63,18 @@ async function importFile(filePath) {
     return { file: filename, status: 'skipped', reason: 'no URL' };
   }
   
-  // Extract video ID from URL if YouTube
-  const videoIdMatch = url.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/);
-  const videoId = videoIdMatch ? videoIdMatch[1] : null;
-  
+  // Extract video ID from URL
+  let videoId = null;
+  const ytMatch = url.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+  if (ytMatch) {
+    videoId = ytMatch[1];
+  } else {
+    const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
+    if (ttMatch) videoId = `tiktok:${ttMatch[1]}`;
+  }
+
   // Try to extract channel from content (look for "by ChannelName" or similar patterns)
-  let channel = 'YouTube';
+  let channel = url.includes('tiktok.com') ? 'TikTok' : 'YouTube';
   const channelMatch = content.match(/\*\*Channel:\*\*\s*(.+)/i);
   if (channelMatch) channel = channelMatch[1].trim();
   

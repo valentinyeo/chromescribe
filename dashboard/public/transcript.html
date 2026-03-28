@@ -250,7 +250,15 @@
         markdown = await contentRes.text();
         
         // Render
-        document.getElementById('video').src = 'https://www.youtube.com/embed/' + meta.video_id;
+        if (meta.video_id.startsWith('tiktok:')) {
+          const tiktokId = meta.video_id.replace('tiktok:', '');
+          const wrapper = document.querySelector('.video-wrapper');
+          wrapper.innerHTML = meta.thumbnail_url
+            ? '<a href="https://www.tiktok.com/video/' + tiktokId + '" target="_blank" style="display:block;width:100%;height:100%"><img src="' + meta.thumbnail_url + '" style="width:100%;height:100%;object-fit:contain;" alt="TikTok video thumbnail"></a>'
+            : '<a href="https://www.tiktok.com/video/' + tiktokId + '" target="_blank" style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;text-decoration:none;">Click to watch on TikTok</a>';
+        } else {
+          document.getElementById('video').src = 'https://www.youtube.com/embed/' + meta.video_id;
+        }
         document.getElementById('title').textContent = meta.title;
         document.getElementById('meta').textContent = meta.channel + ' • ' + meta.word_count.toLocaleString() + ' words';
         document.getElementById('content').innerHTML = parseMarkdown(markdown);

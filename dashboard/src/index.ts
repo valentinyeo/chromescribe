@@ -36,19 +36,29 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-const getVideoId = (url: string): string | null => {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
+interface ParsedVideo {
+  platform: 'youtube' | 'tiktok';
+  id: string;
+  prefixedId: string;
+}
+
+const parseVideoUrl = (url: string): ParsedVideo | null => {
+  // YouTube
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+  if (ytMatch) return { platform: 'youtube', id: ytMatch[1], prefixedId: ytMatch[1] };
+
+  // TikTok
+  const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
+  if (ttMatch) return { platform: 'tiktok', id: ttMatch[1], prefixedId: `tiktok:${ttMatch[1]}` };
+
   return null;
 };
 
-const getYouTubeThumbnail = (videoId: string): string => {
-  return `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+const getThumbnailUrl = (parsed: ParsedVideo, noembedThumbnail?: string): string | null => {
+  if (parsed.platform === 'youtube') {
+    return `https://img.youtube.com/vi/${parsed.id}/mqdefault.jpg`;
+  }
+  return noembedThumbnail || null;
 };
 
 const formatDuration = (seconds: number): string => {
@@ -188,10 +198,12 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           return handleError(new Error('URL is required'), 400);
         }
 
-        const videoId = getVideoId(videoUrl);
-        if (!videoId) {
-          return handleError(new Error('Invalid YouTube URL'), 400);
+        const parsed = parseVideoUrl(videoUrl);
+        if (!parsed) {
+          return handleError(new Error('Unsupported video URL'), 400);
         }
+
+        const videoId = parsed.prefixedId;
 
         // Check for duplicate
         const existing = await env.DB
@@ -206,21 +218,23 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         // If markdown content provided (from local transcription), save it
         if (markdown_content) {
           const wordCount = markdown_content.split(/\s+/).filter(w => w.length > 0).length;
-          
-          const srtPath = `content/${videoId}.md`;
+
+          const srtPath = `content/${parsed.id}.md`;
           await env.TRANSCRIPTS.put(srtPath, markdown_content);
 
           // Get video info if available
-          let videoTitle = title || `Video ${videoId}`;
-          let videoChannel = 'YouTube';
-          
+          let videoTitle = title || `Video ${parsed.id}`;
+          let videoChannel = parsed.platform === 'tiktok' ? 'TikTok' : 'YouTube';
+          let noembedThumbnail: string | undefined;
+
           try {
             const infoRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(videoUrl)}`);
             if (infoRes.ok) {
-              const info = await infoRes.json();
+              const info = await infoRes.json() as any;
               if (!info.error) {
                 videoTitle = info.title || videoTitle;
                 videoChannel = info.author_name || videoChannel;
+                noembedThumbnail = info.thumbnail_url;
               }
             }
           } catch (e) {}
@@ -237,7 +251,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
               Math.round(wordCount / 2.5),
               srtPath,
               wordCount,
-              getYouTubeThumbnail(videoId)
+              getThumbnailUrl(parsed, noembedThumbnail)
             )
             .run();
 
@@ -250,13 +264,12 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           }, 201);
         }
 
-        // If only URL provided, try YouTube download (may fail due to CF restrictions)
-        // Return instructions for local download
+        // If only URL provided, return instructions for local download
         return jsonResponse({
           video_id: videoId,
-          message: 'YouTube is blocked from Cloudflare Workers. Please download locally with yt-dlp and upload the audio.',
+          message: 'Download locally with yt-dlp and upload the audio.',
           instructions: {
-            step1: `yt-dlp -x --audio-format mp3 -o "audio.mp3" ${videoUrl}`,
+            step1: `yt-dlp -x --audio-format mp3 -o "audio.mp3" "${videoUrl}"`,
             step2: 'Upload the audio file to /api/upload for transcription',
           }
         });
@@ -301,11 +314,12 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         const videoUrl = videoUrlField ? String(videoUrlField) : '';
         const title = titleField ? String(titleField) : 'Untitled';
         
-        // Get video ID or generate one if YouTube URL is invalid
+        // Get video ID or generate one if URL is unrecognized
         let videoId: string;
+        let parsedUpload: ParsedVideo | null = null;
         if (videoUrl) {
-          const extractedId = getVideoId(videoUrl);
-          videoId = extractedId || `audio-${Date.now()}`;
+          parsedUpload = parseVideoUrl(videoUrl);
+          videoId = parsedUpload ? parsedUpload.prefixedId : `audio-${Date.now()}`;
         } else {
           videoId = `audio-${Date.now()}`;
         }
@@ -377,21 +391,23 @@ ${srtContent || transcript.text}
 `;
 
         // Save to R2
-        const srtPath = `content/${videoId}.md`;
+        const srtPath = `content/${parsedUpload ? parsedUpload.id : videoId}.md`;
         await env.TRANSCRIPTS.put(srtPath, markdownContent);
 
-        // Get video info if YouTube URL provided
+        // Get video info
         let videoTitle = title;
-        let videoChannel = 'YouTube';
-        
+        let videoChannel = parsedUpload?.platform === 'tiktok' ? 'TikTok' : 'YouTube';
+        let noembedThumb: string | undefined;
+
         if (videoUrl) {
           try {
             const infoRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(videoUrl)}`);
             if (infoRes.ok) {
-              const info = await infoRes.json();
+              const info = await infoRes.json() as any;
               if (!info.error) {
                 videoTitle = info.title || videoTitle;
                 videoChannel = info.author_name || videoChannel;
+                noembedThumb = info.thumbnail_url;
               }
             }
           } catch (e) {
@@ -400,6 +416,9 @@ ${srtContent || transcript.text}
         }
 
         // Save metadata to D1
+        const thumbnailUrl = parsedUpload
+          ? getThumbnailUrl(parsedUpload, noembedThumb)
+          : null;
         const result = await env.DB
           .prepare(`
             INSERT INTO transcripts (video_id, title, channel, duration, srt_path, word_count, thumbnail_url)
@@ -412,7 +431,7 @@ ${srtContent || transcript.text}
             Math.round(wordCount / 2.5),
             srtPath,
             wordCount,
-            videoId.includes('-') ? null : getYouTubeThumbnail(videoId)
+            thumbnailUrl
           )
           .run();
 
@@ -499,7 +518,7 @@ export default {
     }
 
     // CSP header to allow API calls even when embedded in YouTube iframe
-    const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev https://*.youtube.com https://img.youtube.com; img-src 'self' data: https://img.youtube.com; style-src 'self' 'unsafe-inline';";
+    const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://www.tiktok.com; connect-src 'self' https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev https://*.youtube.com https://img.youtube.com; img-src 'self' data: https://img.youtube.com https://*.tiktokcdn.com; style-src 'self' 'unsafe-inline';";
 
     const HTML_HEADERS = {
       'Content-Type': 'text/html; charset=utf-8',

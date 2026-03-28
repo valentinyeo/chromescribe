@@ -645,8 +645,8 @@
       <form id="addForm" onsubmit="handleAdd(event)">
         <div class="modal-body">
           <div class="form-group">
-            <label class="form-label">YouTube URL</label>
-            <input type="url" id="videoUrl" class="form-input" placeholder="https://youtube.com/watch?v=..." required>
+            <label class="form-label">Video URL</label>
+            <input type="url" id="videoUrl" class="form-input" placeholder="YouTube or TikTok URL" required>
           </div>
           <div class="form-group">
             <label class="form-label">Title (optional)</label>
@@ -780,11 +780,11 @@
                   </svg>
                   View
                 </a>
-                <a href="https://youtube.com/watch?v=${t.video_id}" target="_blank" class="menu-item">
+                <a href="${t.video_id.startsWith('tiktok:') ? 'https://www.tiktok.com/video/' + t.video_id.replace('tiktok:', '') : 'https://youtube.com/watch?v=' + t.video_id}" target="_blank" class="menu-item">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                   </svg>
-                  Watch on YouTube
+                  ${t.video_id.startsWith('tiktok:') ? 'Watch on TikTok' : 'Watch on YouTube'}
                 </a>
                 <button onclick="deleteTranscript(${t.id},'${escapeHtml(t.title)}')" class="menu-item danger">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
