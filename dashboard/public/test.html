@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Transcript Test</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+    h1 { color: #333; }
+    pre { background: #f5f5f5; padding: 20px; white-space: pre-wrap; max-height: 500px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h1>Transcript Content (ID: 7)</h1>
+  <pre id="content">Loading...</pre>
+  <script>
+    // Fetch and display transcript directly
+    fetch('https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcript/7/content')
+      .then(r => r.text())
+      .then(text => {
+        document.getElementById('content').textContent = text;
+      })
+      .catch(err => {
+        document.getElementById('content').textContent = 'Error: ' + err.message;
+      });
+  </script>
+</body>
+</html>

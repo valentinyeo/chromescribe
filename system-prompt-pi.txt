@@ -10,7 +10,7 @@ You will receive a message like: `process: <url>`
 
 ## Step 1: Identify Content Type
 
-- **Video** — URL matches: `youtube.com/watch`, `youtu.be/`, `youtube.com/shorts/`, `tiktok.com/`
+- **Video** — URL matches: `youtube.com/watch`, `youtu.be/`, `youtube.com/shorts/`, `tiktok.com/`, `vm.tiktok.com/*`, `vt.tiktok.com/*`
 - **Article** — All other `http://` or `https://` URLs
 
 ## Step 2: Process
@@ -87,3 +87,8 @@ Print to terminal:
 - For videos, ALWAYS download with yt-dlp first, then upload audio to Cloudflare Worker
 - NEVER commit or push to git
 - Clean up temp files after upload
+- ALWAYS extract GitHub repos and URLs mentioned in content:
+  1. Find all github.com links in the transcript
+  2. For each GitHub repo, extract: owner/repo name, description, primary language, star count
+  3. Add a "## Resources & Links" section at the end with all extracted repos and URLs
+  4. If a GitHub API request fails, just list the links without details

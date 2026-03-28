@@ -1,0 +1,132 @@
+[
+  {
+    "file": "2025-03-18-openclaw-setup-masterclass.md",
+    "status": "success",
+    "id": 7
+  },
+  {
+    "file": "2026-03-21-auto-improving-content-machine.md",
+    "status": "success",
+    "id": 8
+  },
+  {
+    "file": "2026-03-21-automate-analytics-ads-with-claude-code.md",
+    "status": "success",
+    "id": 9
+  },
+  {
+    "file": "2026-03-21-claude-code-remote-tasks-software-factory.md",
+    "status": "success",
+    "id": 10
+  },
+  {
+    "file": "2026-03-21-openclaw-github-release-evolution.md",
+    "status": "success",
+    "id": 11
+  },
+  {
+    "file": "2026-03-21-openclaw-release-analysis.md",
+    "status": "error",
+    "error": "Video already transcribed"
+  },
+  {
+    "file": "2026-03-21-self-improving-content-machine-auto-research.md",
+    "status": "error",
+    "error": "Video already transcribed"
+  },
+  {
+    "file": "2026-03-21-self-improving-content-machine.md",
+    "status": "error",
+    "error": "Video already transcribed"
+  },
+  {
+    "file": "2026-03-22-ai-agent-ad-strategy-12x-roas.md",
+    "status": "success",
+    "id": 12
+  },
+  {
+    "file": "2026-03-22-atlantis-sahara-desert.md",
+    "status": "success",
+    "id": 13
+  },
+  {
+    "file": "2026-03-22-cloud-code-cli-tools.md",
+    "status": "success",
+    "id": 14
+  },
+  {
+    "file": "2026-03-22-cloud-code-remote-tasks.md",
+    "status": "error",
+    "error": "Video already transcribed"
+  },
+  {
+    "file": "2026-03-22-harness-engineering-reliable-ai.md",
+    "status": "success",
+    "id": 15
+  },
+  {
+    "file": "2026-03-22-self-improving-ai-content-machine.md",
+    "status": "error",
+    "error": "Video already transcribed"
+  },
+  {
+    "file": "2026-03-23-ai-seo-website-building-system.md",
+    "status": "success",
+    "id": 16
+  },
+  {
+    "file": "2026-03-23-cloud-code-agent-teams-guide.md",
+    "status": "success",
+    "id": 17
+  },
+  {
+    "file": "2026-03-23-google-stitch-cloud-code-pipeline.md",
+    "status": "success",
+    "id": 18
+  },
+  {
+    "file": "2026-03-23-portmaster-firewall-setup.md",
+    "status": "success",
+    "id": 19
+  },
+  {
+    "file": "2026-03-24-death-of-digital-trust-ai-spam.md",
+    "status": "success",
+    "id": 20
+  },
+  {
+    "file": "2026-03-25-cloud-code-auto-mode.md",
+    "status": "success",
+    "id": 21
+  },
+  {
+    "file": "2026-03-25-codex-cli-gpt-54-mini-review.md",
+    "status": "success",
+    "id": 22
+  },
+  {
+    "file": "2026-03-25-get-shit-done-gsd-ai-coding-workflow.md",
+    "status": "success",
+    "id": 23
+  },
+  {
+    "file": "2026-03-26-paperclip-hire-ai-agents-like-employees-live-demo.md",
+    "status": "success",
+    "id": 24
+  },
+  {
+    "file": "2026-03-27-issue-tracking-is-dead.md",
+    "status": "success",
+    "id": 25
+  },
+  {
+    "file": "2026-03-27-linear-issue-tracking-dead.md",
+    "status": "error",
+    "error": "Video already transcribed"
+  },
+  {
+    "file": "2026-03-27-two-ai-models-arc-agi-3-benchmark.md",
+    "status": "success",
+    "id": 26
+  }
+]
