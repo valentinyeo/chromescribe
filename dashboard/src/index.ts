@@ -58,6 +58,7 @@ const getThumbnailUrl = (parsed: ParsedVideo, noembedThumbnail?: string): string
   if (parsed.platform === 'youtube') {
     return `https://img.youtube.com/vi/${parsed.id}/mqdefault.jpg`;
   }
+  // For TikTok, use oEmbed thumbnail or fallback to placeholder
   return noembedThumbnail || null;
 };
 
@@ -232,16 +233,28 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           let noembedThumbnail: string | undefined;
 
           try {
-            const infoRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(videoUrl)}`);
-            if (infoRes.ok) {
-              const info = await infoRes.json() as any;
-              if (!info.error) {
-                // Only use noembed title if our title is a file name
-                if (!mdTitle || title) {
-                  videoTitle = info.title || videoTitle;
-                }
+            if (parsed.platform === 'tiktok') {
+              // Use TikTok's oEmbed API
+              const infoRes = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`);
+              if (infoRes.ok) {
+                const info = await infoRes.json() as any;
+                videoTitle = info.title || videoTitle;
                 videoChannel = info.author_name || videoChannel;
                 noembedThumbnail = info.thumbnail_url;
+              }
+            } else {
+              // Use noembed for YouTube
+              const infoRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(videoUrl)}`);
+              if (infoRes.ok) {
+                const info = await infoRes.json() as any;
+                if (!info.error) {
+                  // Only use noembed title if our title is a file name
+                  if (!mdTitle || title) {
+                    videoTitle = info.title || videoTitle;
+                  }
+                  videoChannel = info.author_name || videoChannel;
+                  noembedThumbnail = info.thumbnail_url;
+                }
               }
             }
           } catch (e) {}
@@ -408,13 +421,25 @@ ${srtContent || transcript.text}
 
         if (videoUrl) {
           try {
-            const infoRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(videoUrl)}`);
-            if (infoRes.ok) {
-              const info = await infoRes.json() as any;
-              if (!info.error) {
+            if (parsedUpload?.platform === 'tiktok') {
+              // Use TikTok's oEmbed API
+              const infoRes = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`);
+              if (infoRes.ok) {
+                const info = await infoRes.json() as any;
                 videoTitle = info.title || videoTitle;
                 videoChannel = info.author_name || videoChannel;
                 noembedThumb = info.thumbnail_url;
+              }
+            } else {
+              // Use noembed for YouTube
+              const infoRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(videoUrl)}`);
+              if (infoRes.ok) {
+                const info = await infoRes.json() as any;
+                if (!info.error) {
+                  videoTitle = info.title || videoTitle;
+                  videoChannel = info.author_name || videoChannel;
+                  noembedThumb = info.thumbnail_url;
+                }
               }
             }
           } catch (e) {
