@@ -752,7 +752,7 @@
         <div class="card">
           <a href="transcript.html?id=${t.id}" style="text-decoration: none; display: block;">
             <div class="card-thumb">
-              <img src="${t.thumbnail_url || 'https://via.placeholder.com/640x360?text=No+Thumbnail'}" alt="${escapeHtml(t.title)}" onerror="this.src='https://via.placeholder.com/640x360/111/333?text=No+Thumbnail'">
+              <img src="${t.thumbnail_url ? escapeHtml(t.thumbnail_url) : 'https://via.placeholder.com/640x360?text=No+Thumbnail'}" alt="${escapeHtml(t.title)}" onerror="this.src='https://via.placeholder.com/640x360/111/333?text=No+Thumbnail'">
               <span class="card-duration">${t.duration_formatted}</span>
             </div>
             <div class="card-body">
