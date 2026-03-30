@@ -1,3 +1,70 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Architecture
+
+ChromeScribe is a video/article transcription platform with three components:
+
+1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs Claude Code to process them. Hardcoded to Windows paths and `pi` CLI invocation.
+2. **Cloudflare Worker API + Dashboard** (`dashboard/`) — TypeScript Worker serving a transcript dashboard. Uses D1 (SQLite) for metadata, R2 for SRT/markdown storage, and Cloudflare AI (Whisper) for audio transcription.
+3. **Processing System Prompt** (this file, below) — Instructions for Claude Code instances that receive `process: <url>` commands from the extension.
+
+### Data Flow
+```
+Extension → web terminal → Claude Code runs `transcribe <url>` → .srt file
+  → Claude reads .srt → writes structured markdown to output/ AND uploads to dashboard API
+  → Dashboard Worker stores in D1 + R2 → serves via index.html/transcript.html
+```
+
+### Dashboard Worker (`dashboard/src/index.ts`)
+- **API endpoints**: `GET /api/transcripts`, `GET /api/transcripts/:id`, `GET /api/transcript/:id/content`, `POST /api/transcribe`, `DELETE /api/transcripts/:id`, `GET /api/search?q=`
+- **POST /api/transcribe** has two modes: JSON body with URL+markdown (from Claude), or multipart form with audio file (uses CF AI Whisper)
+- Video ID parsing: YouTube (`youtube.com/watch`, `youtu.be/`, `/shorts/`) and TikTok (`tiktok.com/@user/video/id` → `tiktok:id`)
+- Static HTML served from R2 bucket (index.html, transcript.html)
+- D1 database schema in `dashboard/schema.sql`
+
+## Commands
+
+### Deploy Dashboard (REQUIRED after any `dashboard/public/` changes)
+```bash
+cd dashboard && ./deploy.sh
+```
+Or manually:
+```bash
+cd dashboard && wrangler r2 object put chromescribe-transcripts/index.html --file=./public/index.html --remote && wrangler r2 object put chromescribe-transcripts/transcript.html --file=./public/transcript.html --remote && wrangler deploy
+```
+
+### Deploy Worker Only (no static file changes)
+```bash
+cd dashboard && wrangler deploy
+```
+
+### D1 Database Operations
+```bash
+cd dashboard && wrangler d1 execute chromescribe-db --remote --command "SELECT * FROM transcripts ORDER BY created_at DESC LIMIT 10"
+```
+
+### Bulk Import Existing Markdown Files
+```bash
+cd dashboard && node import.js
+```
+
+### CI/CD
+Push to `master` triggers `.github/workflows/deploy.yml` which uploads static files to R2 and deploys the Worker. Requires `CLOUDFLARE_API_TOKEN` secret.
+
+## Key Details
+
+- **No package.json / no test suite** — no build step, no test runner. Worker is deployed directly via wrangler.
+- **Cloudflare account**: Yeo UX (`7865043d9ae730882b77f3d5d670c158`)
+- **D1 database**: `chromescribe-db` (`08532531-b2b5-4922-9e88-7cfdd074928a`)
+- **R2 bucket**: `chromescribe-transcripts` — stores both SRT files and the static HTML dashboard
+- **Worker URL**: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/`
+- **`transcribe` CLI**: `@illyism/transcribe` v3.1.0 — uses OpenAI Whisper API (~$0.006/min), outputs `.srt` to cwd
+- **Frontend**: Vanilla HTML/CSS/JS, dark theme, Geist font. No framework.
+
+---
+
 # ChromeScribe — Content Processor
 
 You are a content processing agent. You receive a URL and MUST process it into a structured, readable document. Follow these rules exactly. NEVER ask clarifying questions. Just process.

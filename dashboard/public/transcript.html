@@ -80,6 +80,75 @@
     .video-wrapper {
       flex: 1;
       position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      cursor: pointer;
+    }
+    
+    .video-thumbnail {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    
+    .video-placeholder {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      padding: 24px;
+      text-align: center;
+    }
+    
+    .video-placeholder .platform {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #888;
+      margin-bottom: 16px;
+    }
+    
+    .video-placeholder .title {
+      font-size: 16px;
+      font-weight: 500;
+      color: #fff;
+      max-width: 400px;
+      line-height: 1.4;
+      margin-bottom: 16px;
+    }
+    
+    .play-btn {
+      width: 68px;
+      height: 48px;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+    }
+    
+    .play-btn:hover {
+      background: rgba(255,255,255,0.25);
+    }
+    
+    .play-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: #fff;
+      margin-left: 3px;
     }
     
     .video-wrapper iframe {
@@ -89,6 +158,17 @@
       width: 100%;
       height: 100%;
       border: none;
+      display: none;
+    }
+    
+    .video-wrapper.playing .video-thumbnail,
+    .video-wrapper.playing .video-placeholder,
+    .video-wrapper.playing .play-btn {
+      display: none;
+    }
+    
+    .video-wrapper.playing iframe {
+      display: block;
     }
     
     .video-info {
@@ -229,7 +309,18 @@
           <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
         </div>
       </header>
-      <div class="video-wrapper">
+      <div class="video-wrapper" id="videoWrapper" onclick="loadVideo()">
+        <img id="videoThumb" class="video-thumbnail" alt="Video thumbnail" style="display:none;">
+        <div id="videoPlaceholder" class="video-placeholder" style="display:none;">
+          <div class="platform" id="placeholderPlatform"></div>
+          <div class="title" id="placeholderTitle"></div>
+          <div class="play-btn">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </div>
+        </div>
+        <div class="play-btn" id="thumbPlayBtn">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </div>
         <iframe id="video" src="" allowfullscreen></iframe>
       </div>
       <div class="video-info">
@@ -270,38 +361,65 @@
         if (!contentRes.ok) throw new Error('Content not found');
         markdown = await contentRes.text();
         
-        // Render video embed
+        // Render video embed (lazy-load)
         let videoSrc = null;
+        let thumbUrl = meta.thumbnail_url || null;
         
         // YouTube (plain ID or with prefixes)
         if (/^[a-zA-Z0-9_-]{11}$/.test(meta.video_id)) {
-          videoSrc = 'https://www.youtube.com/embed/' + meta.video_id;
+          videoSrc = 'https://www.youtube.com/embed/' + meta.video_id + '?autoplay=1';
+          thumbUrl = 'https://img.youtube.com/vi/' + meta.video_id + '/maxresdefault.jpg';
         } else if (meta.video_id.startsWith('tiktok:')) {
           const tiktokId = meta.video_id.replace('tiktok:', '');
           videoSrc = 'https://www.tiktok.com/embed/' + tiktokId;
         } else {
           // Try to extract from source URL in content
           const ytMatch = markdown.match(/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/);
-          const ttMatch = markdown.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
+          const ttMatch = meta.video_id.match(/([0-9]{19,20})/);
           if (ytMatch) {
-            videoSrc = 'https://www.youtube.com/embed/' + ytMatch[1];
+            videoSrc = 'https://www.youtube.com/embed/' + ytMatch[1] + '?autoplay=1';
+            thumbUrl = 'https://img.youtube.com/vi/' + ytMatch[1] + '/maxresdefault.jpg';
           } else if (ttMatch) {
             videoSrc = 'https://www.tiktok.com/embed/' + ttMatch[1];
           }
         }
         
-        if (videoSrc) {
-          document.getElementById('video').src = videoSrc;
-        } else {
-          document.getElementById('video').parentElement.innerHTML = 
-            '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#1a1a1a;color:#888;">Video unavailable</div>';
-        }
+        // Store for loadVideo function
+        window.videoSrc = videoSrc;
         
-        // Extract title from markdown content (first # heading) if meta title looks like a file name
+        // Extract title
         let displayTitle = meta.title;
         const titleMatch = markdown.match(/^#\s+(.+)$/m);
         if (titleMatch && !meta.title.includes(' ')) {
           displayTitle = titleMatch[1];
+        }
+        
+        // Extract source URL from markdown content
+        const sourceMatch = markdown.match(/\*\*Source:\*\*\s*(https?:\/\/[^\s]+)/);
+        const sourceUrl = sourceMatch ? sourceMatch[1] : '';
+
+        // Determine platform
+        const isTikTok = meta.video_id.startsWith('tiktok:') || sourceUrl.includes('tiktok.com');
+        const isYouTube = /^[a-zA-Z0-9_-]{11}$/.test(meta.video_id) || sourceUrl.includes('youtube.com');
+        const platform = isTikTok ? 'TikTok' : isYouTube ? 'YouTube' : 'Video';
+        
+        if (thumbUrl) {
+          // YouTube with thumbnail - show thumbnail
+          const thumb = document.getElementById('videoThumb');
+          thumb.src = thumbUrl;
+          thumb.style.display = 'block';
+          thumb.onerror = function() {
+            showPlaceholder(platform, displayTitle);
+          };
+        } else if (videoSrc) {
+          // TikTok or unknown - show styled placeholder with title
+          showPlaceholder(platform, displayTitle);
+        } else {
+          // No video available
+          document.getElementById('videoWrapper').onclick = null;
+          document.getElementById('videoThumb').style.display = 'none';
+          document.getElementById('thumbPlayBtn').style.display = 'none';
+          document.getElementById('videoPlaceholder').style.display = 'none';
         }
         
         document.getElementById('title').textContent = displayTitle;
@@ -332,6 +450,22 @@
         .replace(/\n\n/g, '</p><p>')
         .replace(/^(?!<[hupbld])(.+)$/gm, '<p>$1</p>')
         .replace(/<p><\/p>/g, '');
+    }
+    
+    function loadVideo() {
+      if (!window.videoSrc) return;
+      const wrapper = document.getElementById('videoWrapper');
+      const iframe = document.getElementById('video');
+      iframe.src = window.videoSrc;
+      wrapper.classList.add('playing');
+    }
+    
+    function showPlaceholder(platform, title) {
+      document.getElementById('videoThumb').style.display = 'none';
+      document.getElementById('thumbPlayBtn').style.display = 'none';
+      document.getElementById('placeholderPlatform').textContent = platform;
+      document.getElementById('placeholderTitle').textContent = title;
+      document.getElementById('videoPlaceholder').style.display = 'flex';
     }
     
     function showError(msg) {

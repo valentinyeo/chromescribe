@@ -129,6 +129,65 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       });
     }
 
+    // GET /api/thumb/:video_id - Cached thumbnail proxy
+    if (request.method === 'GET' && path.startsWith('thumb/')) {
+      const videoId = decodeURIComponent(path.replace('thumb/', ''));
+      const r2Key = `thumbs/${videoId.replace(/[^a-zA-Z0-9_:-]/g, '_')}.jpg`;
+
+      // Check R2 cache first
+      const cached = await env.TRANSCRIPTS.get(r2Key);
+      if (cached) {
+        return new Response(cached.body, {
+          headers: {
+            'Content-Type': cached.httpMetadata?.contentType || 'image/jpeg',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'CDN-Cache-Control': 'public, max-age=31536000, immutable',
+            ...CORS_HEADERS,
+          },
+        });
+      }
+
+      // Resolve source URL
+      let sourceUrl: string | null = null;
+      if (videoId.startsWith('tiktok:')) {
+        // Look up thumbnail_url from DB for TikTok
+        const row = await env.DB
+          .prepare('SELECT thumbnail_url FROM transcripts WHERE video_id = ?')
+          .bind(videoId)
+          .first<{ thumbnail_url: string }>();
+        sourceUrl = row?.thumbnail_url || null;
+      } else {
+        sourceUrl = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+      }
+
+      if (!sourceUrl) {
+        return new Response('Not found', { status: 404, headers: CORS_HEADERS });
+      }
+
+      // Fetch, cache in R2, serve
+      try {
+        const imgRes = await fetch(sourceUrl);
+        if (!imgRes.ok) throw new Error('Fetch failed');
+        const imgData = await imgRes.arrayBuffer();
+        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+
+        await env.TRANSCRIPTS.put(r2Key, imgData, {
+          httpMetadata: { contentType },
+        });
+
+        return new Response(imgData, {
+          headers: {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'CDN-Cache-Control': 'public, max-age=31536000, immutable',
+            ...CORS_HEADERS,
+          },
+        });
+      } catch {
+        return new Response('Not found', { status: 404, headers: CORS_HEADERS });
+      }
+    }
+
     // GET /api/transcripts - List all transcripts
     if (request.method === 'GET' && (path === 'transcripts' || path === '')) {
       const { results } = await env.DB
@@ -550,7 +609,7 @@ export default {
     }
 
     // CSP header to allow API calls even when embedded in YouTube iframe
-    const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://www.tiktok.com; connect-src 'self' https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev https://*.youtube.com https://img.youtube.com; img-src 'self' data: https://img.youtube.com https://*.tiktokcdn.com; style-src 'self' 'unsafe-inline';";
+    const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://www.tiktok.com; connect-src 'self' https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev https://*.youtube.com https://img.youtube.com; img-src 'self' data: https://img.youtube.com https://*.tiktokcdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;";
 
     const HTML_HEADERS = {
       'Content-Type': 'text/html; charset=utf-8',
