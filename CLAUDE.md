@@ -6,13 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ChromeScribe is a video/article transcription platform with three components:
 
-1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs Claude Code to process them. Hardcoded to Windows paths and `pi` CLI invocation.
+1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs the `pi` CLI (MiniMax M2.5-highspeed model) to process them. Hardcoded to Windows paths. The extension detects URL type (YouTube/TikTok/article), builds a command with the system prompt from `system-prompt-pi.txt`, and opens it in the terminal.
 2. **Cloudflare Worker API + Dashboard** (`dashboard/`) — TypeScript Worker serving a transcript dashboard. Uses D1 (SQLite) for metadata, R2 for SRT/markdown storage, and Cloudflare AI (Whisper) for audio transcription.
 3. **Processing System Prompt** (this file, below) — Instructions for Claude Code instances that receive `process: <url>` commands from the extension.
 
 ### Data Flow
+
+**Pi/MiniMax flow** (current, via extension):
 ```
-Extension → web terminal → Claude Code runs `transcribe <url>` → .srt file
+Extension → localhost:7681 terminal → pi CLI runs `process: <url>`
+  → yt-dlp downloads audio → uploads to dashboard /api/transcribe (multipart)
+  → Worker transcribes with CF AI Whisper → stores in D1 + R2
+```
+
+**Claude Code flow** (manual, via `process: <url>`):
+```
+Claude Code runs `transcribe <url>` → .srt file
   → Claude reads .srt → writes structured markdown to output/ AND uploads to dashboard API
   → Dashboard Worker stores in D1 + R2 → serves via index.html/transcript.html
 ```
@@ -62,6 +71,8 @@ Push to `master` triggers `.github/workflows/deploy.yml` which uploads static fi
 - **Worker URL**: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/`
 - **`transcribe` CLI**: `@illyism/transcribe` v3.1.0 — uses OpenAI Whisper API (~$0.006/min), outputs `.srt` to cwd
 - **Frontend**: Vanilla HTML/CSS/JS, dark theme, Geist font. No framework.
+- **Gitignored**: `*.srt`, `output/`, `tmp/`, `docs/`, `.superpowers/` — these won't appear in the repo
+- **Two system prompts**: `system-prompt.txt` (for Claude Code) and `system-prompt-pi.txt` (for Pi/MiniMax via extension). The Pi prompt uses `yt-dlp` + dashboard API upload; the Claude prompt uses `transcribe` CLI + local file output.
 
 ---
 
@@ -164,5 +175,5 @@ Do NOT print the article or transcript to the terminal — that's what the file 
 
 - `transcribe` CLI = `@illyism/transcribe` v3.1.0 — uses OpenAI Whisper API (cloud, ~$0.006/min)
 - Extension at `extension/` — Manifest V3, uses `localhost:7681` web terminal (VPSManager)
-- Extension invokes: `claude --dangerously-skip-permissions --model haiku "process: <url>"`
-- Potential optimization: `yt-dlp --write-sub --write-auto-sub` to grab YouTube captions before paying for Whisper
+- Extension invokes `pi` CLI (MiniMax M2.5-highspeed) via `localhost:7681` web terminal with `system-prompt-pi.txt`
+- Claude Code flow uses `transcribe` CLI directly and is invoked manually
