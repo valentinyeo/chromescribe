@@ -265,14 +265,21 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
 
         const videoId = parsed.prefixedId;
 
-        // Check for duplicate
+        // Check for duplicate — return existing transcript info
         const existing = await env.DB
-          .prepare('SELECT id FROM transcripts WHERE video_id = ?')
+          .prepare('SELECT id, title FROM transcripts WHERE video_id = ?')
           .bind(videoId)
-          .first();
+          .first<{ id: number; title: string }>();
 
         if (existing) {
-          return handleError(new Error('Video already transcribed'), 409);
+          return jsonResponse({
+            id: existing.id,
+            video_id: videoId,
+            title: existing.title,
+            already_exists: true,
+            view_url: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${existing.id}`,
+            message: `Already transcribed: "${existing.title}". Delete it first to retranscribe.`,
+          }, 200);
         }
 
         // If markdown content provided (from local transcription), save it
@@ -422,15 +429,22 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           audioBuffer = await (audioData as File).arrayBuffer();
         }
 
-        // Check duplicate
+        // Check duplicate — return existing transcript info
         console.log('Checking duplicate for videoId:', videoId);
         if (videoId && !videoId.startsWith('audio-')) {
           const existing = await env.DB
-            .prepare('SELECT id FROM transcripts WHERE video_id = ?')
+            .prepare('SELECT id, title FROM transcripts WHERE video_id = ?')
             .bind(videoId)
-            .first();
+            .first<{ id: number; title: string }>();
           if (existing) {
-            return handleError(new Error('Video already transcribed'), 409);
+            return jsonResponse({
+              id: existing.id,
+              video_id: videoId,
+              title: existing.title,
+              already_exists: true,
+              view_url: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${existing.id}`,
+              message: `Already transcribed: "${existing.title}". Delete it first to retranscribe.`,
+            }, 200);
           }
         }
         console.log('No duplicate found, proceeding with transcription');
