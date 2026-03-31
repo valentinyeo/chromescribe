@@ -31,7 +31,7 @@ function cleanPageTitle(title) {
 }
 
 function buildCmd(tabUrl) {
-  return `cd /d "${PROJECT_DIR}" && pi --provider minimax --model MiniMax-M2.5-highspeed --no-session --append-system-prompt @system-prompt-pi.txt "process: ${tabUrl}"`;
+  return `cd /d "${PROJECT_DIR}" && bash process.sh "${tabUrl}"`;
 }
 
 function openInTerminal(tabUrl, pageTitle) {
