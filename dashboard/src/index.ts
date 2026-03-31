@@ -32,7 +32,7 @@ interface WhisperResponse {
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -578,6 +578,44 @@ ${srtContent || transcript.text}
           .run();
 
         return jsonResponse({ deleted: true });
+      }
+    }
+
+    // PUT /api/transcripts/:id - Update transcript content and title
+    if (request.method === 'PUT' && path.startsWith('transcripts/')) {
+      const parts = path.split('/');
+      if (parts.length === 2) {
+        const id = parts[1];
+
+        const existing = await env.DB
+          .prepare('SELECT srt_path, video_id FROM transcripts WHERE id = ?')
+          .bind(id)
+          .first<{ srt_path: string; video_id: string }>();
+
+        if (!existing) {
+          return handleError(new Error('Transcript not found'), 404);
+        }
+
+        const body = await request.json() as any;
+        const { markdown_content, title } = body;
+
+        if (markdown_content) {
+          await env.TRANSCRIPTS.put(existing.srt_path, markdown_content);
+          const wordCount = markdown_content.split(/\s+/).filter((w: string) => w.length > 0).length;
+          await env.DB
+            .prepare('UPDATE transcripts SET word_count = ? WHERE id = ?')
+            .bind(wordCount, id)
+            .run();
+        }
+
+        if (title) {
+          await env.DB
+            .prepare('UPDATE transcripts SET title = ? WHERE id = ?')
+            .bind(title, id)
+            .run();
+        }
+
+        return jsonResponse({ id, updated: true });
       }
     }
 

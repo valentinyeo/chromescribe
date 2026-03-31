@@ -67,7 +67,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "send-to-pi",
-    title: "Process with Pi",
+    title: "Process with ChromeScribe",
     contexts: ["page", "link"]
   });
 });
