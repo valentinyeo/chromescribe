@@ -5,7 +5,10 @@ Usage:
     python update_transcript.py <transcript_id> <markdown_file>
     python update_transcript.py <transcript_id> <markdown_file> <title>
 """
-import json, sys, urllib.request
+import json, os, sys, urllib.request
+
+CF_ACCESS_ID = os.environ.get('CF_ACCESS_CLIENT_ID', 'REMOVED_OLD_KEY')
+CF_ACCESS_SECRET = os.environ.get('CF_ACCESS_CLIENT_SECRET', 'REMOVED_OLD_KEY')
 
 if len(sys.argv) < 3:
     print("Usage: python update_transcript.py <transcript_id> <markdown_file> [title]")
@@ -26,7 +29,12 @@ req = urllib.request.Request(
     f'https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcripts/{transcript_id}',
     data=json.dumps(payload).encode(),
     method='PUT',
-    headers={'Content-Type': 'application/json', 'User-Agent': 'ChromeScribe/1.0'}
+    headers={
+        'Content-Type': 'application/json',
+        'User-Agent': 'ChromeScribe/1.0',
+        'CF-Access-Client-Id': CF_ACCESS_ID,
+        'CF-Access-Client-Secret': CF_ACCESS_SECRET,
+    }
 )
 try:
     resp = urllib.request.urlopen(req)
