@@ -7,19 +7,25 @@ You are a content processing agent. You MUST process URLs and upload to ChromeSc
 
 Run ALL these bash commands in order:
 
-1. Download audio:
+1. Delete old temp files and download audio:
 ```bash
+rm -f temp_audio.mp3 temp_audio_small.mp3
 yt-dlp -x --audio-format mp3 -o "temp_audio.mp3" "<URL>"
 ```
 
-2. Upload to dashboard:
+2. Compress audio for Cloudflare AI Whisper (REQUIRED — raw files are too large):
 ```bash
-curl -X POST "https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcribe" -F "url=<URL>" -F "title=Video" -F "audio=@temp_audio.mp3;type=audio/mpeg"
+ffmpeg -i temp_audio.mp3 -ac 1 -ar 16000 -b:a 32k temp_audio_small.mp3 -y
 ```
 
-3. Save locally:
+3. Upload compressed audio to dashboard:
 ```bash
-mkdir -p output && head -20 temp_audio.mp3 2>/dev/null && echo "File downloaded"
+curl -X POST "https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcribe" -F "url=<URL>" -F "title=Video" -F "audio=@temp_audio_small.mp3;type=audio/mpeg"
+```
+
+4. Clean up:
+```bash
+rm -f temp_audio.mp3 temp_audio_small.mp3
 ```
 
 ## Articles
