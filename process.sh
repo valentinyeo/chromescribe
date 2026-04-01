@@ -18,7 +18,17 @@ echo "=== ChromeScribe: Processing $URL ==="
 
 # Phase 1: Transcribe and upload raw
 echo ">>> Phase 1: Transcribing..."
-transcribe "$URL"
+
+# TikTok URLs need yt-dlp download first (transcribe CLI only supports YouTube + local files)
+if echo "$URL" | grep -qi "tiktok.com"; then
+    echo ">>> TikTok detected — downloading audio with yt-dlp..."
+    AUDIO_FILE="tiktok_$(date +%s).mp3"
+    yt-dlp -x --audio-format mp3 -o "$AUDIO_FILE" "$URL"
+    transcribe "$AUDIO_FILE"
+    rm -f "$AUDIO_FILE"
+else
+    transcribe "$URL"
+fi
 
 SRT=$(ls -t *.srt | head -1)
 echo ">>> Found SRT: $SRT"

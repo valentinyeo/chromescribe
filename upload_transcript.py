@@ -9,6 +9,9 @@ Reads the SRT file, strips timestamps, builds markdown, and POSTs to the dashboa
 import json, os, re, sys, urllib.request
 from datetime import date
 
+# Fix Windows console encoding for emoji/unicode
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 # Cloudflare Zero Trust service token
 CF_ACCESS_ID = os.environ.get('CF_ACCESS_CLIENT_ID', 'REMOVED_OLD_KEY')
 CF_ACCESS_SECRET = os.environ.get('CF_ACCESS_CLIENT_SECRET', 'REMOVED_OLD_KEY')
@@ -59,6 +62,6 @@ req = urllib.request.Request(
 )
 try:
     resp = urllib.request.urlopen(req)
-    print(resp.read().decode())
+    print(resp.read().decode('utf-8', errors='replace'))
 except urllib.error.HTTPError as e:
-    print(f"Error {e.code}: {e.read().decode()}")
+    print(f"Error {e.code}: {e.read().decode('utf-8', errors='replace')}")
