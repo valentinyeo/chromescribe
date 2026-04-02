@@ -73,6 +73,9 @@ Push to `master` triggers `.github/workflows/deploy.yml` which uploads static fi
 - **`transcribe` only supports YouTube URLs + local files** — TikTok/other platforms need `yt-dlp -x --audio-format mp3` first, then pass the local file to transcribe
 - **Dashboard is behind Cloudflare Zero Trust** — API calls require `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers (service token creds in `upload_transcript.py`/`update_transcript.py`)
 - **Windows encoding**: Python scripts need `sys.stdout.reconfigure(encoding='utf-8', errors='replace')` — API responses contain emoji that break Windows cp1252 console
+- **process.sh auto-opens transcript**: After Phase 2, opens `transcript.html?id=<ID>` in Edge via `cmd.exe /c start msedge`. Terminal tab stays open (VPSManager doesn't support auto-close on exit).
+- **VPSManager terminal** (`localhost:7681`): WebSocket-based, accepts `cmd`/`cwd`/`title` URL params. No API to close tab or redirect on process exit. Extension uses `activeTab` + `contextMenus` permissions only.
+- **Open Edge from bash**: `cmd.exe /c start msedge "<url>"` — works in Git Bash. Use `&` suffix to avoid blocking.
 - **Frontend**: Vanilla HTML/CSS/JS, dark theme, Geist font. No framework.
 - **Gitignored**: `*.srt`, `output/`, `tmp/`, `docs/`, `.superpowers/` — these won't appear in the repo
 - **Two system prompts**: `system-prompt.txt` (for Claude Code) and `system-prompt-pi.txt` (for Pi/MiniMax via extension). The Pi prompt uses `yt-dlp` + dashboard API upload; the Claude prompt uses `transcribe` CLI + local file output.
