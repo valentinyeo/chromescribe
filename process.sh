@@ -4,8 +4,6 @@
 # Phase 2: Pi summarizes + updates dashboard entry (AI, best-effort)
 # Usage: ./process.sh <url>
 
-set -e
-
 URL="$1"
 if [ -z "$URL" ]; then
     echo "Usage: ./process.sh <url>"
@@ -30,7 +28,11 @@ else
     transcribe "$URL"
 fi
 
-SRT=$(ls -t *.srt | head -1)
+SRT=$(ls -t *.srt 2>/dev/null | head -1)
+if [ -z "$SRT" ]; then
+    echo ">>> ERROR: No SRT file found. Transcription failed."
+    exit 1
+fi
 echo ">>> Found SRT: $SRT"
 
 echo ">>> Uploading raw transcript to dashboard..."
@@ -47,7 +49,12 @@ fi
 
 echo ">>> Phase 1 complete! Transcript #$TRANSCRIPT_ID on dashboard."
 
-# Phase 2: AI summary via Pi
+# Open the transcript page in Edge immediately (don't wait for Phase 2)
+DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${TRANSCRIPT_ID}"
+echo ">>> Opening $DASHBOARD_URL"
+cmd.exe /c start msedge "$DASHBOARD_URL" 2>/dev/null &
+
+# Phase 2: AI summary via Pi (best-effort, failures won't block)
 echo ">>> Phase 2: Generating AI summary with Pi..."
 pi --provider minimax --model MiniMax-M2.5-highspeed --no-session \
   "You are a content summarizer. Read the transcript file '$SRT' and create a structured markdown document.
@@ -90,8 +97,3 @@ IMPORTANT:
    Replace <title> with the actual video title you extracted."
 
 echo "=== Done ==="
-
-# Open the transcript page in Edge
-DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${TRANSCRIPT_ID}"
-echo ">>> Opening $DASHBOARD_URL"
-cmd.exe /c start msedge "$DASHBOARD_URL" 2>/dev/null &
