@@ -6,17 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ChromeScribe is a video/article transcription platform with three components:
 
-1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs the `pi` CLI (MiniMax M2.5-highspeed model) to process them. Hardcoded to Windows paths. The extension detects URL type (YouTube/TikTok/article), builds a command with the system prompt from `system-prompt-pi.txt`, and opens it in the terminal.
+1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs `bash process.sh`. Hardcoded to Windows paths. Phase 1 transcribes + uploads raw transcript; Phase 2 uses `pi` CLI (MiniMax M2.5-highspeed) for AI summary.
 2. **Cloudflare Worker API + Dashboard** (`dashboard/`) — TypeScript Worker serving a transcript dashboard. Uses D1 (SQLite) for metadata, R2 for SRT/markdown storage, and Cloudflare AI (Whisper) for audio transcription.
 3. **Processing System Prompt** (this file, below) — Instructions for Claude Code instances that receive `process: <url>` commands from the extension.
 
 ### Data Flow
 
-**Pi/MiniMax flow** (current, via extension):
+**Extension flow** (current, via `process.sh`):
 ```
-Extension → localhost:7681 terminal → pi CLI runs `process: <url>`
-  → yt-dlp downloads audio → uploads to dashboard /api/transcribe (multipart)
-  → Worker transcribes with CF AI Whisper → stores in D1 + R2
+Extension → localhost:7681 terminal → bash process.sh <url>
+  Phase 1: transcribe CLI (or yt-dlp + transcribe for TikTok) → upload_transcript.py → dashboard API
+  Phase 2: pi CLI (MiniMax) reads SRT → generates summary → update_transcript.py → dashboard API
 ```
 
 **Claude Code flow** (manual, via `process: <url>`):
@@ -27,7 +27,7 @@ Claude Code runs `transcribe <url>` → .srt file
 ```
 
 ### Dashboard Worker (`dashboard/src/index.ts`)
-- **API endpoints**: `GET /api/transcripts`, `GET /api/transcripts/:id`, `GET /api/transcript/:id/content`, `POST /api/transcribe`, `DELETE /api/transcripts/:id`, `GET /api/search?q=`
+- **API endpoints**: `GET /api/transcripts`, `GET /api/transcripts/:id`, `GET /api/transcript/:id/content`, `POST /api/transcribe`, `PUT /api/transcripts/:id`, `DELETE /api/transcripts/:id`, `GET /api/search?q=`
 - **POST /api/transcribe** has two modes: JSON body with URL+markdown (from Claude), or multipart form with audio file (uses CF AI Whisper)
 - Video ID parsing: YouTube (`youtube.com/watch`, `youtu.be/`, `/shorts/`) and TikTok (`tiktok.com/@user/video/id` → `tiktok:id`)
 - Static HTML served from R2 bucket (index.html, transcript.html)
@@ -70,6 +70,9 @@ Push to `master` triggers `.github/workflows/deploy.yml` which uploads static fi
 - **R2 bucket**: `chromescribe-transcripts` — stores both SRT files and the static HTML dashboard
 - **Worker URL**: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/`
 - **`transcribe` CLI**: `@illyism/transcribe` v3.1.0 — uses OpenAI Whisper API (~$0.006/min), outputs `.srt` to cwd
+- **`transcribe` only supports YouTube URLs + local files** — TikTok/other platforms need `yt-dlp -x --audio-format mp3` first, then pass the local file to transcribe
+- **Dashboard is behind Cloudflare Zero Trust** — API calls require `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers (service token creds in `upload_transcript.py`/`update_transcript.py`)
+- **Windows encoding**: Python scripts need `sys.stdout.reconfigure(encoding='utf-8', errors='replace')` — API responses contain emoji that break Windows cp1252 console
 - **Frontend**: Vanilla HTML/CSS/JS, dark theme, Geist font. No framework.
 - **Gitignored**: `*.srt`, `output/`, `tmp/`, `docs/`, `.superpowers/` — these won't appear in the repo
 - **Two system prompts**: `system-prompt.txt` (for Claude Code) and `system-prompt-pi.txt` (for Pi/MiniMax via extension). The Pi prompt uses `yt-dlp` + dashboard API upload; the Claude prompt uses `transcribe` CLI + local file output.

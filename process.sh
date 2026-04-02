@@ -90,3 +90,8 @@ IMPORTANT:
    Replace <title> with the actual video title you extracted."
 
 echo "=== Done ==="
+
+# Open the transcript page in Edge
+DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${TRANSCRIPT_ID}"
+echo ">>> Opening $DASHBOARD_URL"
+cmd.exe /c start msedge "$DASHBOARD_URL" 2>/dev/null &
