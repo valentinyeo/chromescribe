@@ -259,8 +259,27 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       });
     }
 
+    // POST /api/whisper - Raw transcription only, returns text (no DB storage)
+    // Used by monitor.sh for chunked transcription of large files
+    if (request.method === 'POST' && path === 'whisper') {
+      const formData = await request.formData();
+      const audioField = formData.get('audio') as File;
+      if (!audioField || audioField.size === 0) {
+        return handleError(new Error('Audio file is required'), 400);
+      }
+      const audioBuffer = await audioField.arrayBuffer();
+      try {
+        const result = await env.AI.run('@cf/openai/whisper', {
+          audio: Array.from(new Uint8Array(audioBuffer)),
+        }) as WhisperResponse;
+        return jsonResponse({ text: result.text });
+      } catch (e: any) {
+        return handleError(new Error(`Whisper failed: ${e.message}`), 500);
+      }
+    }
+
     // POST /api/transcribe - Two modes:
-    // 1. With url only: Use YouTube URL (if supported) 
+    // 1. With url only: Use YouTube URL (if supported)
     // 2. With audio: Upload audio file for transcription
     if (request.method === 'POST' && path === 'transcribe') {
       const contentType = request.headers.get('content-type') || '';

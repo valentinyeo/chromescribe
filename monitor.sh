@@ -93,6 +93,15 @@ process_video() {
 
     log "Processing: $title ($url)"
 
+    # Skip Shorts (< 120 seconds) — only process longform videos
+    local duration
+    duration=$(yt-dlp --cookies-from-browser chrome --no-check-certificate \
+        --remote-components ejs:github --print duration "$url" 2>/dev/null | head -1)
+    if [ -n "$duration" ] && [ "$duration" -lt 120 ] 2>/dev/null; then
+        log "  Skipping Short (${duration}s < 120s)"
+        return 0
+    fi
+
     # Step 1: Download audio
     local audio_file="$TMPDIR/${video_id}.mp3"
     log "  Downloading audio..."
@@ -109,25 +118,95 @@ process_video() {
     fi
     log "  Audio downloaded: $(du -h "$audio_file" | cut -f1)"
 
-    # Step 2: Upload audio to dashboard (CF AI Whisper — free)
-    log "  Uploading audio for transcription..."
-    local upload_result
-    upload_result=$(api_call POST /api/transcribe \
-        -F "audio=@${audio_file};type=audio/mpeg" \
-        -F "url=$url" \
-        -F "title=$title")
+    # Compress if >2MB (CF AI Whisper has strict size limit) — mono 24kbps 16kHz is fine for speech
+    local file_size
+    file_size=$(stat -c%s "$audio_file")
+    if [ "$file_size" -gt 2000000 ]; then
+        log "  Compressing audio ($(du -h "$audio_file" | cut -f1) > 2MB limit)..."
+        local compressed="$TMPDIR/${video_id}_compressed.mp3"
+        ffmpeg -i "$audio_file" -ac 1 -ab 24k -ar 16000 "$compressed" -y -loglevel error
+        rm -f "$audio_file"
+        mv "$compressed" "$audio_file"
+        log "  Compressed to: $(du -h "$audio_file" | cut -f1)"
+    fi
 
+    # Step 2: Transcribe audio
+    local file_size_after
+    file_size_after=$(stat -c%s "$audio_file")
     local transcript_id
-    transcript_id=$(echo "$upload_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null)
 
-    if [ -z "$transcript_id" ]; then
-        log "  ERROR: Upload/transcription failed. Response: $upload_result"
-        return 1
+    if [ "$file_size_after" -gt 4000000 ]; then
+        # Large file: split into 1-min chunks, transcribe each via /api/whisper, combine
+        # (CF Workers have 30s timeout — 1 min of audio transcribes in ~10-15s)
+        log "  Large file ($(du -h "$audio_file" | cut -f1)) — chunked transcription..."
+        local chunk_dir="$TMPDIR/chunks_${video_id}"
+        mkdir -p "$chunk_dir"
+        ffmpeg -i "$audio_file" -f segment -segment_time 60 -ac 1 -ab 24k -ar 16000 \
+            "$chunk_dir/chunk_%03d.mp3" -y -loglevel error
+
+        local combined_text=""
+        local chunk_count=0
+        for chunk in "$chunk_dir"/chunk_*.mp3; do
+            [ -f "$chunk" ] || continue
+            chunk_count=$((chunk_count + 1))
+            log "    Transcribing chunk $chunk_count ($(du -h "$chunk" | cut -f1))..."
+            local chunk_result
+            chunk_result=$(api_call POST /api/whisper --max-time 45 -F "audio=@${chunk};type=audio/mpeg")
+            local chunk_text
+            chunk_text=$(echo "$chunk_result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('text',''))" 2>/dev/null)
+            if [ -z "$chunk_text" ]; then
+                log "    WARNING: Chunk $chunk_count failed: $chunk_result"
+                continue
+            fi
+            combined_text="${combined_text} ${chunk_text}"
+        done
+        rm -rf "$chunk_dir"
+        rm -f "$audio_file"
+
+        if [ -z "$combined_text" ]; then
+            log "  ERROR: All chunks failed"
+            return 1
+        fi
+        log "  Transcribed $chunk_count chunks"
+
+        # Upload combined transcript as markdown via JSON mode
+        local combined_file="$TMPDIR/combined_${video_id}.txt"
+        echo "$combined_text" > "$combined_file"
+        local title_file="$TMPDIR/title_${video_id}.txt"
+        echo "$title" > "$title_file"
+        local upload_result
+        upload_result=$(COMBINED_FILE="$combined_file" TITLE_FILE="$title_file" VIDEO_URL="$url" TODAY_DATE="$TODAY" python3 -c '
+import json, os
+with open(os.environ["COMBINED_FILE"]) as f: text = f.read().strip()
+with open(os.environ["TITLE_FILE"]) as f: title = f.read().strip()
+url, date = os.environ["VIDEO_URL"], os.environ["TODAY_DATE"]
+md = f"# {title}\n\n**Source:** {url}\n**Date:** {date}\n**Type:** Video Transcription\n\n---\n\n## Full Transcript\n\n{text}\n\n---\n\n*Transcribed with Cloudflare Workers AI (chunked)*\n"
+print(json.dumps({"url": url, "title": title, "markdown_content": md}))
+' | api_call POST /api/transcribe -H "Content-Type: application/json" -d @-)
+        rm -f "$combined_file" "$title_file"
+
+        transcript_id=$(echo "$upload_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null)
+        if [ -z "$transcript_id" ]; then
+            log "  ERROR: Combined upload failed. Response: $upload_result"
+            return 1
+        fi
+    else
+        # Small file: direct upload
+        log "  Uploading audio for transcription..."
+        local upload_result
+        upload_result=$(api_call POST /api/transcribe \
+            -F "audio=@${audio_file};type=audio/mpeg" \
+            -F "url=$url" \
+            -F "title=$title")
+
+        transcript_id=$(echo "$upload_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null)
+        if [ -z "$transcript_id" ]; then
+            log "  ERROR: Upload/transcription failed. Response: $upload_result"
+            return 1
+        fi
+        rm -f "$audio_file"
     fi
     log "  Transcribed and uploaded as #$transcript_id"
-
-    # Delete audio file immediately — no longer needed
-    rm -f "$audio_file"
 
     # Step 3: Fetch transcript text for pi to summarize
     log "  Fetching transcript content..."
