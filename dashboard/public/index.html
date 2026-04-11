@@ -456,6 +456,110 @@
     
 
     
+    /* Channels Panel */
+    .channels-panel {
+      border-bottom: 1px solid var(--border);
+      background: var(--background);
+    }
+
+    .channels-panel-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .channels-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      user-select: none;
+      width: 100%;
+      text-align: left;
+      transition: color 0.15s ease;
+    }
+
+    .channels-toggle:hover {
+      color: var(--text);
+    }
+
+    .channels-toggle-label {
+      font-weight: 500;
+    }
+
+    .channels-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      font-family: 'SF Mono', 'Monaco', monospace;
+    }
+
+    .channels-chevron {
+      margin-left: auto;
+      width: 14px;
+      height: 14px;
+      transition: transform 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .channels-chevron.open {
+      transform: rotate(180deg);
+    }
+
+    .channels-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-bottom: 12px;
+    }
+
+    .channels-list.hidden {
+      display: none !important;
+    }
+
+    .channel-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 10px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+
+    .channel-chip:hover {
+      background: var(--card-hover);
+      border-color: var(--muted);
+      color: var(--foreground);
+    }
+
+    .channel-chip svg {
+      width: 12px;
+      height: 12px;
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+
     /* Hide */
     .hidden { display: none !important; }
     
@@ -501,6 +605,23 @@
       </div>
     </div>
   </header>
+
+  <!-- Monitored Channels -->
+  <div class="channels-panel">
+    <div class="channels-panel-inner">
+      <button class="channels-toggle" onclick="toggleChannels()" id="channelsToggle" aria-expanded="false">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        <span class="channels-toggle-label">Monitored Channels</span>
+        <span class="channels-badge" id="channelsBadge">—</span>
+        <svg class="channels-chevron" id="channelsChevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div class="channels-list hidden" id="channelsList"></div>
+    </div>
+  </div>
 
   <!-- Main -->
   <main>
@@ -796,6 +917,39 @@
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') { closeAddModal(); closeViewModal(); }
     });
+
+    // Channels panel
+    async function loadChannels() {
+      try {
+        const res = await fetch(`${API_BASE}/channels`);
+        const { data } = await res.json();
+        const channels = data || [];
+        document.getElementById('channelsBadge').textContent = channels.length;
+        const list = document.getElementById('channelsList');
+        list.innerHTML = channels.map(ch => `
+          <a href="https://www.youtube.com/channel/${ch.id}" target="_blank" rel="noopener" class="channel-chip">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+            </svg>
+            ${escapeHtml(ch.handle)}
+          </a>
+        `).join('');
+      } catch (err) {
+        // silently skip if channels endpoint unavailable
+      }
+    }
+
+    function toggleChannels() {
+      const list = document.getElementById('channelsList');
+      const chevron = document.getElementById('channelsChevron');
+      const toggle = document.getElementById('channelsToggle');
+      const isOpen = !list.classList.contains('hidden');
+      list.classList.toggle('hidden', isOpen);
+      chevron.classList.toggle('open', !isOpen);
+      toggle.setAttribute('aria-expanded', String(!isOpen));
+    }
+
+    document.addEventListener('DOMContentLoaded', loadChannels);
   </script>
 </body>
 </html>

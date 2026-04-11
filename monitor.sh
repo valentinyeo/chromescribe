@@ -165,7 +165,7 @@ curl -s -L -X PUT \\
 UPDATEEOF
     chmod +x "$update_helper"
 
-    pi --provider minimax --model MiniMax-M2.5-highspeed --no-session \
+    pi --provider minimax --model MiniMax-M2.7-highspeed --no-session \
       "You are a content summarizer. Read the transcript file '$transcript_file' and create a structured markdown document.
 
 Write the output to '$summary_file' with this EXACT format:

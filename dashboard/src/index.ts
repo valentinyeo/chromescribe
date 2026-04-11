@@ -188,6 +188,21 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       }
     }
 
+    // GET /api/channels - List monitored YouTube channels
+    if (request.method === 'GET' && path === 'channels') {
+      const channels = [
+        { id: 'UCctL30i8tVgSS9A37Q532eg', handle: '@Incomestreamsurfers' },
+        { id: 'UCPjNBjflYl0-HQtUvOx0Ibw', handle: '@GregIsenberg' },
+        { id: 'UC2ojq-nuP8ceeHqiroeKhBA', handle: '@nateherk' },
+        { id: 'UC6t1O76G0jYXOAoYCm153dA', handle: '@LennysPodcast' },
+        { id: 'UC2WmuBuFq6gL08QYG-JjXKw', handle: '@intheworldofai' },
+        { id: 'UCoy6cTJ7Tg0dqS-DI-_REsA', handle: '@Chase-H-AI' },
+        { id: 'UC0m81bQuthaQZmFbXEY9QSw', handle: '@AICodeKing' },
+        { id: 'UCUyeluBRhGPCW4rPe_UvBZQ', handle: '@ThePrimeTimeagen' },
+      ];
+      return jsonResponse(channels);
+    }
+
     // GET /api/transcripts - List all transcripts
     if (request.method === 'GET' && (path === 'transcripts' || path === '')) {
       const { results } = await env.DB
