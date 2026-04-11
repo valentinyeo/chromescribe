@@ -298,8 +298,11 @@
     
     @media (max-width: 768px) {
       .container { flex-direction: column; }
-      .video-side { height: 50vh; }
+      .video-side { flex: none; height: 45vh; min-height: 240px; }
       .transcript-side { width: 100%; flex: 1; border-left: none; border-top: 1px solid #333; }
+      .header { flex-wrap: wrap; gap: 8px; }
+      .header-btns { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; }
+      .btn { font-size: 12px; padding: 6px 4px; text-align: center; }
     }
   </style>
 </head>

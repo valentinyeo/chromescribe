@@ -213,7 +213,8 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         ...t,
         duration_formatted: formatDuration(t.duration),
         created_at_formatted: new Date(t.created_at).toLocaleDateString('en-US', {
-          year: 'numeric', month: 'short', day: 'numeric'
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
         })
       })));
     }

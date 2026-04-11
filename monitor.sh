@@ -16,9 +16,9 @@ DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
 export PATH="$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
 export DISPLAY=:0
 
-# Telegram config
-TG_TOKEN="$TELEGRAM_TINYDICTATION_BOT_TOKEN"
-TG_CHAT="$TELEGRAM_TINYDICTATION_CHAT_ID"
+# Telegram config (hardcoded — cron can't source .bashrc interactive-only exports)
+TG_TOKEN="${TELEGRAM_TINYDICTATION_BOT_TOKEN:-8399292716:AAHKCpQAiX5GiePED-yggWz-NgdaelJRRKQ}"
+TG_CHAT="${TELEGRAM_TINYDICTATION_CHAT_ID:-2068947468}"
 
 # CF Access credentials
 CF_ACCESS_ID="${CF_ACCESS_CLIENT_ID:-REMOVED_OLD_KEY}"
