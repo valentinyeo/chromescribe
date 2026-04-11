@@ -706,11 +706,15 @@
     async function deleteTranscript(id, title) {
       if (!confirm(`Delete "${title}"?`)) return;
       try {
-        await fetch(`${API_BASE}/transcripts/${id}`, { method: 'DELETE' });
+        const res = await fetch(`${API_BASE}/transcripts/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
         showToast('Deleted', 'success');
         loadTranscripts();
       } catch (err) {
-        showToast('Failed to delete', 'error');
+        showToast('Failed to delete: ' + err.message, 'error');
       }
     }
 

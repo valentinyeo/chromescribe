@@ -1,0 +1,11 @@
+# ChromeScribe channel monitor - one channel ID per line
+# Format: CHANNEL_ID # @handle
+# Get channel ID from: https://www.youtube.com/@handle → view source → channel_id=
+UCctL30i8tVgSS9A37Q532eg # @Incomestreamsurfers
+UCPjNBjflYl0-HQtUvOx0Ibw # @GregIsenberg
+UC2ojq-nuP8ceeHqiroeKhBA # @nateherk
+UC6t1O76G0jYXOAoYCm153dA # @LennysPodcast
+UC2WmuBuFq6gL08QYG-JjXKw # @intheworldofai
+UCoy6cTJ7Tg0dqS-DI-_REsA # @Chase-H-AI
+UC0m81bQuthaQZmFbXEY9QSw # @AICodeKing
+UCUyeluBRhGPCW4rPe_UvBZQ # @ThePrimeTimeagen

@@ -76,6 +76,14 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+
+    .btn-danger {
+      background: #5a2d2d;
+    }
+
+    .btn-danger:hover {
+      background: #7a3d3d;
+    }
     
     .video-wrapper {
       flex: 1;
@@ -307,6 +315,7 @@
           <button class="btn" onclick="copyText()">Copy</button>
           <button class="btn" onclick="downloadMd()">Download MD</button>
           <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
+          <button class="btn btn-danger" onclick="deleteTranscript()">🗑 Delete</button>
         </div>
       </header>
       <div class="video-wrapper" id="videoWrapper" onclick="loadVideo()">
@@ -484,6 +493,24 @@
       a.click();
     }
     
+    async function deleteTranscript() {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      if (!id) return;
+      const title = document.querySelector('.title')?.textContent || 'this transcript';
+      if (!confirm(`Delete "${title}"?`)) return;
+      try {
+        const res = await fetch(`/api/transcripts/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        window.location.href = '/';
+      } catch (err) {
+        alert('Failed to delete: ' + err.message);
+      }
+    }
+
     async function retranscribe() {
       const params = new URLSearchParams(window.location.search);
       const id = params.get('id');
