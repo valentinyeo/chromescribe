@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# chromescribe — CLI for the ChromeScribe transcript knowledge base.
+# Wraps https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/*
+
+set -euo pipefail
+
+API="${CHROMESCRIBE_API:-https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev}"
+
+usage() {
+  cat <<EOF
+chromescribe — query your transcript knowledge base
+
+Usage:
+  chromescribe list [-n N] [--json]          List transcripts (newest first)
+  chromescribe search <query> [--json]       Search titles/channels/video_id
+  chromescribe get <id> [--json]             Show metadata for one transcript
+  chromescribe cat <id>                      Print the full markdown to stdout
+  chromescribe url <source-url> [--json]     Find transcript by source URL
+  chromescribe view <id>                     Print dashboard URL for browser
+
+Env:
+  CHROMESCRIBE_API           Override API base (default: worker URL)
+  CF_ACCESS_CLIENT_ID        Cloudflare Access service token ID (required: API is gated)
+  CF_ACCESS_CLIENT_SECRET    Cloudflare Access service token secret
+
+Examples:
+  chromescribe list -n 20
+  chromescribe search "karpathy"
+  chromescribe cat 42 | glow -
+  chromescribe cat 42 > notes.md
+EOF
+}
+
+die() { echo "error: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "missing dep: $1"; }
+
+need curl
+need jq
+
+# Cloudflare Zero Trust: the dashboard requires a service token.
+# Expose via env so other projects can set their own creds.
+CF_ID="${CF_ACCESS_CLIENT_ID:-}"
+CF_SECRET="${CF_ACCESS_CLIENT_SECRET:-}"
+
+api_curl() {
+  # Usage: api_curl <extra-curl-args...> -- <path>
+  local args=("-fsSL")
+  if [ -n "$CF_ID" ] && [ -n "$CF_SECRET" ]; then
+    args+=(-H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET")
+  fi
+  curl "${args[@]}" "$@"
+}
+
+api_get() {
+  api_curl "$API$1" || die "API request failed: $1 (check CF_ACCESS_CLIENT_ID/SECRET if behind Zero Trust)"
+}
+
+# Extract .data from the wrapped JSON response. Fails loudly if success=false.
+unwrap() {
+  jq -e 'if .success == false then error("API error: " + (.error // "unknown")) else .data end'
+}
+
+fmt_row() {
+  # Input: one transcript JSON object per line. Output: tab-separated table row.
+  jq -r '[.id, (.created_at // "")[0:10], (.channel // "")[0:20], (.duration_formatted // ""), (.word_count|tostring), .title] | @tsv'
+}
+
+render_table() {
+  # Reads JSON array from stdin, prints aligned table.
+  local data
+  data=$(cat)
+  if [ "$(echo "$data" | jq 'length')" = "0" ]; then
+    echo "(no results)"
+    return
+  fi
+  {
+    printf "ID\tDATE\tCHANNEL\tDUR\tWORDS\tTITLE\n"
+    echo "$data" | jq -c '.[]' | while IFS= read -r row; do
+      echo "$row" | fmt_row
+    done
+  } | column -t -s $'\t' -o '  '
+}
+
+cmd_list() {
+  local limit=50 json=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -n) limit="$2"; shift 2;;
+      --json) json=1; shift;;
+      -h|--help) usage; exit 0;;
+      *) die "unknown arg: $1";;
+    esac
+  done
+  local data
+  data=$(api_get /api/transcripts | unwrap | jq ".[:$limit]")
+  if [ "$json" = "1" ]; then
+    echo "$data"
+  else
+    echo "$data" | render_table
+  fi
+}
+
+cmd_search() {
+  local json=0 query=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) json=1; shift;;
+      -h|--help) usage; exit 0;;
+      *) query="$1"; shift;;
+    esac
+  done
+  [ -n "$query" ] || die "search requires a query"
+  local encoded
+  encoded=$(jq -rn --arg q "$query" '$q | @uri')
+  local data
+  data=$(api_get "/api/search?q=$encoded" | unwrap)
+  if [ "$json" = "1" ]; then
+    echo "$data"
+  else
+    echo "$data" | render_table
+  fi
+}
+
+cmd_get() {
+  local json=0 id=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) json=1; shift;;
+      -h|--help) usage; exit 0;;
+      *) id="$1"; shift;;
+    esac
+  done
+  [ -n "$id" ] || die "get requires an id"
+  local data
+  data=$(api_get "/api/transcripts/$id" | unwrap)
+  if [ "$json" = "1" ]; then
+    echo "$data"
+  else
+    echo "$data" | jq -r '
+      "ID:       \(.id)",
+      "Title:    \(.title)",
+      "Channel:  \(.channel)",
+      "Video ID: \(.video_id)",
+      "Duration: \(.duration) sec",
+      "Words:    \(.word_count)",
+      "Created:  \(.created_at)",
+      "View:     https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=\(.id)"
+    '
+  fi
+}
+
+cmd_cat() {
+  local id="${1:-}"
+  [ -n "$id" ] || die "cat requires an id"
+  # /api/transcript/:id/content returns raw text/plain markdown, no wrapping.
+  api_curl "$API/api/transcript/$id/content" || die "failed to fetch content for id=$id"
+}
+
+cmd_url() {
+  local json=0 src=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) json=1; shift;;
+      -h|--help) usage; exit 0;;
+      *) src="$1"; shift;;
+    esac
+  done
+  [ -n "$src" ] || die "url requires a source URL"
+  # Extract video_id from URL, then match in full list.
+  local vid
+  vid=$(echo "$src" | grep -oE '(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[a-zA-Z0-9_-]{11}' | grep -oE '[a-zA-Z0-9_-]{11}$' || true)
+  if [ -z "$vid" ]; then
+    # Try TikTok
+    local tt
+    tt=$(echo "$src" | grep -oE 'tiktok\.com/@[^/]+/video/[0-9]+' | grep -oE '[0-9]+$' || true)
+    [ -n "$tt" ] || die "could not parse video id from URL"
+    vid="tiktok:$tt"
+  fi
+  local data
+  data=$(api_get /api/transcripts | unwrap | jq --arg v "$vid" '[.[] | select(.video_id == $v)]')
+  if [ "$json" = "1" ]; then
+    echo "$data"
+  else
+    echo "$data" | render_table
+  fi
+}
+
+cmd_view() {
+  local id="${1:-}"
+  [ -n "$id" ] || die "view requires an id"
+  echo "https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=$id"
+}
+
+main() {
+  local cmd="${1:-}"
+  [ -n "$cmd" ] || { usage; exit 1; }
+  shift
+  case "$cmd" in
+    list)   cmd_list   "$@";;
+    search) cmd_search "$@";;
+    get)    cmd_get    "$@";;
+    cat)    cmd_cat    "$@";;
+    url)    cmd_url    "$@";;
+    view)   cmd_view   "$@";;
+    -h|--help|help) usage;;
+    *) die "unknown command: $cmd (try --help)";;
+  esac
+}
+
+main "$@"
