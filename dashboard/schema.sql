@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS transcripts (
     srt_path TEXT NOT NULL,
     word_count INTEGER DEFAULT 0,
     thumbnail_url TEXT,
+    category TEXT,
+    tags TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -16,3 +18,4 @@ CREATE TABLE IF NOT EXISTS transcripts (
 CREATE INDEX IF NOT EXISTS idx_video_id ON transcripts(video_id);
 CREATE INDEX IF NOT EXISTS idx_created_at ON transcripts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_title ON transcripts(title);
+CREATE INDEX IF NOT EXISTS idx_category ON transcripts(category);

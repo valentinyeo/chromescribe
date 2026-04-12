@@ -264,7 +264,74 @@
       font-size: 12px;
       color: var(--text);
       font-family: 'SF Mono', 'Monaco', monospace;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .tag-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #1a1a1a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .category-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(0, 87, 255, 0.12);
+      border: 1px solid rgba(0, 87, 255, 0.4);
+      color: #6ea8ff;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    /* Category filter bar */
+    .category-filters {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 16px 24px 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .category-chip {
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .category-chip:hover {
+      background: var(--card-hover);
+      color: var(--foreground);
+    }
+
+    .category-chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .category-chip .count {
+      opacity: 0.6;
+      margin-left: 4px;
+      font-size: 11px;
     }
     
     .card-actions {
@@ -596,6 +663,12 @@
       
       <div class="header-actions">
         <span id="stats" class="stats"></span>
+        <a href="/settings.html" class="btn btn-secondary" title="Settings" aria-label="Settings">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </a>
         <button onclick="openAddModal()" class="btn btn-primary">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -622,6 +695,9 @@
       <div class="channels-list hidden" id="channelsList"></div>
     </div>
   </div>
+
+  <!-- Category filters -->
+  <div id="categoryFilters" class="category-filters"></div>
 
   <!-- Main -->
   <main>
@@ -727,8 +803,12 @@
   <script>
     const API_BASE = '/api';
     let transcripts = [];
+    let activeCategory = null;
 
-    document.addEventListener('DOMContentLoaded', loadTranscripts);
+    document.addEventListener('DOMContentLoaded', () => {
+      loadTranscripts();
+      loadCategories();
+    });
 
     async function loadTranscripts() {
       try {
@@ -741,20 +821,53 @@
       }
     }
 
+    async function loadCategories() {
+      try {
+        const res = await fetch(`${API_BASE}/categories`);
+        const { data } = await res.json();
+        renderCategoryFilters(data || []);
+      } catch (err) {}
+    }
+
+    function renderCategoryFilters(categories) {
+      const container = document.getElementById('categoryFilters');
+      if (!categories.length) { container.innerHTML = ''; return; }
+      const total = categories.reduce((s, c) => s + c.count, 0);
+      const chips = [
+        `<button class="category-chip ${activeCategory === null ? 'active' : ''}" onclick="setCategory(null)">All<span class="count">${total}</span></button>`,
+        ...categories.map(c => `<button class="category-chip ${activeCategory === c.category ? 'active' : ''}" onclick="setCategory('${escapeAttr(c.category)}')">${escapeHtml(c.category)}<span class="count">${c.count}</span></button>`)
+      ];
+      container.innerHTML = chips.join('');
+    }
+
+    function setCategory(cat) {
+      activeCategory = cat;
+      loadCategories();
+      renderTranscripts();
+    }
+
+    function escapeAttr(s) {
+      return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+
     function renderTranscripts() {
       const grid = document.getElementById('videoGrid');
       const empty = document.getElementById('emptyState');
-      
+
       if (transcripts.length === 0) {
         grid.innerHTML = '';
         empty.classList.remove('hidden');
         document.getElementById('stats').textContent = '';
         return;
       }
-      
+
       empty.classList.add('hidden');
-      
-      const sorted = [...transcripts].sort((a, b) => {
+
+      const filtered = activeCategory
+        ? transcripts.filter(t => t.category === activeCategory)
+        : transcripts;
+
+      const sorted = [...filtered].sort((a, b) => {
         const sort = document.getElementById('sortSelect').value;
         if (sort === 'newest') return new Date(b.created_at) - new Date(a.created_at);
         if (sort === 'oldest') return new Date(a.created_at) - new Date(b.created_at);
@@ -773,6 +886,7 @@
             <div class="card-body">
               <h3 class="card-title">${escapeHtml(t.title)}</h3>
               <p class="card-channel">${escapeHtml(t.channel)}</p>
+              ${renderCardTags(t)}
               <div class="card-meta">
                 <span>${t.word_count} words</span>
                 <span>${t.created_at_formatted}</span>
@@ -797,7 +911,24 @@
         </div>
       `).join('');
 
-      document.getElementById('stats').textContent = `${transcripts.length} video${transcripts.length !== 1 ? 's' : ''}`;
+      const shown = sorted.length;
+      const total = transcripts.length;
+      document.getElementById('stats').textContent = activeCategory
+        ? `${shown} of ${total} video${total !== 1 ? 's' : ''}`
+        : `${total} video${total !== 1 ? 's' : ''}`;
+    }
+
+    function renderCardTags(t) {
+      const parts = [];
+      if (t.category) parts.push(`<span class="category-pill">${escapeHtml(t.category)}</span>`);
+      let tags = [];
+      if (t.tags) {
+        try { tags = JSON.parse(t.tags); } catch { tags = []; }
+      }
+      tags.slice(0, 4).forEach(tag => {
+        parts.push(`<span class="tag-pill">${escapeHtml(tag)}</span>`);
+      });
+      return parts.length ? `<div class="card-tags">${parts.join('')}</div>` : '';
     }
 
     async function viewTranscript(id) {

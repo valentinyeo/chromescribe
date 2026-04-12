@@ -194,6 +194,32 @@
       font-size: 12px;
       color: #888;
     }
+
+    .video-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .video-tags .tag-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #aaa;
+    }
+
+    .video-tags .category-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(0, 87, 255, 0.15);
+      border: 1px solid rgba(0, 87, 255, 0.4);
+      color: #6ea8ff;
+      font-weight: 500;
+    }
     
     .transcript-side {
       width: 400px;
@@ -315,6 +341,7 @@
           ChromeScribe
         </a>
         <div class="header-btns">
+          <a class="btn" href="/settings.html" title="Settings">⚙</a>
           <button class="btn" onclick="copyText()">Copy</button>
           <button class="btn" onclick="downloadMd()">Download MD</button>
           <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
@@ -338,6 +365,7 @@
       <div class="video-info">
         <h1 class="video-title" id="title"></h1>
         <p class="video-meta" id="meta"></p>
+        <div class="video-tags" id="videoTags"></div>
       </div>
     </div>
     
@@ -352,6 +380,10 @@
   <script>
     const API = '/api';
     let markdown = '';
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
     
     async function init() {
       const params = new URLSearchParams(window.location.search);
@@ -436,6 +468,18 @@
         
         document.getElementById('title').textContent = displayTitle;
         document.getElementById('meta').textContent = meta.channel + ' • ' + meta.word_count.toLocaleString() + ' words';
+
+        // Render category + tags
+        const tagParts = [];
+        if (meta.category) tagParts.push('<span class="category-pill">' + escapeHtml(meta.category) + '</span>');
+        if (meta.tags) {
+          try {
+            const tags = JSON.parse(meta.tags);
+            tags.forEach(t => tagParts.push('<span class="tag-pill">' + escapeHtml(t) + '</span>'));
+          } catch {}
+        }
+        document.getElementById('videoTags').innerHTML = tagParts.join('');
+
         document.getElementById('content').innerHTML = parseMarkdown(markdown);
         
       } catch (e) {

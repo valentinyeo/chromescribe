@@ -19,6 +19,8 @@ interface Transcript {
   created_at: string;
   word_count: number;
   thumbnail_url: string;
+  category: string | null;
+  tags: string | null;
 }
 
 interface WhisperResponse {
@@ -199,8 +201,17 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         { id: 'UCoy6cTJ7Tg0dqS-DI-_REsA', handle: '@Chase-H-AI' },
         { id: 'UC0m81bQuthaQZmFbXEY9QSw', handle: '@AICodeKing' },
         { id: 'UCUyeluBRhGPCW4rPe_UvBZQ', handle: '@ThePrimeTimeagen' },
+        { id: 'UCbDmEdLs-SB3FjrDFQJ4TDg', handle: '@reysu' },
       ];
       return jsonResponse(channels);
+    }
+
+    // GET /api/categories - List distinct categories with counts
+    if (request.method === 'GET' && path === 'categories') {
+      const { results } = await env.DB
+        .prepare("SELECT category, COUNT(*) as count FROM transcripts WHERE category IS NOT NULL AND category != '' GROUP BY category ORDER BY count DESC")
+        .all<{ category: string; count: number }>();
+      return jsonResponse(results);
     }
 
     // GET /api/transcripts - List all transcripts
@@ -632,7 +643,7 @@ ${srtContent || transcript.text}
         }
 
         const body = await request.json() as any;
-        const { markdown_content, title } = body;
+        const { markdown_content, title, category, tags } = body;
 
         if (markdown_content) {
           await env.TRANSCRIPTS.put(existing.srt_path, markdown_content);
@@ -647,6 +658,21 @@ ${srtContent || transcript.text}
           await env.DB
             .prepare('UPDATE transcripts SET title = ? WHERE id = ?')
             .bind(title, id)
+            .run();
+        }
+
+        if (category !== undefined) {
+          await env.DB
+            .prepare('UPDATE transcripts SET category = ? WHERE id = ?')
+            .bind(category, id)
+            .run();
+        }
+
+        if (tags !== undefined) {
+          const tagsJson = Array.isArray(tags) ? JSON.stringify(tags) : tags;
+          await env.DB
+            .prepare('UPDATE transcripts SET tags = ? WHERE id = ?')
+            .bind(tagsJson, id)
             .run();
         }
 
@@ -715,6 +741,15 @@ export default {
 
     if (url.pathname === '/transcript.html') {
       const object = await env.TRANSCRIPTS.get('transcript.html');
+      if (object) {
+        return new Response(object.body, {
+          headers: HTML_HEADERS,
+        });
+      }
+    }
+
+    if (url.pathname === '/settings.html') {
+      const object = await env.TRANSCRIPTS.get('settings.html');
       if (object) {
         return new Response(object.body, {
           headers: HTML_HEADERS,

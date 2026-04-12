@@ -13,7 +13,7 @@ TMPDIR="$(mktemp -d /tmp/chromescribe.XXXXXX)"
 DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
 
 # Ensure deno is in PATH for yt-dlp
-export PATH="$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
 export DISPLAY=:0
 
 # Telegram config (hardcoded — cron can't source .bashrc interactive-only exports)
@@ -93,15 +93,6 @@ process_video() {
 
     log "Processing: $title ($url)"
 
-    # Skip Shorts (< 120 seconds) — only process longform videos
-    local duration
-    duration=$(yt-dlp --cookies-from-browser chrome --no-check-certificate \
-        --remote-components ejs:github --print duration "$url" 2>/dev/null | head -1)
-    if [ -n "$duration" ] && [ "$duration" -lt 120 ] 2>/dev/null; then
-        log "  Skipping Short (${duration}s < 120s)"
-        return 0
-    fi
-
     # Step 1: Download audio
     local audio_file="$TMPDIR/${video_id}.mp3"
     log "  Downloading audio..."
@@ -118,31 +109,21 @@ process_video() {
     fi
     log "  Audio downloaded: $(du -h "$audio_file" | cut -f1)"
 
-    # Compress if >2MB (CF AI Whisper has strict size limit) — mono 24kbps 16kHz is fine for speech
+    # Step 2: Transcribe audio
+    # CF AI Whisper has ~30s worker timeout — can only handle ~2 min of audio per request.
+    # Files >500KB (roughly >3 min at any quality) get split into 1-min compressed chunks.
     local file_size
     file_size=$(stat -c%s "$audio_file")
-    if [ "$file_size" -gt 2000000 ]; then
-        log "  Compressing audio ($(du -h "$audio_file" | cut -f1) > 2MB limit)..."
-        local compressed="$TMPDIR/${video_id}_compressed.mp3"
-        ffmpeg -i "$audio_file" -ac 1 -ab 24k -ar 16000 "$compressed" -y -loglevel error
-        rm -f "$audio_file"
-        mv "$compressed" "$audio_file"
-        log "  Compressed to: $(du -h "$audio_file" | cut -f1)"
-    fi
-
-    # Step 2: Transcribe audio
-    local file_size_after
-    file_size_after=$(stat -c%s "$audio_file")
     local transcript_id
 
-    if [ "$file_size_after" -gt 4000000 ]; then
-        # Large file: split into 1-min chunks, transcribe each via /api/whisper, combine
-        # (CF Workers have 30s timeout — 1 min of audio transcribes in ~10-15s)
-        log "  Large file ($(du -h "$audio_file" | cut -f1)) — chunked transcription..."
+    if [ "$file_size" -gt 500000 ]; then
+        # Split into 1-min chunks (compressed mono 24kbps 16kHz — ~180KB/min, fine for speech)
+        log "  Chunked transcription ($(du -h "$audio_file" | cut -f1))..."
         local chunk_dir="$TMPDIR/chunks_${video_id}"
         mkdir -p "$chunk_dir"
         ffmpeg -i "$audio_file" -f segment -segment_time 60 -ac 1 -ab 24k -ar 16000 \
             "$chunk_dir/chunk_%03d.mp3" -y -loglevel error
+        rm -f "$audio_file"
 
         local combined_text=""
         local chunk_count=0
@@ -161,7 +142,6 @@ process_video() {
             combined_text="${combined_text} ${chunk_text}"
         done
         rm -rf "$chunk_dir"
-        rm -f "$audio_file"
 
         if [ -z "$combined_text" ]; then
             log "  ERROR: All chunks failed"
@@ -222,6 +202,19 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
     # Step 4: Generate AI summary with pi (non-interactive, auto-exits)
     log "  Generating summary with pi..."
     local summary_file="$TMPDIR/summary_${transcript_id}.md"
+    local classify_file="$TMPDIR/classify_${transcript_id}.json"
+
+    # Fetch existing categories to encourage reuse (avoids drift)
+    local existing_cats
+    existing_cats=$(api_call GET /api/categories 2>/dev/null | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin).get('data', [])
+    cats = [c['category'] for c in data if c.get('category')]
+    print(', '.join(cats) if cats else '(none yet)')
+except: print('(none yet)')
+" 2>/dev/null)
+    log "  Existing categories: $existing_cats"
 
     # Write the update helper script (uses curl, avoids Python urllib CF Access issue)
     local update_helper="$TMPDIR/update.sh"
@@ -244,10 +237,10 @@ curl -s -L -X PUT \\
 UPDATEEOF
     chmod +x "$update_helper"
 
-    pi --provider minimax --model MiniMax-M2.7-highspeed --no-session \
-      "You are a content summarizer. Read the transcript file '$transcript_file' and create a structured markdown document.
+    pi --provider minimax --model MiniMax-M2.7-highspeed --no-session < /dev/null \
+      "You are a content summarizer and classifier. Read the transcript file '$transcript_file' and produce TWO output files.
 
-Write the output to '$summary_file' with this EXACT format:
+=== FILE 1: '$summary_file' ===
 
 # $title
 
@@ -278,13 +271,56 @@ Write the output to '$summary_file' with this EXACT format:
 
 </details>
 
+=== FILE 2: '$classify_file' ===
+
+Classify the content. Write EXACTLY this JSON (and nothing else) to the file:
+
+{\"category\": \"<ONE short category, 1-3 words>\", \"tags\": [\"<tag1>\", \"<tag2>\", \"<tag3>\", \"<tag4>\", \"<tag5>\"]}
+
+Category rules:
+- PREFER reusing an existing category from this list if it fits: $existing_cats
+- Only invent a new one if none fit. Keep it short (1-3 words), use Title Case (e.g. \"AI Marketing\", \"AI Tutorials\", \"AI News\", \"AI Tools\", \"Programming\").
+- Categories should be broad enough to group multiple videos — not specific to one video.
+
+Tag rules:
+- 3-5 specific topical tags (people, tools, techniques, products mentioned)
+- Lowercase, short (1-3 words each), no hashtags
+- Examples: \"claude code\", \"prompt caching\", \"cursor\", \"agents\", \"rag\"
+
 IMPORTANT STEPS — do them in order, then exit:
 1. Read '$transcript_file' using cat
 2. Write the structured markdown to '$summary_file'
-3. Upload by running: bash $update_helper '$summary_file' '$title'
-4. Exit immediately. No questions. No further actions." 2>&1 | tail -5
+3. Write the classification JSON to '$classify_file'
+4. Upload summary by running: bash $update_helper '$summary_file' '$title'
+5. Exit immediately. No questions. No further actions." 2>&1 | tail -5
 
     log "  Pi agent finished"
+
+    # Step 4b: Upload classification if pi produced it
+    if [ -f "$classify_file" ]; then
+        log "  Uploading classification..."
+        local classify_payload
+        classify_payload=$(python3 -c "
+import json, sys
+try:
+    with open('$classify_file') as f: c = json.load(f)
+    out = {}
+    if c.get('category'): out['category'] = c['category']
+    if isinstance(c.get('tags'), list): out['tags'] = c['tags']
+    print(json.dumps(out))
+except Exception as e:
+    print('', file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null)
+        if [ -n "$classify_payload" ] && [ "$classify_payload" != "{}" ]; then
+            api_call PUT "/api/transcripts/$transcript_id" -H "Content-Type: application/json" -d "$classify_payload" > /dev/null
+            log "  Classification uploaded: $classify_payload"
+        else
+            log "  WARNING: classify.json invalid or empty"
+        fi
+    else
+        log "  WARNING: pi did not produce classify.json"
+    fi
 
     # Step 5: Send Telegram notification with ChromeScribe URL + thumbnail
     local cs_url="$DASHBOARD_URL/transcript.html?id=$transcript_id"
@@ -311,8 +347,12 @@ fi
 touch "$PROCESSED_FILE"
 
 if [ -n "$FORCE_VIDEO" ]; then
-    process_video "$FORCE_VIDEO" "$FORCE_TITLE"
-    echo "$FORCE_VIDEO" >> "$PROCESSED_FILE"
+    if process_video "$FORCE_VIDEO" "$FORCE_TITLE"; then
+        echo "$FORCE_VIDEO" >> "$PROCESSED_FILE"
+    else
+        log "  FAILED: $FORCE_VIDEO — not marking as processed"
+        exit 1
+    fi
     exit 0
 fi
 
@@ -336,9 +376,12 @@ while IFS= read -r line; do
             continue
         fi
 
-        process_video "$video_id" "$title" || log "  FAILED: $video_id — continuing with next"
-        echo "$video_id" >> "$PROCESSED_FILE"
-        NEW_COUNT=$((NEW_COUNT + 1))
+        if process_video "$video_id" "$title"; then
+            echo "$video_id" >> "$PROCESSED_FILE"
+            NEW_COUNT=$((NEW_COUNT + 1))
+        else
+            log "  FAILED: $video_id — not marking as processed, will retry next run"
+        fi
 
     done < <(get_todays_videos "$channel_id" "$TODAY")
 
