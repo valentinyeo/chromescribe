@@ -41,6 +41,7 @@ echo "📦 Step 4: Upload static files to R2..."
 # Upload HTML files
 wrangler r2 object put "index.html" --file=./public/index.html --account-id $ACCOUNT_ID --bucket=$BUCKET_NAME
 wrangler r2 object put "transcript.html" --file=./public/transcript.html --account-id $ACCOUNT_ID --bucket=$BUCKET_NAME
+wrangler r2 object put "settings.html" --file=./public/settings.html --account-id $ACCOUNT_ID --bucket=$BUCKET_NAME
 echo "✓ Static files uploaded"
 
 echo ""

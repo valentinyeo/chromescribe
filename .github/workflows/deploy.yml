@@ -26,6 +26,13 @@ jobs:
           command: r2 object put "transcript.html" --file=./dashboard/public/transcript.html --bucket=chromescribe-transcripts
           workingDirectory: dashboard
 
+      - name: Upload settings.html to R2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: r2 object put "settings.html" --file=./dashboard/public/settings.html --bucket=chromescribe-transcripts
+          workingDirectory: dashboard
+
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
         with:

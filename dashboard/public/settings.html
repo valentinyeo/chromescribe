@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings · ChromeScribe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --foreground: #fff;
+      --background: #030303;
+      --border: #27272a;
+      --muted: #71717a;
+      --text: #a1a1aa;
+      --accent: #0057ff;
+      --accent-hover: #0066ff;
+      --error: #ef4444;
+      --success: #22c55e;
+      --card: #090909;
+      --card-hover: #111111;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      -webkit-font-smoothing: antialiased;
+    }
+    body { min-height: 100vh; }
+
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      max-width: 900px; margin: 0 auto;
+      padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 600; font-size: 18px;
+      letter-spacing: -0.02em;
+      color: var(--foreground); text-decoration: none;
+    }
+    .logo svg { width: 28px; height: 28px; fill: var(--foreground); }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; height: 36px; padding: 0 14px;
+      font-size: 14px; font-weight: 500;
+      border: none; border-radius: 6px; cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none; font-family: inherit;
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn:hover { background: var(--card-hover); color: var(--foreground); }
+
+    main {
+      max-width: 900px; margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    h1 {
+      font-size: 32px; font-weight: 600;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: var(--muted); font-size: 15px;
+      margin-bottom: 48px;
+    }
+
+    h2 {
+      font-size: 20px; font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 48px 0 16px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+    h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+    h3 {
+      font-size: 14px; font-weight: 600;
+      color: var(--text); text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 24px 0 8px;
+    }
+
+    p { color: var(--text); margin-bottom: 16px; line-height: 1.6; }
+    p.lead { color: var(--foreground); font-size: 16px; }
+
+    code {
+      font-family: 'Geist Mono', 'SF Mono', Monaco, Inconsolata, monospace;
+      font-size: 13px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--foreground);
+    }
+
+    pre {
+      font-family: 'Geist Mono', 'SF Mono', Monaco, Inconsolata, monospace;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 16px 0;
+      position: relative;
+    }
+    pre code {
+      background: transparent; border: none;
+      padding: 0; font-size: inherit;
+    }
+    .cmt { color: var(--muted); }
+    .str { color: #a1e3a1; }
+    .kw  { color: #82aaff; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td { color: var(--text); }
+    td code { white-space: nowrap; }
+
+    .callout {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-size: 14px;
+      color: var(--text);
+    }
+    .callout strong { color: var(--foreground); }
+
+    ul { padding-left: 20px; margin-bottom: 16px; color: var(--text); }
+    li { margin-bottom: 6px; line-height: 1.6; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .copy {
+      position: absolute;
+      top: 8px; right: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-family: inherit;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    pre:hover .copy { opacity: 1; }
+    .copy:hover { color: var(--foreground); border-color: var(--text); }
+    .copy.copied { color: var(--success); border-color: var(--success); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 24 24">
+          <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+        </svg>
+        ChromeScribe
+      </a>
+      <a href="/" class="btn">← Back</a>
+    </div>
+  </header>
+
+  <main>
+    <h1>Settings</h1>
+    <p class="subtitle">Integrations and access docs for the transcript knowledge base.</p>
+
+    <h2>CLI — <code>chromescribe</code></h2>
+    <p class="lead">A bash CLI that lets any project query, search, and pipe transcripts from this knowledge base. Useful for summarization pipelines, grep-across-videos, or feeding content into Claude/Pi from another project's CWD.</p>
+
+    <h3>Install</h3>
+    <p>Source lives at <code>cli/chromescribe</code> in the repo. Symlink it onto your PATH:</p>
+    <pre><button class="copy" onclick="copy(this)">copy</button><code><span class="cmt"># one-time setup</span>
+chmod +x ~/projects/chromescribe/cli/chromescribe
+ln -sf ~/projects/chromescribe/cli/chromescribe ~/.local/bin/chromescribe
+
+<span class="cmt"># sanity check</span>
+chromescribe --help</code></pre>
+
+    <h3>Required env</h3>
+    <p>The dashboard API is behind Cloudflare Zero Trust. The CLI auto-reads a service token from env — put these in <code>~/.bashrc</code> (or <code>~/.profile</code> for cross-shell support):</p>
+    <pre><button class="copy" onclick="copy(this)">copy</button><code>export CF_ACCESS_CLIENT_ID=<span class="str">"&lt;your-service-token-id&gt;"</span>
+export CF_ACCESS_CLIENT_SECRET=<span class="str">"&lt;your-service-token-secret&gt;"</span></code></pre>
+    <div class="callout">
+      <strong>Note:</strong> service tokens live in Cloudflare Zero Trust → Access → Service Auth. This page is itself behind Zero Trust, so only you see it.
+    </div>
+
+    <h3>Commands</h3>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>chromescribe list [-n N] [--json]</code></td><td>List newest transcripts (default 50)</td></tr>
+        <tr><td><code>chromescribe search &lt;q&gt; [--json]</code></td><td>Search titles, channels, video_id</td></tr>
+        <tr><td><code>chromescribe get &lt;id&gt; [--json]</code></td><td>Show one transcript's metadata</td></tr>
+        <tr><td><code>chromescribe cat &lt;id&gt;</code></td><td>Print full markdown to stdout</td></tr>
+        <tr><td><code>chromescribe url &lt;source-url&gt;</code></td><td>Look up a transcript by YouTube/TikTok URL</td></tr>
+        <tr><td><code>chromescribe view &lt;id&gt;</code></td><td>Print dashboard URL for this transcript</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Recipes</h3>
+
+    <p><strong>Save a transcript into another project:</strong></p>
+    <pre><button class="copy" onclick="copy(this)">copy</button><code>chromescribe cat 141 &gt; notes/obsidian-vs-rag.md</code></pre>
+
+    <p><strong>Read it in your terminal:</strong></p>
+    <pre><button class="copy" onclick="copy(this)">copy</button><code>chromescribe cat 141 | glow -     <span class="cmt"># markdown pager</span>
+chromescribe cat 141 | less</code></pre>
+
+    <p><strong>Summarize with Pi (or any LLM CLI):</strong></p>
+    <pre><button class="copy" onclick="copy(this)">copy</button><code>chromescribe cat 141 | pi <span class="str">"summarize in 5 bullets"</span></code></pre>
+
+    <p><strong>Grep across everything about a topic:</strong></p>
+    <pre><button class="copy" onclick="copy(this)">copy</button><code>chromescribe search <span class="str">"RAG"</span> --json | jq -r <span class="str">'.[].id'</span> | <span class="kw">while</span> <span class="kw">read</span> id; <span class="kw">do</span>
+  <span class="kw">echo</span> <span class="str">"=== $id ==="</span>
+  chromescribe cat <span class="str">"$id"</span> | grep -i <span class="str">"vector"</span>
+<span class="kw">done</span></code></pre>
+
+    <p><strong>Open in browser:</strong></p>
+    <pre><button class="copy" onclick="copy(this)">copy</button><code>xdg-open <span class="str">"$(chromescribe view 141)"</span></code></pre>
+
+    <h3>Env overrides</h3>
+    <table>
+      <thead><tr><th>Var</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>CHROMESCRIBE_API</code></td><td>Override API base URL (default: this worker)</td></tr>
+        <tr><td><code>CF_ACCESS_CLIENT_ID</code></td><td>Cloudflare Access service-token ID</td></tr>
+        <tr><td><code>CF_ACCESS_CLIENT_SECRET</code></td><td>Cloudflare Access service-token secret</td></tr>
+      </tbody>
+    </table>
+
+    <h2>HTTP API</h2>
+    <p>All endpoints require CF Access service-token headers. Responses are JSON with <code>{ success, data }</code> wrapper except <code>/api/transcript/:id/content</code> which is raw markdown.</p>
+    <table>
+      <thead><tr><th>Method &amp; Path</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/transcripts</code></td><td>List all transcripts</td></tr>
+        <tr><td><code>GET /api/transcripts/:id</code></td><td>Metadata for one transcript</td></tr>
+        <tr><td><code>GET /api/transcript/:id/content</code></td><td>Raw markdown body</td></tr>
+        <tr><td><code>GET /api/search?q=...</code></td><td>Title/channel/video_id search</td></tr>
+        <tr><td><code>GET /api/channels</code></td><td>Monitored YouTube channels</td></tr>
+        <tr><td><code>POST /api/transcribe</code></td><td>JSON (URL + markdown) or multipart (audio)</td></tr>
+        <tr><td><code>PUT /api/transcripts/:id</code></td><td>Update title or markdown</td></tr>
+        <tr><td><code>DELETE /api/transcripts/:id</code></td><td>Delete transcript + R2 content</td></tr>
+      </tbody>
+    </table>
+  </main>
+
+  <script>
+    function copy(btn) {
+      const pre = btn.parentElement;
+      const code = pre.querySelector('code').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = 'copied';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'copy';
+          btn.classList.remove('copied');
+        }, 1200);
+      });
+    }
+  </script>
+</body>
+</html>
