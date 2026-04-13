@@ -123,8 +123,9 @@ IMPORTANT: Only write the single file '$SUMMARY_FILE'. Do NOT run any other comm
     continue
   fi
 
-  PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'markdown_content': open(sys.argv[1]).read()}))" "$SUMMARY_FILE")
-  RESP=$(curl -sL -X PUT "${CURL_HDR[@]}" -H "Content-Type: application/json" -d "$PAYLOAD" "$BASE/api/transcripts/$ID")
+  PAYLOAD_FILE="$TMPDIR/payload_${ID}.json"
+  python3 -c "import json,sys; open(sys.argv[2],'w').write(json.dumps({'markdown_content': open(sys.argv[1]).read()}))" "$SUMMARY_FILE" "$PAYLOAD_FILE"
+  RESP=$(curl -sL -X PUT "${CURL_HDR[@]}" -H "Content-Type: application/json" --data-binary "@$PAYLOAD_FILE" "$BASE/api/transcripts/$ID")
   if echo "$RESP" | grep -q '"updated":true'; then
     log "  ✅ uploaded"
   else
