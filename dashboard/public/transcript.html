@@ -178,7 +178,40 @@
     .video-wrapper.playing iframe {
       display: block;
     }
-    
+
+    /* Article mode — iframe of original page */
+    .article-frame {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: #fff;
+      display: none;
+    }
+    .article-blocked {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      padding: 32px;
+      text-align: center;
+      color: #ccc;
+    }
+    .article-blocked .domain { font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: #888; margin-bottom: 12px; }
+    .article-blocked .msg { font-size: 15px; max-width: 420px; margin-bottom: 20px; line-height: 1.5; }
+    .article-blocked a.open-btn {
+      display: inline-block;
+      padding: 10px 18px;
+      background: #3ea6ff;
+      color: #000;
+      border-radius: 6px;
+      font-weight: 500;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .article-blocked a.open-btn:hover { background: #5ab6ff; }
+
     .video-info {
       padding: 12px 16px;
       background: #1a1a1a;
@@ -362,6 +395,12 @@
         </div>
         <iframe id="video" src="" allowfullscreen></iframe>
       </div>
+      <iframe class="article-frame" id="articleFrame" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-popups allow-forms"></iframe>
+      <div class="article-blocked" id="articleBlocked">
+        <div class="domain" id="articleDomain"></div>
+        <div class="msg">This site blocks being shown inside another page. Click below to open it in a new tab — the summary on the right still works.</div>
+        <a id="articleOpen" class="open-btn" target="_blank" rel="noopener">Open article →</a>
+      </div>
       <div class="video-info">
         <h1 class="video-title" id="title"></h1>
         <p class="video-meta" id="meta"></p>
@@ -405,10 +444,67 @@
         if (!contentRes.ok) throw new Error('Content not found');
         markdown = await contentRes.text();
         
+        const isArticle = meta.video_id.startsWith('article:');
+
         // Render video embed (lazy-load)
         let videoSrc = null;
         let thumbUrl = meta.thumbnail_url || null;
-        
+
+        if (isArticle) {
+          // Article mode: left = iframe of original URL, right = summary (TL;DR + The Article)
+          const summaryMd = markdown.replace(/\n##\s+Full Article[\s\S]*$/i, '').trim();
+          const sourceMatch = markdown.match(/\*\*Source:\*\*\s*(https?:\/\/[^\s]+)/);
+          const sourceUrl = sourceMatch ? sourceMatch[1] : '';
+
+          document.getElementById('videoWrapper').style.display = 'none';
+
+          const frame = document.getElementById('articleFrame');
+          const blocked = document.getElementById('articleBlocked');
+          let domain = '';
+          try { domain = new URL(sourceUrl).hostname.replace(/^www\./, ''); } catch {}
+          document.getElementById('articleDomain').textContent = domain;
+          document.getElementById('articleOpen').href = sourceUrl;
+
+          if (sourceUrl) {
+            frame.style.display = 'block';
+            frame.src = sourceUrl;
+            // If the site blocks iframing, X-Frame-Options/CSP blocks it silently.
+            // Fall back to the "Open in tab" panel if iframe is still blank after 4s.
+            setTimeout(() => {
+              try {
+                const doc = frame.contentDocument;
+                if (!doc || !doc.body || doc.body.childElementCount === 0) {
+                  frame.style.display = 'none';
+                  blocked.style.display = 'flex';
+                }
+              } catch {
+                // Cross-origin — iframe loaded from another origin. That's fine.
+              }
+            }, 4000);
+          } else {
+            blocked.style.display = 'flex';
+          }
+
+          const titleMatch2 = markdown.match(/^#\s+(.+)$/m);
+          const displayTitle2 = titleMatch2 ? titleMatch2[1] : meta.title;
+          document.getElementById('title').textContent = displayTitle2;
+          document.getElementById('meta').textContent = meta.channel + ' • ' + meta.word_count.toLocaleString() + ' words';
+
+          const tagParts2 = [];
+          if (meta.category) tagParts2.push('<span class="category-pill">' + escapeHtml(meta.category) + '</span>');
+          if (meta.tags) {
+            try {
+              const tags = JSON.parse(meta.tags);
+              tags.forEach(t => tagParts2.push('<span class="tag-pill">' + escapeHtml(t) + '</span>'));
+            } catch {}
+          }
+          document.getElementById('videoTags').innerHTML = tagParts2.join('');
+
+          document.querySelector('.transcript-header').textContent = 'Summary';
+          document.getElementById('content').innerHTML = parseMarkdown(summaryMd);
+          return;
+        }
+
         // YouTube (plain ID or with prefixes)
         if (/^[a-zA-Z0-9_-]{11}$/.test(meta.video_id)) {
           videoSrc = 'https://www.youtube.com/embed/' + meta.video_id + '?autoplay=1';

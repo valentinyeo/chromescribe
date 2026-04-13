@@ -39,10 +39,17 @@ const CORS_HEADERS = {
 };
 
 interface ParsedVideo {
-  platform: 'youtube' | 'tiktok';
+  platform: 'youtube' | 'tiktok' | 'article';
   id: string;
   prefixedId: string;
 }
+
+// Stable 8-char hex hash (djb2) so the same article URL always maps to the same video_id
+const hashUrl = (s: string): string => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(16).padStart(8, '0');
+};
 
 const parseVideoUrl = (url: string): ParsedVideo | null => {
   // YouTube
@@ -52,6 +59,12 @@ const parseVideoUrl = (url: string): ParsedVideo | null => {
   // TikTok
   const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
   if (ttMatch) return { platform: 'tiktok', id: ttMatch[1], prefixedId: `tiktok:${ttMatch[1]}` };
+
+  // Article — any other http(s) URL
+  if (/^https?:\/\//i.test(url)) {
+    const id = hashUrl(url);
+    return { platform: 'article', id, prefixedId: `article:${id}` };
+  }
 
   return null;
 };
@@ -341,11 +354,19 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
 
           // Get video info if available
           let videoTitle = title || mdTitle || `Video ${parsed.id}`;
-          let videoChannel = parsed.platform === 'tiktok' ? 'TikTok' : 'YouTube';
+          let videoChannel =
+            parsed.platform === 'tiktok' ? 'TikTok' :
+            parsed.platform === 'article' ? 'Article' : 'YouTube';
           let noembedThumbnail: string | undefined;
 
           try {
-            if (parsed.platform === 'tiktok') {
+            if (parsed.platform === 'article') {
+              // Article — channel = domain, title from markdown
+              try {
+                videoChannel = new URL(videoUrl).hostname.replace(/^www\./, '');
+              } catch {}
+              videoTitle = mdTitle || title || videoTitle;
+            } else if (parsed.platform === 'tiktok') {
               // Use TikTok's oEmbed API
               const infoRes = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`);
               if (infoRes.ok) {
@@ -722,7 +743,7 @@ export default {
     }
 
     // CSP header to allow API calls even when embedded in YouTube iframe
-    const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://www.tiktok.com; connect-src 'self' https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev https://*.youtube.com https://img.youtube.com; img-src 'self' data: https://img.youtube.com https://*.tiktokcdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;";
+    const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https: data:; connect-src 'self' https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev https://*.youtube.com https://img.youtube.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;";
 
     const HTML_HEADERS = {
       'Content-Type': 'text/html; charset=utf-8',
