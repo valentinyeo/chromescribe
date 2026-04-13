@@ -215,6 +215,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         { id: 'UC0m81bQuthaQZmFbXEY9QSw', handle: '@AICodeKing' },
         { id: 'UCUyeluBRhGPCW4rPe_UvBZQ', handle: '@ThePrimeTimeagen' },
         { id: 'UCbDmEdLs-SB3FjrDFQJ4TDg', handle: '@reysu' },
+        { id: 'UCmL7cQmNgV-3FxaB3Ueoixg', handle: '@claudelog' },
       ];
       return jsonResponse(channels);
     }
