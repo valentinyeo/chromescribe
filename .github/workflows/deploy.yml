@@ -16,6 +16,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: "4.82.2"
           command: r2 object put chromescribe-transcripts/index.html --file=./public/index.html --remote
           workingDirectory: dashboard
 
@@ -23,6 +24,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: "4.82.2"
           command: r2 object put chromescribe-transcripts/transcript.html --file=./public/transcript.html --remote
           workingDirectory: dashboard
 
@@ -30,6 +32,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: "4.82.2"
           command: r2 object put chromescribe-transcripts/settings.html --file=./public/settings.html --remote
           workingDirectory: dashboard
 
@@ -37,4 +40,5 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: "4.82.2"
           workingDirectory: dashboard
