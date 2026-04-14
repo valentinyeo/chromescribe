@@ -9,36 +9,22 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy Dashboard
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    defaults:
+      run:
+        working-directory: dashboard
     steps:
       - uses: actions/checkout@v4
 
-      - name: Upload index.html to R2
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: "4.82.2"
-          command: r2 object put chromescribe-transcripts/index.html --file=./public/index.html --remote
-          workingDirectory: dashboard
+      - name: Install wrangler
+        run: npm install -g wrangler@4.82.2
 
-      - name: Upload transcript.html to R2
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: "4.82.2"
-          command: r2 object put chromescribe-transcripts/transcript.html --file=./public/transcript.html --remote
-          workingDirectory: dashboard
-
-      - name: Upload settings.html to R2
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: "4.82.2"
-          command: r2 object put chromescribe-transcripts/settings.html --file=./public/settings.html --remote
-          workingDirectory: dashboard
+      - name: Upload static files to R2
+        run: |
+          wrangler r2 object put chromescribe-transcripts/index.html --file=./public/index.html --remote
+          wrangler r2 object put chromescribe-transcripts/transcript.html --file=./public/transcript.html --remote
+          wrangler r2 object put chromescribe-transcripts/settings.html --file=./public/settings.html --remote
 
       - name: Deploy Worker
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: "4.82.2"
-          workingDirectory: dashboard
+        run: wrangler deploy
