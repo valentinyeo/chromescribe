@@ -601,30 +601,83 @@
 
     .channel-chip {
       display: inline-flex;
-      align-items: center;
-      gap: 6px;
+      align-items: stretch;
       height: 28px;
-      padding: 0 10px;
       font-size: 13px;
-      color: var(--text);
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 6px;
-      text-decoration: none;
-      transition: all 0.15s ease;
+      overflow: hidden;
+      transition: border-color 0.15s ease;
     }
 
     .channel-chip:hover {
-      background: var(--card-hover);
       border-color: var(--muted);
+    }
+
+    .channel-chip-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px;
+      color: var(--text);
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      font: inherit;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .channel-chip-filter:hover {
+      background: var(--card-hover);
       color: var(--foreground);
     }
 
-    .channel-chip svg {
+    .channel-chip.active {
+      border-color: var(--accent, #0070f3);
+    }
+
+    .channel-chip.active .channel-chip-filter {
+      background: var(--accent, #0070f3);
+      color: #fff;
+    }
+
+    .channel-chip-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      color: var(--text);
+      background: transparent;
+      border: 0;
+      border-left: 1px solid var(--border);
+      text-decoration: none;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .channel-chip-link:hover {
+      background: var(--card-hover);
+      color: var(--foreground);
+    }
+
+    .channel-chip-link svg {
       width: 12px;
       height: 12px;
-      opacity: 0.5;
+      opacity: 0.6;
       flex-shrink: 0;
+    }
+
+    .channel-chip-count {
+      font-size: 11px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.05);
+      padding: 0 6px;
+      border-radius: 3px;
+    }
+
+    .channel-chip.active .channel-chip-count {
+      color: rgba(255,255,255,0.8);
+      background: rgba(255,255,255,0.18);
     }
 
     /* Hide */
@@ -804,6 +857,8 @@
     const API_BASE = '/api';
     let transcripts = [];
     let activeCategory = null;
+    let activeChannel = null; // canonical channel name or null
+    let channelsCache = [];
 
     document.addEventListener('DOMContentLoaded', () => {
       loadTranscripts();
@@ -816,6 +871,7 @@
         const { data } = await res.json();
         transcripts = data || [];
         renderTranscripts();
+        renderChannels();
       } catch (err) {
         showToast('Failed to load transcripts', 'error');
       }
@@ -863,9 +919,16 @@
 
       empty.classList.add('hidden');
 
-      const filtered = activeCategory
+      let filtered = activeCategory
         ? transcripts.filter(t => t.category === activeCategory)
         : transcripts;
+      if (activeChannel) {
+        const n = activeChannel.toLowerCase();
+        filtered = filtered.filter(t => {
+          const c = (t.channel || '').toLowerCase();
+          return c === n || c.startsWith(n);
+        });
+      }
 
       const sorted = [...filtered].sort((a, b) => {
         const sort = document.getElementById('sortSelect').value;
@@ -913,7 +976,7 @@
 
       const shown = sorted.length;
       const total = transcripts.length;
-      document.getElementById('stats').textContent = activeCategory
+      document.getElementById('stats').textContent = (activeCategory || activeChannel)
         ? `${shown} of ${total} video${total !== 1 ? 's' : ''}`
         : `${total} video${total !== 1 ? 's' : ''}`;
     }
@@ -1054,20 +1117,52 @@
       try {
         const res = await fetch(`${API_BASE}/channels`);
         const { data } = await res.json();
-        const channels = data || [];
-        document.getElementById('channelsBadge').textContent = channels.length;
-        const list = document.getElementById('channelsList');
-        list.innerHTML = channels.map(ch => `
-          <a href="https://www.youtube.com/channel/${ch.id}" target="_blank" rel="noopener" class="channel-chip">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-            </svg>
-            ${escapeHtml(ch.handle)}
-          </a>
-        `).join('');
+        channelsCache = data || [];
+        document.getElementById('channelsBadge').textContent = channelsCache.length;
+        renderChannels();
       } catch (err) {
         // silently skip if channels endpoint unavailable
       }
+    }
+
+    function transcriptsByChannelName(name) {
+      if (!name) return transcripts;
+      const n = name.toLowerCase();
+      return transcripts.filter(t => {
+        const c = (t.channel || '').toLowerCase();
+        return c === n || c.startsWith(n);
+      });
+    }
+
+    function renderChannels() {
+      const list = document.getElementById('channelsList');
+      if (!list) return;
+      list.innerHTML = channelsCache.map(ch => {
+        const count = transcriptsByChannelName(ch.name).length;
+        const isActive = activeChannel === ch.name;
+        return `
+          <span class="channel-chip ${isActive ? 'active' : ''}">
+            <button type="button" class="channel-chip-filter" onclick="toggleChannelFilter('${escapeAttr(ch.name)}')" title="${isActive ? 'Clear filter' : 'Filter by ' + escapeAttr(ch.handle)}">
+              ${escapeHtml(ch.handle)}
+              <span class="channel-chip-count">${count}</span>
+            </button>
+            <a href="https://www.youtube.com/channel/${ch.id}" target="_blank" rel="noopener" class="channel-chip-link" title="Open on YouTube">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+            </a>
+          </span>
+        `;
+      }).join('');
+    }
+
+    function toggleChannelFilter(name) {
+      activeChannel = activeChannel === name ? null : name;
+      renderChannels();
+      renderTranscripts();
+      // open the panel if collapsed so the user sees the active state
+      const list = document.getElementById('channelsList');
+      if (activeChannel && list && list.classList.contains('hidden')) toggleChannels();
     }
 
     function toggleChannels() {

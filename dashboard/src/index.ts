@@ -204,18 +204,20 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
     }
 
     // GET /api/channels - List monitored YouTube channels
+    // `name` is the canonical channel name as stored in transcripts.channel
+    // (frontend prefix-matches against this so historical name variants still hit)
     if (request.method === 'GET' && path === 'channels') {
       const channels = [
-        { id: 'UCctL30i8tVgSS9A37Q532eg', handle: '@Incomestreamsurfers' },
-        { id: 'UCPjNBjflYl0-HQtUvOx0Ibw', handle: '@GregIsenberg' },
-        { id: 'UC2ojq-nuP8ceeHqiroeKhBA', handle: '@nateherk' },
-        { id: 'UC6t1O76G0jYXOAoYCm153dA', handle: '@LennysPodcast' },
-        { id: 'UC2WmuBuFq6gL08QYG-JjXKw', handle: '@intheworldofai' },
-        { id: 'UCoy6cTJ7Tg0dqS-DI-_REsA', handle: '@Chase-H-AI' },
-        { id: 'UC0m81bQuthaQZmFbXEY9QSw', handle: '@AICodeKing' },
-        { id: 'UCUyeluBRhGPCW4rPe_UvBZQ', handle: '@ThePrimeTimeagen' },
-        { id: 'UCbDmEdLs-SB3FjrDFQJ4TDg', handle: '@reysu' },
-        { id: 'UCmL7cQmNgV-3FxaB3Ueoixg', handle: '@claudelog' },
+        { id: 'UCctL30i8tVgSS9A37Q532eg', handle: '@Incomestreamsurfers', name: 'Income stream surfers' },
+        { id: 'UCPjNBjflYl0-HQtUvOx0Ibw', handle: '@GregIsenberg', name: 'Greg Isenberg' },
+        { id: 'UC2ojq-nuP8ceeHqiroeKhBA', handle: '@nateherk', name: 'Nate Herk | AI Automation' },
+        { id: 'UC6t1O76G0jYXOAoYCm153dA', handle: '@LennysPodcast', name: "Lenny's Podcast" },
+        { id: 'UC2WmuBuFq6gL08QYG-JjXKw', handle: '@intheworldofai', name: 'WorldofAI' },
+        { id: 'UCoy6cTJ7Tg0dqS-DI-_REsA', handle: '@Chase-H-AI', name: 'Chase AI' },
+        { id: 'UC0m81bQuthaQZmFbXEY9QSw', handle: '@AICodeKing', name: 'AICodeKing' },
+        { id: 'UCUyeluBRhGPCW4rPe_UvBZQ', handle: '@ThePrimeTimeagen', name: 'The PrimeTime' },
+        { id: 'UCbDmEdLs-SB3FjrDFQJ4TDg', handle: '@reysu', name: 'Reysu' },
+        { id: 'UCmL7cQmNgV-3FxaB3Ueoixg', handle: '@claudelog', name: 'Claude Code Updates' },
       ];
       return jsonResponse(channels);
     }
