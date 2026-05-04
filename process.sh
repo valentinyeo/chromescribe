@@ -25,23 +25,36 @@ if is_video "$URL"; then
     # ---------- VIDEO FLOW ----------
     echo ">>> Phase 1: Transcribing..."
 
-    # TikTok URLs need yt-dlp download first
+    # Determine deterministic SRT filename from URL so we never pick up a stale file.
+    # TikTok URLs need yt-dlp download first (transcribe CLI only supports YouTube + local files).
     if echo "$URL" | grep -qi "tiktok.com"; then
         echo ">>> TikTok detected — downloading audio with yt-dlp..."
-        AUDIO_FILE="tiktok_$(date +%s).mp3"
+        TS=$(date +%s)
+        AUDIO_FILE="tiktok_${TS}.mp3"
+        SRT="tiktok_${TS}.srt"
         yt-dlp -x --audio-format mp3 -o "$AUDIO_FILE" "$URL"
-        transcribe "$AUDIO_FILE"
+        rm -f "$SRT"
+        transcribe -o "$SRT" "$AUDIO_FILE"
+        TR_EXIT=$?
         rm -f "$AUDIO_FILE"
     else
-        transcribe "$URL"
+        YT_ID=$(echo "$URL" | grep -oE '(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[a-zA-Z0-9_-]{11}' | grep -oE '[a-zA-Z0-9_-]{11}$' | head -1)
+        if [ -z "$YT_ID" ]; then
+            echo ">>> ERROR: Could not extract YouTube ID from URL: $URL"
+            exit 1
+        fi
+        SRT="youtube_${YT_ID}.srt"
+        rm -f "$SRT"
+        transcribe -o "$SRT" "$URL"
+        TR_EXIT=$?
     fi
 
-    SRT=$(ls -t *.srt 2>/dev/null | head -1)
-    if [ -z "$SRT" ]; then
-        echo ">>> ERROR: No SRT file found. Transcription failed."
+    if [ "$TR_EXIT" -ne 0 ] || [ ! -s "$SRT" ]; then
+        echo ">>> ERROR: transcribe failed (exit=$TR_EXIT) or produced no/empty SRT at '$SRT'."
+        echo ">>> Check OPENAI_API_KEY (env var or ~/.transcribe/config.json) and network."
         exit 1
     fi
-    echo ">>> Found SRT: $SRT"
+    echo ">>> Found SRT: $SRT ($(wc -c < "$SRT") bytes)"
 
     echo ">>> Uploading raw transcript to dashboard..."
     UPLOAD_RESULT=$(python upload_transcript.py "$URL" "$SRT")
