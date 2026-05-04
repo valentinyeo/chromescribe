@@ -32,6 +32,10 @@ if is_video "$URL"; then
     TMPDIR="$(mktemp -d "/tmp/chromescribe.${TS}.XXXX")"
     trap 'rm -rf "$TMPDIR"' EXIT
 
+    # Curl on Windows is a native binary that can't read MSYS-style /tmp paths.
+    # Convert paths via cygpath when available; fall back to the raw path on Linux.
+    winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
+
     api_call() {
         local method="$1" path="$2"
         shift 2
@@ -45,16 +49,28 @@ if is_video "$URL"; then
             "${DASHBOARD_BASE}${path}"
     }
 
-    AUDIO_FILE="$TMPDIR/audio.mp3"
-    if ! yt-dlp -x --audio-format mp3 -o "$AUDIO_FILE" "$URL" 2>&1 | tail -3; then
+    # yt-dlp downloads in the original format; ffmpeg converts to mp3.
+    # `-S vcodec:h264` prefers h264 over h265/bytevc1 (TikTok defaults to h265,
+    # which Windows ffmpeg builds often can't decode).
+    DOWNLOAD_TEMPLATE="$TMPDIR/raw.%(ext)s"
+    if ! yt-dlp -S "vcodec:h264" -o "$DOWNLOAD_TEMPLATE" "$URL" 2>&1 | tail -3; then
         echo ">>> ERROR: yt-dlp failed"
         exit 1
     fi
-    if [ ! -s "$AUDIO_FILE" ]; then
-        echo ">>> ERROR: yt-dlp produced no audio at $AUDIO_FILE"
+    RAW_FILE=$(ls "$TMPDIR"/raw.* 2>/dev/null | head -1)
+    if [ -z "$RAW_FILE" ] || [ ! -s "$RAW_FILE" ]; then
+        echo ">>> ERROR: yt-dlp produced no file"
         exit 1
     fi
-    echo ">>> Audio downloaded: $(du -h "$AUDIO_FILE" | cut -f1)"
+    echo ">>> Downloaded: $(du -h "$RAW_FILE" | cut -f1)"
+
+    AUDIO_FILE="$TMPDIR/audio.mp3"
+    if ! ffmpeg -i "$RAW_FILE" -vn -ac 1 -ab 64k -ar 16000 "$AUDIO_FILE" -y -loglevel error; then
+        echo ">>> ERROR: ffmpeg audio extraction failed"
+        exit 1
+    fi
+    rm -f "$RAW_FILE"
+    echo ">>> Audio extracted: $(du -h "$AUDIO_FILE" | cut -f1)"
 
     FILE_SIZE=$(stat -c%s "$AUDIO_FILE")
     TRANSCRIPT_ID=""
@@ -63,10 +79,10 @@ if is_video "$URL"; then
     if [ "$FILE_SIZE" -le 500000 ]; then
         echo ">>> Small file — uploading directly for transcription..."
         UPLOAD_RESULT=$(api_call POST /api/transcribe \
-            -F "audio=@${AUDIO_FILE};type=audio/mpeg" \
+            -F "audio=@$(winpath "$AUDIO_FILE");type=audio/mpeg" \
             -F "url=$URL")
-        TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
-        TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; print(json.load(sys.stdin).get('title',''))" 2>/dev/null)
+        TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id') or d.get('id',''))" 2>/dev/null)
+        TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('title') or d.get('title',''))" 2>/dev/null)
         if [ -z "$TRANSCRIPT_ID" ]; then
             echo ">>> ERROR: Upload failed. Response: $UPLOAD_RESULT"
             exit 1
@@ -89,7 +105,7 @@ if is_video "$URL"; then
             [ -f "$chunk" ] || continue
             CHUNK_COUNT=$((CHUNK_COUNT + 1))
             echo "    Transcribing chunk $CHUNK_COUNT ($(du -h "$chunk" | cut -f1))..."
-            CHUNK_RESULT=$(api_call POST /api/whisper --max-time 60 -F "audio=@${chunk};type=audio/mpeg")
+            CHUNK_RESULT=$(api_call POST /api/whisper --max-time 60 -F "audio=@$(winpath "$chunk");type=audio/mpeg")
             CHUNK_TEXT=$(echo "$CHUNK_RESULT" | python -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('text',''))" 2>/dev/null)
             if [ -z "$CHUNK_TEXT" ]; then
                 FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -118,9 +134,9 @@ md = f"# Video Transcript\n\n**Source:** {url}\n**Date:** {today}\n**Type:** Vid
 print(json.dumps({"url": url, "markdown_content": md}))
 ' > "$MD_FILE"
 
-        UPLOAD_RESULT=$(api_call POST /api/transcribe -H "Content-Type: application/json" -d @"$MD_FILE")
-        TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
-        TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; print(json.load(sys.stdin).get('title',''))" 2>/dev/null)
+        UPLOAD_RESULT=$(api_call POST /api/transcribe -H "Content-Type: application/json" -d @"$(winpath "$MD_FILE")")
+        TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id') or d.get('id',''))" 2>/dev/null)
+        TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('title') or d.get('title',''))" 2>/dev/null)
         if [ -z "$TRANSCRIPT_ID" ]; then
             echo ">>> ERROR: Combined upload failed. Response: $UPLOAD_RESULT"
             exit 1
@@ -135,7 +151,11 @@ print(json.dumps({"url": url, "markdown_content": md}))
 
     echo ">>> Phase 2: Generating AI summary + classification with pi..."
 
-    TRANSCRIPT_FILE="$TMPDIR/transcript_${TRANSCRIPT_ID}.txt"
+    # Pi (Windows binary) can't reliably resolve MSYS /tmp paths, so write files
+    # pi reads/produces under output/ which has a known Windows location relative
+    # to the project dir. output/ is gitignored.
+    mkdir -p output
+    TRANSCRIPT_FILE="output/transcript_${TRANSCRIPT_ID}.txt"
     api_call GET "/api/transcript/$TRANSCRIPT_ID/content" > "$TRANSCRIPT_FILE"
     if [ ! -s "$TRANSCRIPT_FILE" ]; then
         echo ">>> WARNING: Could not fetch transcript content for pi"
@@ -154,8 +174,8 @@ except: print('(none yet)')
 " 2>/dev/null)
     echo ">>> Existing categories: $EXISTING_CATS"
 
-    SUMMARY_FILE="$TMPDIR/summary_${TRANSCRIPT_ID}.md"
-    CLASSIFY_FILE="$TMPDIR/classify_${TRANSCRIPT_ID}.json"
+    SUMMARY_FILE="output/summary_${TRANSCRIPT_ID}.md"
+    CLASSIFY_FILE="output/classify_${TRANSCRIPT_ID}.json"
 
     UPDATE_HELPER="$TMPDIR/update.sh"
     cat > "$UPDATE_HELPER" << 'UPDATEEOF'
