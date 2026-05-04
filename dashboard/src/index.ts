@@ -3,6 +3,8 @@
  * YouTube Transcription with Cloudflare AI
  */
 
+import { Buffer } from 'node:buffer';
+
 interface Env {
   DB: D1Database;
   TRANSCRIPTS: R2Bucket;
@@ -294,8 +296,9 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       }
       const audioBuffer = await audioField.arrayBuffer();
       try {
-        const result = await env.AI.run('@cf/openai/whisper', {
-          audio: Array.from(new Uint8Array(audioBuffer)),
+        const audioB64 = Buffer.from(audioBuffer).toString('base64');
+        const result = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
+          audio: audioB64,
         }) as WhisperResponse;
         return jsonResponse({ text: result.text });
       } catch (e: any) {
@@ -521,8 +524,9 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         console.log(`Transcribing audio with Cloudflare AI, buffer size: ${audioBuffer.byteLength}`);
         let transcript: WhisperResponse;
         try {
-          transcript = await env.AI.run('@cf/openai/whisper', {
-            audio: Array.from(new Uint8Array(audioBuffer)),
+          const audioB64 = Buffer.from(audioBuffer).toString('base64');
+          transcript = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
+            audio: audioB64,
           }) as WhisperResponse;
           console.log('Transcription complete, text length:', transcript.text?.length);
         } catch (e: any) {
@@ -532,7 +536,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
 
         // Generate markdown
         const wordCount = transcript.text.split(/\s+/).filter(w => w.length > 0).length;
-        const srtContent = whisperToSRT(transcript.segments);
+        const srtContent = transcript.segments ? whisperToSRT(transcript.segments) : '';
         
         const markdownContent = `# ${title}
 
