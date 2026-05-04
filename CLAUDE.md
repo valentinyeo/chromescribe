@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ChromeScribe is a video/article transcription platform with three components:
 
-1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs `bash process.sh`. Hardcoded to Windows paths. Phase 1 transcribes + uploads raw transcript; Phase 2 uses `pi` CLI (MiniMax M2.5-highspeed) for AI summary.
+1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs `bash process.sh`. Hardcoded to Windows paths. Video URLs (YouTube/TikTok): Phase 1 downloads audio via yt-dlp and transcribes through the dashboard's Cloudflare AI Whisper endpoints; Phase 2 uses `pi` CLI (MiniMax) for summary + classification (category + tags). Article URLs: Jina Reader extracts the page; Phase 2 summarizes.
 2. **Cloudflare Worker API + Dashboard** (`dashboard/`) — TypeScript Worker serving a transcript dashboard. Uses D1 (SQLite) for metadata, R2 for SRT/markdown storage, and Cloudflare AI (Whisper) for audio transcription.
 3. **Processing System Prompt** (this file, below) — Instructions for Claude Code instances that receive `process: <url>` commands from the extension.
 
@@ -15,8 +15,13 @@ ChromeScribe is a video/article transcription platform with three components:
 **Extension flow** (current, via `process.sh`):
 ```
 Extension → localhost:7681 terminal → bash process.sh <url>
-  Phase 1: transcribe CLI (or yt-dlp + transcribe for TikTok) → upload_transcript.py → dashboard API
-  Phase 2: pi CLI (MiniMax) reads SRT → generates summary → update_transcript.py → dashboard API
+  if video URL (YouTube/TikTok):
+    Phase 1: yt-dlp → ffmpeg chunk (>500KB) → POST /api/whisper per chunk → POST /api/transcribe (markdown JSON)
+             or, for small files: POST /api/transcribe (audio multipart, Worker transcribes server-side)
+    Phase 2: pi reads /api/transcript/:id/content → summary + classification → PUT /api/transcripts/:id
+  else (article URL):
+    Phase 1: Jina Reader (r.jina.ai) → upload_article.py → dashboard API
+    Phase 2: pi reads article file → summary → update_transcript.py → dashboard API
 ```
 
 **Claude Code flow** (manual, via `process: <url>`):
@@ -69,9 +74,9 @@ Push to `master` triggers `.github/workflows/deploy.yml` which uploads static fi
 - **D1 database**: `chromescribe-db` (`08532531-b2b5-4922-9e88-7cfdd074928a`)
 - **R2 bucket**: `chromescribe-transcripts` — stores both SRT files and the static HTML dashboard
 - **Worker URL**: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/`
-- **`transcribe` CLI**: `@illyism/transcribe` v3.1.0 — uses OpenAI Whisper API (~$0.006/min), outputs `.srt` to cwd
-- **`transcribe` only supports YouTube URLs + local files** — TikTok/other platforms need `yt-dlp -x --audio-format mp3` first, then pass the local file to transcribe
-- **Dashboard is behind Cloudflare Zero Trust** — API calls require `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers (service token creds in `upload_transcript.py`/`update_transcript.py`)
+- **Transcription**: process.sh (video flow) and monitor.sh both use Cloudflare Workers AI Whisper (`@cf/openai/whisper-large-v3-turbo`) via the dashboard. The `@illyism/transcribe` CLI is no longer invoked by any active script.
+- **TikTok URLs** are downloaded via `yt-dlp -x --audio-format mp3`, then the local audio is uploaded to the dashboard's `/api/transcribe` (multipart) or chunked through `/api/whisper`. The dashboard's `parseVideoUrl` accepts `tiktok.com/@user/video/id` and stores it as `tiktok:<id>`.
+- **Dashboard is behind Cloudflare Zero Trust** — API calls require `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers (service token creds in `process.sh`, `monitor.sh`, `update_transcript.py`, and `upload_article.py`)
 - **Windows encoding**: Python scripts need `sys.stdout.reconfigure(encoding='utf-8', errors='replace')` — API responses contain emoji that break Windows cp1252 console
 - **process.sh auto-opens transcript**: After Phase 2, opens `transcript.html?id=<ID>` in Edge via `cmd.exe /c start msedge`. Terminal tab stays open (VPSManager doesn't support auto-close on exit).
 - **VPSManager terminal** (`localhost:7681`): WebSocket-based, accepts `cmd`/`cwd`/`title` URL params. No API to close tab or redirect on process exit. Extension uses `activeTab` + `contextMenus` permissions only.
