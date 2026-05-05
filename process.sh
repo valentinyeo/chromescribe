@@ -127,11 +127,12 @@ if is_video "$URL"; then
         TEXT_FILE="$TMPDIR/text.txt"
         echo "$COMBINED_TEXT" > "$TEXT_FILE"
         TEXT_FILE="$TEXT_FILE" URL="$URL" TODAY="$TODAY" python -c '
-import json, os
-with open(os.environ["TEXT_FILE"]) as f: text = f.read().strip()
+import json, os, sys
+sys.stdout.reconfigure(encoding="utf-8")
+with open(os.environ["TEXT_FILE"], encoding="utf-8") as f: text = f.read().strip()
 url, today = os.environ["URL"], os.environ["TODAY"]
 md = f"# Video Transcript\n\n**Source:** {url}\n**Date:** {today}\n**Type:** Video Transcription\n\n---\n\n## Full Transcript\n\n{text}\n\n---\n\n*Transcribed with Cloudflare Workers AI (chunked)*\n"
-print(json.dumps({"url": url, "markdown_content": md}))
+print(json.dumps({"url": url, "markdown_content": md}, ensure_ascii=False))
 ' > "$MD_FILE"
 
         UPLOAD_RESULT=$(api_call POST /api/transcribe -H "Content-Type: application/json" -d @"$(winpath "$MD_FILE")")
@@ -259,13 +260,14 @@ IMPORTANT STEPS — do them in order, then exit:
     if [ -f "$CLASSIFY_FILE" ]; then
         echo ">>> Uploading classification..."
         CLASSIFY_PAYLOAD=$(CLASSIFY_FILE="$CLASSIFY_FILE" python -c "
-import json, os
+import json, os, sys
+sys.stdout.reconfigure(encoding='utf-8')
 try:
-    with open(os.environ['CLASSIFY_FILE']) as f: c = json.load(f)
+    with open(os.environ['CLASSIFY_FILE'], encoding='utf-8') as f: c = json.load(f)
     out = {}
     if c.get('category'): out['category'] = c['category']
     if isinstance(c.get('tags'), list): out['tags'] = c['tags']
-    print(json.dumps(out))
+    print(json.dumps(out, ensure_ascii=False))
 except Exception as e:
     print('')
 " 2>/dev/null)
