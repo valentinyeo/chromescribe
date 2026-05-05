@@ -179,21 +179,34 @@ except: print('(none yet)')
     CLASSIFY_FILE="output/classify_${TRANSCRIPT_ID}.json"
 
     UPDATE_HELPER="$TMPDIR/update.sh"
-    cat > "$UPDATE_HELPER" << 'UPDATEEOF'
+    cat > "$UPDATE_HELPER" << UPDATEEOF
 #!/bin/bash
-SUMMARY_FILE="$1"
-TITLE="$2"
-UPDATEEOF
-    cat >> "$UPDATE_HELPER" << UPDATEEOF
-PAYLOAD=\$(python -c "import json; print(json.dumps({'markdown_content': open('\$SUMMARY_FILE').read(), 'title': '\$TITLE'}))")
+# Args: \$1 = summary markdown path, \$2 = title.
+# Builds a UTF-8 JSON payload via Python (avoids cp1252 mojibake on Windows
+# where Python's default open() encoding is cp1252) and curls it with
+# --data-binary so curl preserves bytes exactly.
+SUMMARY_FILE="\$1"
+TITLE="\$2"
+PAYLOAD_FILE="\$(mktemp)"
+
+SUMMARY_FILE="\$SUMMARY_FILE" TITLE="\$TITLE" PAYLOAD_FILE="\$PAYLOAD_FILE" python -c '
+import json, os
+with open(os.environ["SUMMARY_FILE"], encoding="utf-8") as f:
+    md = f.read()
+with open(os.environ["PAYLOAD_FILE"], "w", encoding="utf-8") as f:
+    json.dump({"markdown_content": md, "title": os.environ["TITLE"]}, f, ensure_ascii=False)
+'
+
+WIN_PAYLOAD=\$(cygpath -w "\$PAYLOAD_FILE" 2>/dev/null || echo "\$PAYLOAD_FILE")
 curl -s -L -X PUT \\
     -H "CF-Access-Client-Id: $CF_ACCESS_ID" \\
     -H "CF-Access-Client-Secret: $CF_ACCESS_SECRET" \\
-    -H "Content-Type: application/json" \\
+    -H "Content-Type: application/json; charset=utf-8" \\
     -c /tmp/cf-cookies-chromescribe.txt \\
     -b /tmp/cf-cookies-chromescribe.txt \\
-    -d "\$PAYLOAD" \\
+    --data-binary "@\$WIN_PAYLOAD" \\
     "${DASHBOARD_BASE}/api/transcripts/${TRANSCRIPT_ID}"
+rm -f "\$PAYLOAD_FILE"
 UPDATEEOF
     chmod +x "$UPDATE_HELPER"
 
