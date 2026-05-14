@@ -301,8 +301,52 @@
       margin: 0 auto;
       padding: 16px 24px 0;
       display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    /* Chips clamp to a single row; the expander toggles full height */
+    .category-chips {
+      flex: 1;
+      min-width: 0;
+      display: flex;
       flex-wrap: wrap;
       gap: 8px;
+      overflow: hidden;
+      max-height: 34px;
+    }
+
+    .category-filters.expanded .category-chips {
+      max-height: none;
+    }
+
+    .category-expand {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .category-expand:hover {
+      background: var(--card-hover);
+      color: var(--foreground);
+    }
+
+    .category-expand svg {
+      width: 14px;
+      height: 14px;
+      transition: transform 0.2s ease;
+    }
+
+    .category-filters.expanded .category-expand svg {
+      transform: rotate(180deg);
     }
 
     .category-chip {
@@ -750,7 +794,12 @@
   </div>
 
   <!-- Category filters -->
-  <div id="categoryFilters" class="category-filters"></div>
+  <div id="categoryFilters" class="category-filters">
+    <div class="category-chips" id="categoryChips"></div>
+    <button class="category-expand" id="categoryExpand" onclick="toggleCategories()" aria-expanded="false" title="Show all categories">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+    </button>
+  </div>
 
   <!-- Main -->
   <main>
@@ -859,6 +908,7 @@
     let activeCategory = null;
     let activeChannel = null; // canonical channel name or null
     let channelsCache = [];
+    let searchQuery = '';
 
     document.addEventListener('DOMContentLoaded', () => {
       loadTranscripts();
@@ -886,14 +936,38 @@
     }
 
     function renderCategoryFilters(categories) {
-      const container = document.getElementById('categoryFilters');
-      if (!categories.length) { container.innerHTML = ''; return; }
+      const chipsBox = document.getElementById('categoryChips');
+      const expandBtn = document.getElementById('categoryExpand');
+      if (!categories.length) {
+        chipsBox.innerHTML = '';
+        expandBtn.classList.add('hidden');
+        return;
+      }
       const total = categories.reduce((s, c) => s + c.count, 0);
       const chips = [
         `<button class="category-chip ${activeCategory === null ? 'active' : ''}" onclick="setCategory(null)">All<span class="count">${total}</span></button>`,
         ...categories.map(c => `<button class="category-chip ${activeCategory === c.category ? 'active' : ''}" onclick="setCategory('${escapeAttr(c.category)}')">${escapeHtml(c.category)}<span class="count">${c.count}</span></button>`)
       ];
-      container.innerHTML = chips.join('');
+      chipsBox.innerHTML = chips.join('');
+
+      // Restore the saved collapsed/expanded state
+      const bar = document.getElementById('categoryFilters');
+      const expanded = localStorage.getItem('cs-categories-expanded') === '1';
+      bar.classList.toggle('expanded', expanded);
+      expandBtn.setAttribute('aria-expanded', String(expanded));
+
+      // Only show the expander when the chips actually overflow one row
+      requestAnimationFrame(() => {
+        expandBtn.classList.toggle('hidden', chipsBox.scrollHeight <= 44);
+      });
+    }
+
+    function toggleCategories() {
+      const bar = document.getElementById('categoryFilters');
+      const btn = document.getElementById('categoryExpand');
+      const open = bar.classList.toggle('expanded');
+      btn.setAttribute('aria-expanded', String(open));
+      localStorage.setItem('cs-categories-expanded', open ? '1' : '0');
     }
 
     function setCategory(cat) {
@@ -927,6 +1001,21 @@
         filtered = filtered.filter(t => {
           const c = (t.channel || '').toLowerCase();
           return c === n || c.startsWith(n);
+        });
+      }
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(t => {
+          if ((t.title || '').toLowerCase().includes(q)) return true;
+          if ((t.channel || '').toLowerCase().includes(q)) return true;
+          if ((t.category || '').toLowerCase().includes(q)) return true;
+          if (t.tags) {
+            try {
+              const tags = JSON.parse(t.tags);
+              if (Array.isArray(tags) && tags.some(x => String(x).toLowerCase().includes(q))) return true;
+            } catch {}
+          }
+          return false;
         });
       }
 
@@ -964,7 +1053,7 @@
               </svg>
               Open
             </a>
-            <button onclick="deleteTranscript(${t.id},'${escapeHtml(t.title)}')" class="btn btn-danger" style="width: 100px;">
+            <button type="button" class="btn btn-danger js-delete" data-id="${t.id}" data-title="${escapeHtml(t.title)}" style="width: 100px;">
               <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
               </svg>
@@ -1078,18 +1167,18 @@
       }
     }
 
-    let searchTimeout;
-    async function handleSearch(query) {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(async () => {
-        if (!query.trim()) { loadTranscripts(); return; }
-        try {
-          const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
-          transcripts = (await res.json()).data || [];
-          renderTranscripts();
-        } catch (err) {}
-      }, 300);
+    function handleSearch(query) {
+      searchQuery = (query || '').trim();
+      renderTranscripts();
     }
+
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('.js-delete');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      deleteTranscript(Number(btn.dataset.id), btn.dataset.title || '');
+    });
 
     function showToast(message, type = 'success') {
       const toast = document.getElementById('toast');
