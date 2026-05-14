@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Transcript - ChromeScribe</title>
+  <script>
+    // Apply saved theme before paint to avoid flash
+    (function() {
+      try {
+        var stored = localStorage.getItem('cs-theme');
+        var preferLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (preferLight ? 'light' : 'dark'));
+      } catch (e) {}
+    })();
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
@@ -84,7 +94,31 @@
     .btn-danger:hover {
       background: #7a3d3d;
     }
-    
+
+    .btn-summarize {
+      background: #3a2d5a;
+    }
+
+    .btn-summarize:hover {
+      background: #4d3d7a;
+    }
+
+    .btn-summarize:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .summarize-banner {
+      background: rgba(91, 63, 179, 0.15);
+      border: 1px solid rgba(91, 63, 179, 0.5);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #b9a7e8;
+    }
+
     .video-wrapper {
       flex: 1;
       position: relative;
@@ -355,13 +389,127 @@
     
     .error a { color: #3ea6ff; }
     
+    .nav-btn {
+      min-width: 32px;
+      padding: 6px 10px;
+      font-weight: 600;
+    }
+    .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* Mobile bottom nav bar — hidden on desktop */
+    .nav-bar { display: none; }
+    .nav-fab {
+      flex: 1;
+      min-height: 48px;
+      max-width: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 16px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .nav-fab:hover:not(:disabled) { background: #3a3a3a; }
+    .nav-fab:active:not(:disabled) { background: #4a4a4a; }
+    .nav-fab:disabled { opacity: 0.3; cursor: not-allowed; }
+    .nav-fab svg { width: 22px; height: 22px; fill: currentColor; }
+    .nav-counter {
+      font-size: 12px;
+      color: #888;
+      min-width: 56px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---------- Light theme (manual toggle or auto via prefers-color-scheme) ---------- */
+    [data-theme="light"] html,
+    [data-theme="light"] body { background: #ffffff; color: #111; }
+    [data-theme="light"] .header,
+    [data-theme="light"] .video-info,
+    [data-theme="light"] .transcript-header { background: #f5f5f5; border-color: #e0e0e0; }
+    [data-theme="light"] .transcript-side { background: #fafafa; border-left-color: #e0e0e0; border-top-color: #e0e0e0; }
+    [data-theme="light"] .header { border-bottom-color: #e0e0e0; }
+    [data-theme="light"] .logo,
+    [data-theme="light"] .video-title,
+    [data-theme="light"] .transcript-content strong { color: #111; }
+    [data-theme="light"] .logo svg { fill: #111; }
+    [data-theme="light"] .video-meta { color: #555; }
+    [data-theme="light"] .btn { background: #e8e8e8; color: #111; }
+    [data-theme="light"] .btn:hover { background: #dcdcdc; }
+    [data-theme="light"] .btn-retranscribe { background: #cfe9cf; color: #1a4a1a; }
+    [data-theme="light"] .btn-retranscribe:hover { background: #b8dcb8; }
+    [data-theme="light"] .btn-danger { background: #f4cccc; color: #5a1a1a; }
+    [data-theme="light"] .btn-danger:hover { background: #e8b8b8; }
+    [data-theme="light"] .btn-summarize { background: #e2d9f5; color: #3a2d5a; }
+    [data-theme="light"] .btn-summarize:hover { background: #d4c7ef; }
+    [data-theme="light"] .summarize-banner { background: rgba(91, 63, 179, 0.08); border-color: rgba(91, 63, 179, 0.3); color: #5b3fb3; }
+    [data-theme="light"] .video-tags .tag-pill { background: #f0f0f0; border-color: #d8d8d8; color: #555; }
+    [data-theme="light"] .transcript-content { color: #222; }
+    [data-theme="light"] .transcript-content a { color: #1565c0; }
+    [data-theme="light"] .transcript-content blockquote { border-left-color: #ccc; color: #555; }
+    [data-theme="light"] .transcript-content hr,
+    [data-theme="light"] .transcript-content details { border-color: #e0e0e0; }
+    [data-theme="light"] .nav-bar {
+      background: rgba(255, 255, 255, 0.95);
+      border-top-color: #e0e0e0;
+    }
+    [data-theme="light"] .nav-fab {
+      background: #f0f0f0;
+      border-color: #d8d8d8;
+      color: #111;
+    }
+    [data-theme="light"] .nav-fab:hover:not(:disabled) { background: #e0e0e0; }
+    [data-theme="light"] .nav-counter { color: #555; }
+    /* Video player area stays dark — videos read better against black */
+    [data-theme="light"] .video-side,
+    [data-theme="light"] .video-wrapper { background: #000; }
+
     @media (max-width: 768px) {
-      .container { flex-direction: column; }
-      .video-side { flex: none; height: 45vh; min-height: 240px; }
-      .transcript-side { width: 100%; flex: 1; border-left: none; border-top: 1px solid #333; }
+      .container { flex-direction: column; height: auto; min-height: 100vh; }
+      .video-side { flex: none; width: 100%; }
+      .video-wrapper {
+        flex: none;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        min-height: 0;
+      }
+      .article-frame, .article-blocked {
+        flex: none;
+        width: 100%;
+        aspect-ratio: 4 / 3;
+      }
+      .transcript-side { width: 100%; flex: 1 1 auto; border-left: none; border-top: 1px solid #333; }
       .header { flex-wrap: wrap; gap: 8px; }
-      .header-btns { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; }
+      .header-btns { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
       .btn { font-size: 12px; padding: 6px 4px; text-align: center; }
+      .desktop-only { display: none !important; }
+
+      /* Sticky bottom nav (thumb zone) */
+      .nav-bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+        background: rgba(20, 20, 20, 0.92);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-top: 1px solid #333;
+      }
+      /* Reserve space so content isn't hidden by the fixed bar */
+      body { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
     }
   </style>
 </head>
@@ -374,9 +522,13 @@
           ChromeScribe
         </a>
         <div class="header-btns">
+          <button class="btn nav-btn desktop-only nav-prev" onclick="goPrev()" title="Previous (←)" disabled>←</button>
+          <button class="btn nav-btn desktop-only nav-next" onclick="goNext()" title="Next (→)" disabled>→</button>
+          <button class="btn" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">☀</button>
           <a class="btn" href="/settings.html" title="Settings">⚙</a>
           <button class="btn" onclick="copyText()">Copy</button>
           <button class="btn" onclick="downloadMd()">Download MD</button>
+          <button class="btn btn-summarize" onclick="summarize()">✨ Summarize</button>
           <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
           <button class="btn btn-danger" onclick="deleteTranscript()">🗑 Delete</button>
         </div>
@@ -415,10 +567,39 @@
       </div>
     </div>
   </div>
+
+  <nav class="nav-bar" id="navBar" aria-label="Transcript navigation">
+    <button class="nav-fab nav-prev" onclick="goPrev()" title="Previous" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+      <span>Prev</span>
+    </button>
+    <div class="nav-counter" id="navCounter"></div>
+    <button class="nav-fab nav-next" onclick="goNext()" title="Next" disabled>
+      <span>Next</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.59 16.59 10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
+    </button>
+  </nav>
   
   <script>
     const API = '/api';
     let markdown = '';
+    let navList = null;
+    let navIndex = -1;
+
+    // Sync the toggle icon with the theme that was applied in <head>
+    (function syncThemeIcon() {
+      const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+      const btn = document.getElementById('themeToggle');
+      if (btn) btn.textContent = theme === 'light' ? '🌙' : '☀';
+    })();
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = current === 'light' ? 'dark' : 'light';
+      localStorage.setItem('cs-theme', next);
+      document.documentElement.setAttribute('data-theme', next);
+      const btn = document.getElementById('themeToggle');
+      if (btn) btn.textContent = next === 'light' ? '🌙' : '☀';
+    }
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -502,6 +683,7 @@
 
           document.querySelector('.transcript-header').textContent = 'Summary';
           document.getElementById('content').innerHTML = parseMarkdown(summaryMd);
+          applySummarizeState();
           return;
         }
 
@@ -577,12 +759,57 @@
         document.getElementById('videoTags').innerHTML = tagParts.join('');
 
         document.getElementById('content').innerHTML = parseMarkdown(markdown);
-        
+        applySummarizeState();
+
       } catch (e) {
         showError(e.message);
       }
+
+      loadNav(id);
     }
-    
+
+    async function loadNav(currentId) {
+      try {
+        const res = await fetch(API + '/transcripts');
+        if (!res.ok) return;
+        const json = await res.json();
+        navList = (json.data || []).map(t => String(t.id));
+        navIndex = navList.indexOf(String(currentId));
+        updateNavButtons();
+      } catch {}
+    }
+
+    function updateNavButtons() {
+      const prevs = document.querySelectorAll('.nav-prev');
+      const nexts = document.querySelectorAll('.nav-next');
+      const counter = document.getElementById('navCounter');
+      const noList = !navList || navIndex < 0;
+      // newest-first list: prev = newer (index-1), next = older (index+1)
+      const prevDisabled = noList || navIndex <= 0;
+      const nextDisabled = noList || navIndex >= navList.length - 1;
+      prevs.forEach(b => b.disabled = prevDisabled);
+      nexts.forEach(b => b.disabled = nextDisabled);
+      if (counter) {
+        counter.textContent = noList ? '' : (navIndex + 1) + ' / ' + navList.length;
+      }
+    }
+
+    function goPrev() {
+      if (!navList || navIndex <= 0) return;
+      window.location.search = '?id=' + navList[navIndex - 1];
+    }
+
+    function goNext() {
+      if (!navList || navIndex < 0 || navIndex >= navList.length - 1) return;
+      window.location.search = '?id=' + navList[navIndex + 1];
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target.matches('input, textarea, [contenteditable]')) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
+    });
+
     function parseMarkdown(text) {
       // Convert plain URLs to clickable links first
       const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`\[\]]+)/g;
@@ -694,7 +921,51 @@
         btn.textContent = '♻️ Retranscribe';
       }
     }
-    
+
+    // Reflect whether this transcript has been summarized: relabel the button and,
+    // if it's still raw, show a banner explaining why there's no TL;DR / article.
+    function applySummarizeState() {
+      const isRaw = !/^##\s+TL;DR/m.test(markdown);
+      const btn = document.querySelector('.btn-summarize');
+      if (btn) btn.textContent = isRaw ? '✨ Summarize' : '✨ Re-summarize';
+      if (isRaw) {
+        const content = document.getElementById('content');
+        if (content && !content.querySelector('.summarize-banner')) {
+          const banner = document.createElement('div');
+          banner.className = 'summarize-banner';
+          banner.textContent = 'Not summarized yet — only the raw transcript is shown. Click ✨ Summarize to generate the TL;DR and article.';
+          content.prepend(banner);
+        }
+      }
+    }
+
+    async function summarize() {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      if (!id) return;
+
+      const btn = document.querySelector('.btn-summarize');
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ Summarizing…';
+
+      try {
+        const res = await fetch(`${API}/transcripts/${id}/summarize`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        window.location.reload();
+      } catch (e) {
+        alert('Summarize failed: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
     init();
   </script>
 </body>

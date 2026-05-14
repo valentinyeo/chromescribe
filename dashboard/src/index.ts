@@ -7,6 +7,7 @@ interface Env {
   DB: D1Database;
   TRANSCRIPTS: R2Bucket;
   AI: Ai;
+  OPENROUTER_API_KEY: string;
 }
 
 interface Transcript {
@@ -128,6 +129,99 @@ function formatSRTTime(seconds: number): string {
   const secs = Math.floor(seconds % 60);
   const ms = Math.floor((seconds % 1) * 1000);
   return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
+}
+
+// Phase 2: parse stored markdown, regenerate TL;DR + The Article via OpenRouter,
+// return the rebuilt markdown. Handles both raw-only and already-structured input
+// (so re-summarize works). Throws on any failure — caller must not write on throw.
+async function summarizeContent(content: string, apiKey: string): Promise<string> {
+  // header = everything before the first "## " heading (title + Source/Date/Type + ---)
+  const firstSection = content.search(/^##\s/m);
+  const header = (firstSection >= 0 ? content.slice(0, firstSection) : content).trimEnd();
+
+  // Locate the transcript/article body and keep its original heading label
+  const bodyHeading = content.match(/^##\s+Full (Transcript|Article)\s*$/m);
+  let bodyLabel = 'Transcript';
+  let transcriptBody = '';
+  if (bodyHeading) {
+    bodyLabel = bodyHeading[1];
+    const section = content.slice((bodyHeading.index ?? 0) + bodyHeading[0].length);
+    const details = section.match(/<summary>[\s\S]*?<\/summary>([\s\S]*?)<\/details>/i);
+    transcriptBody = details
+      ? details[1].trim()
+      : section.replace(/\n+---\n+\*[^\n]*\*\s*$/, '').trim();
+  } else {
+    transcriptBody = (firstSection >= 0 ? content.slice(firstSection) : content).trim();
+  }
+
+  if (!transcriptBody) throw new Error('No transcript content to summarize');
+
+  const systemPrompt =
+    'You are a content summarizer. You turn a raw transcript or article into a structured, readable summary in markdown.';
+  const userPrompt = `Summarize the content below. Output ONLY markdown with EXACTLY these two sections, in this order, and nothing else (no title, no preamble, no code fences):
+
+## TL;DR
+
+- 3-5 bullet points, each starting with "- ". Be specific — names, numbers, claims. No filler.
+
+---
+
+## The Article
+
+An 800-1500 word web article using the pyramid principle: lead with the single most important insight, then descending importance. Short 2-4 sentence paragraphs. **Bold** key phrases. Use "### " subheadings every 2-3 paragraphs. Scale length to the content — never pad.
+
+CONTENT:
+${transcriptBody}`;
+
+  // reasoning disabled: Kimi K2.6's reasoning pass otherwise eats the token budget
+  // and intermittently returns empty content (finish_reason=length, len=0).
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'moonshotai/kimi-k2.6',
+      reasoning: { enabled: false },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`);
+  }
+
+  const data = await res.json() as any;
+  const raw = data?.choices?.[0]?.message?.content;
+  if (!raw || typeof raw !== 'string') throw new Error('OpenRouter returned no content');
+
+  // Take everything from the first "## TL;DR" onward; drop any stray preamble/fences.
+  const start = raw.search(/##\s+TL;DR/);
+  if (start < 0 || !/##\s+The Article/.test(raw)) {
+    throw new Error('OpenRouter output missing TL;DR / The Article sections');
+  }
+  const summary = raw.slice(start).replace(/\n*```\s*$/, '').trim();
+
+  return `${header}
+
+${summary}
+
+---
+
+## Full ${bodyLabel}
+
+<details>
+<summary>Click to expand full ${bodyLabel.toLowerCase()}</summary>
+
+${transcriptBody}
+
+</details>
+`;
 }
 
 // API Routes
@@ -701,6 +795,49 @@ ${srtContent || transcript.text}
         }
 
         return jsonResponse({ id, updated: true });
+      }
+    }
+
+    // POST /api/transcripts/:id/summarize - (re)generate TL;DR + The Article via OpenRouter
+    if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/summarize')) {
+      const parts = path.split('/');
+      if (parts.length === 3) {
+        const id = parts[1];
+
+        const existing = await env.DB
+          .prepare('SELECT srt_path FROM transcripts WHERE id = ?')
+          .bind(id)
+          .first<{ srt_path: string }>();
+        if (!existing) {
+          return handleError(new Error('Transcript not found'), 404);
+        }
+
+        if (!env.OPENROUTER_API_KEY) {
+          return handleError(new Error('OPENROUTER_API_KEY not configured'), 500);
+        }
+
+        const content = await env.TRANSCRIPTS.get(existing.srt_path);
+        if (!content) {
+          return handleError(new Error('Content file not found'), 404);
+        }
+        const rawMarkdown = await content.text();
+
+        let newMarkdown: string;
+        try {
+          newMarkdown = await summarizeContent(rawMarkdown, env.OPENROUTER_API_KEY);
+        } catch (e: any) {
+          // Leave R2 untouched on failure — no half-overwrite
+          return handleError(new Error(`Summarization failed: ${e.message}`), 502);
+        }
+
+        await env.TRANSCRIPTS.put(existing.srt_path, newMarkdown);
+        const wordCount = newMarkdown.split(/\s+/).filter(w => w.length > 0).length;
+        await env.DB
+          .prepare('UPDATE transcripts SET word_count = ? WHERE id = ?')
+          .bind(wordCount, id)
+          .run();
+
+        return jsonResponse({ id, summarized: true, word_count: wordCount });
       }
     }
 
