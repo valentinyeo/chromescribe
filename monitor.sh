@@ -198,138 +198,34 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
     fi
     log "  Transcribed and uploaded as #$transcript_id"
 
-    # Step 3: Fetch transcript text for pi to summarize
-    log "  Fetching transcript content..."
-    local transcript_file="$TMPDIR/transcript_${transcript_id}.txt"
-    api_call GET "/api/transcript/$transcript_id/content" > "$transcript_file"
-
-    if [ ! -s "$transcript_file" ]; then
-        log "  WARNING: Could not fetch transcript content"
+    # Step 3: Generate AI summary via the dashboard's server-side endpoint.
+    # Replaces the old local `pi` summary job — the endpoint (OpenRouter Kimi
+    # K2.6, internal timeout + retry) is reliable and independent of this
+    # machine. Non-fatal on failure: the raw transcript is already uploaded and
+    # the dashboard "Summarize" button is the recovery path, so we don't block.
+    log "  Generating summary (server-side)..."
+    local summarize_result
+    summarize_result=$(api_call POST "/api/transcripts/$transcript_id/summarize" --max-time 240)
+    if echo "$summarize_result" | grep -q '"success":true'; then
+        local sum_wc
+        sum_wc=$(echo "$summarize_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('word_count','?'))" 2>/dev/null)
+        log "  Summary generated (word_count=$sum_wc)"
     else
-        log "  Transcript fetched: $(wc -c < "$transcript_file") bytes"
+        log "  WARNING: summary failed — raw transcript stands, use the dashboard Summarize button. Response: $summarize_result"
     fi
 
-    # Step 4: Generate AI summary with pi (non-interactive, auto-exits)
-    log "  Generating summary with pi..."
-    local summary_file="$TMPDIR/summary_${transcript_id}.md"
-    local classify_file="$TMPDIR/classify_${transcript_id}.json"
-
-    # Fetch existing categories to encourage reuse (avoids drift)
-    local existing_cats
-    existing_cats=$(api_call GET /api/categories 2>/dev/null | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin).get('data', [])
-    cats = [c['category'] for c in data if c.get('category')]
-    print(', '.join(cats) if cats else '(none yet)')
-except: print('(none yet)')
-" 2>/dev/null)
-    log "  Existing categories: $existing_cats"
-
-    # Write the update helper script (uses curl, avoids Python urllib CF Access issue)
-    local update_helper="$TMPDIR/update.sh"
-    cat > "$update_helper" << 'UPDATEEOF'
-#!/bin/bash
-# Usage: ./update.sh <summary_file> <title>
-SUMMARY_FILE="$1"
-TITLE="$2"
-UPDATEEOF
-    cat >> "$update_helper" << UPDATEEOF
-PAYLOAD=\$(python3 -c "import json; print(json.dumps({'markdown_content': open('\$SUMMARY_FILE').read(), 'title': '\$TITLE'}))")
-curl -s -L -X PUT \\
-    -H "CF-Access-Client-Id: $CF_ACCESS_ID" \\
-    -H "CF-Access-Client-Secret: $CF_ACCESS_SECRET" \\
-    -H "Content-Type: application/json" \\
-    -c /tmp/cf-cookies-chromescribe.txt \\
-    -b /tmp/cf-cookies-chromescribe.txt \\
-    -d "\$PAYLOAD" \\
-    "${DASHBOARD_URL}/api/transcripts/${transcript_id}"
-UPDATEEOF
-    chmod +x "$update_helper"
-
-    pi --provider minimax --model MiniMax-M2.7-highspeed --no-session < /dev/null \
-      "You are a content summarizer and classifier. Read the transcript file '$transcript_file' and produce TWO output files.
-
-=== FILE 1: '$summary_file' ===
-
-# $title
-
-**Source:** $url
-**Date:** $(date +%Y-%m-%d)
-**Type:** Video Transcription
-
----
-
-## TL;DR
-
-<3-5 bullet points with key takeaways. Be specific — names, numbers, claims.>
-
----
-
-## The Article
-
-<800-1500 word web article using pyramid principle. Lead with the most important insight. Short paragraphs, bold key phrases, subheadings every 2-3 paragraphs.>
-
----
-
-## Full Transcript
-
-<details>
-<summary>Click to expand full transcript</summary>
-
-<Clean transcript text from the file. Remove any markdown headers or metadata — just the spoken words.>
-
-</details>
-
-=== FILE 2: '$classify_file' ===
-
-Classify the content. Write EXACTLY this JSON (and nothing else) to the file:
-
-{\"category\": \"<ONE short category, 1-3 words>\", \"tags\": [\"<tag1>\", \"<tag2>\", \"<tag3>\", \"<tag4>\", \"<tag5>\"]}
-
-Category rules:
-- PREFER reusing an existing category from this list if it fits: $existing_cats
-- Only invent a new one if none fit. Keep it short (1-3 words), use Title Case (e.g. \"AI Marketing\", \"AI Tutorials\", \"AI News\", \"AI Tools\", \"Programming\").
-- Categories should be broad enough to group multiple videos — not specific to one video.
-
-Tag rules:
-- 3-5 specific topical tags (people, tools, techniques, products mentioned)
-- Lowercase, short (1-3 words each), no hashtags
-- Examples: \"claude code\", \"prompt caching\", \"cursor\", \"agents\", \"rag\"
-
-IMPORTANT STEPS — do them in order, then exit:
-1. Read '$transcript_file' using cat
-2. Write the structured markdown to '$summary_file'
-3. Write the classification JSON to '$classify_file'
-4. Upload summary by running: bash $update_helper '$summary_file' '$title'
-5. Exit immediately. No questions. No further actions." 2>&1 | tail -5
-
-    log "  Pi agent finished"
-
-    # Step 4b: Upload classification if pi produced it
-    if [ -f "$classify_file" ]; then
-        log "  Uploading classification..."
-        local classify_payload
-        classify_payload=$(python3 -c "
-import json, sys
-try:
-    with open('$classify_file') as f: c = json.load(f)
-    out = {}
-    if c.get('category'): out['category'] = c['category']
-    if isinstance(c.get('tags'), list): out['tags'] = c['tags']
-    print(json.dumps(out))
-except Exception as e:
-    print('', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null)
-        if [ -n "$classify_payload" ] && [ "$classify_payload" != "{}" ]; then
-            api_call PUT "/api/transcripts/$transcript_id" -H "Content-Type: application/json" -d "$classify_payload" > /dev/null
-            log "  Classification uploaded: $classify_payload"
-        else
-            log "  WARNING: classify.json invalid or empty"
-        fi
+    # Step 4: Classify the content (category + tags) via the server-side endpoint.
+    # The Worker calls OpenRouter and writes category/tags straight to D1 — no
+    # local `pi`, no local API key needed. Non-fatal on failure.
+    log "  Classifying (server-side)..."
+    local classify_result
+    classify_result=$(api_call POST "/api/transcripts/$transcript_id/classify" --max-time 150)
+    if echo "$classify_result" | grep -q '"success":true'; then
+        local cs_cat
+        cs_cat=$(echo "$classify_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('category','?'))" 2>/dev/null)
+        log "  Classified: $cs_cat"
     else
-        log "  WARNING: pi did not produce classify.json"
+        log "  WARNING: classification failed. Response: $classify_result"
     fi
 
     # Step 5: Send Telegram notification with ChromeScribe URL + thumbnail

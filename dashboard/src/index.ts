@@ -173,39 +173,57 @@ An 800-1500 word web article using the pyramid principle: lead with the single m
 CONTENT:
 ${transcriptBody}`;
 
+  // One OpenRouter attempt: 90s abort ceiling (typical call ~12s), validate output.
   // reasoning disabled: Kimi K2.6's reasoning pass otherwise eats the token budget
   // and intermittently returns empty content (finish_reason=length, len=0).
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'moonshotai/kimi-k2.6',
-      reasoning: { enabled: false },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  });
+  const callModel = async (): Promise<string> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90_000);
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'moonshotai/kimi-k2.6',
+          reasoning: { enabled: false },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+        signal: ctrl.signal,
+      });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`);
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const data = await res.json() as any;
+      const raw = data?.choices?.[0]?.message?.content;
+      if (!raw || typeof raw !== 'string') throw new Error('OpenRouter returned no content');
+
+      // Take everything from the first "## TL;DR" onward; drop stray preamble/fences.
+      const start = raw.search(/##\s+TL;DR/);
+      if (start < 0 || !/##\s+The Article/.test(raw)) {
+        throw new Error('OpenRouter output missing TL;DR / The Article sections');
+      }
+      return raw.slice(start).replace(/\n*```\s*$/, '').trim();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  // Retry once — transient OpenRouter slowness / flaky provider routing is common.
+  let summary: string;
+  try {
+    summary = await callModel();
+  } catch {
+    summary = await callModel();
   }
-
-  const data = await res.json() as any;
-  const raw = data?.choices?.[0]?.message?.content;
-  if (!raw || typeof raw !== 'string') throw new Error('OpenRouter returned no content');
-
-  // Take everything from the first "## TL;DR" onward; drop any stray preamble/fences.
-  const start = raw.search(/##\s+TL;DR/);
-  if (start < 0 || !/##\s+The Article/.test(raw)) {
-    throw new Error('OpenRouter output missing TL;DR / The Article sections');
-  }
-  const summary = raw.slice(start).replace(/\n*```\s*$/, '').trim();
 
   return `${header}
 
@@ -222,6 +240,88 @@ ${transcriptBody}
 
 </details>
 `;
+}
+
+// Classify stored content into a category + tags via OpenRouter. Returns the
+// classification; caller writes it to D1. Throws on any failure.
+async function classifyContent(
+  content: string,
+  existingCats: string,
+  apiKey: string,
+): Promise<{ category: string; tags: string[] }> {
+  // Classification only needs a sample — the first ~12k chars cover the header
+  // plus TL;DR/article (structured) or the transcript start (raw-only).
+  const sample = content.slice(0, 12000);
+
+  const systemPrompt = 'You are a content classifier.';
+  const userPrompt = `Classify the content below. Respond with ONLY a JSON object and nothing else:
+
+{"category": "<ONE short category, 1-3 words, Title Case>", "tags": ["<tag1>", "<tag2>", "<tag3>", "<tag4>", "<tag5>"]}
+
+Category rules:
+- PREFER reusing an existing category from this list if one fits: ${existingCats}
+- Only invent a new one if none fit. Keep it short (1-3 words), Title Case (e.g. "AI Tools", "Claude Code", "Programming").
+- Broad enough to group multiple videos — not specific to one video.
+
+Tag rules:
+- 3-5 specific topical tags (people, tools, techniques, products mentioned).
+- Lowercase, short (1-3 words each), no hashtags.
+
+CONTENT:
+${sample}`;
+
+  const callModel = async (): Promise<{ category: string; tags: string[] }> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60_000);
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'moonshotai/kimi-k2.6',
+          reasoning: { enabled: false },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+        signal: ctrl.signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const data = await res.json() as any;
+      const raw = data?.choices?.[0]?.message?.content;
+      if (!raw || typeof raw !== 'string') throw new Error('OpenRouter returned no content');
+
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('OpenRouter output had no JSON object');
+      const parsed = JSON.parse(match[0]);
+      const category = typeof parsed.category === 'string' ? parsed.category.trim() : '';
+      const tags = Array.isArray(parsed.tags)
+        ? parsed.tags.filter((t: any) => typeof t === 'string' && t.trim()).map((t: string) => t.trim())
+        : [];
+      if (!category || tags.length === 0) {
+        throw new Error('OpenRouter response missing category/tags');
+      }
+      return { category, tags };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  // Retry once — transient OpenRouter slowness / flaky provider routing is common.
+  try {
+    return await callModel();
+  } catch {
+    return await callModel();
+  }
 }
 
 // API Routes
@@ -838,6 +938,52 @@ ${srtContent || transcript.text}
           .run();
 
         return jsonResponse({ id, summarized: true, word_count: wordCount });
+      }
+    }
+
+    // POST /api/transcripts/:id/classify - (re)generate category + tags via OpenRouter
+    if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/classify')) {
+      const parts = path.split('/');
+      if (parts.length === 3) {
+        const id = parts[1];
+
+        const existing = await env.DB
+          .prepare('SELECT srt_path FROM transcripts WHERE id = ?')
+          .bind(id)
+          .first<{ srt_path: string }>();
+        if (!existing) {
+          return handleError(new Error('Transcript not found'), 404);
+        }
+
+        if (!env.OPENROUTER_API_KEY) {
+          return handleError(new Error('OPENROUTER_API_KEY not configured'), 500);
+        }
+
+        const content = await env.TRANSCRIPTS.get(existing.srt_path);
+        if (!content) {
+          return handleError(new Error('Content file not found'), 404);
+        }
+        const rawMarkdown = await content.text();
+
+        // Existing categories — encourage reuse over inventing near-duplicates
+        const { results: catRows } = await env.DB
+          .prepare("SELECT DISTINCT category FROM transcripts WHERE category IS NOT NULL AND category != ''")
+          .all<{ category: string }>();
+        const existingCats = catRows.map(r => r.category).join(', ') || '(none yet)';
+
+        let classification: { category: string; tags: string[] };
+        try {
+          classification = await classifyContent(rawMarkdown, existingCats, env.OPENROUTER_API_KEY);
+        } catch (e: any) {
+          return handleError(new Error(`Classification failed: ${e.message}`), 502);
+        }
+
+        await env.DB
+          .prepare('UPDATE transcripts SET category = ?, tags = ? WHERE id = ?')
+          .bind(classification.category, JSON.stringify(classification.tags), id)
+          .run();
+
+        return jsonResponse({ id, classified: true, category: classification.category, tags: classification.tags });
       }
     }
 
