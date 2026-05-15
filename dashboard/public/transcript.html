@@ -119,6 +119,14 @@
       color: #b9a7e8;
     }
 
+    .btn-chat {
+      background: #4a2d5a;
+    }
+
+    .btn-chat:hover {
+      background: #6a3d7a;
+    }
+
     .video-wrapper {
       flex: 1;
       position: relative;
@@ -526,7 +534,8 @@
           <button class="btn nav-btn desktop-only nav-next" onclick="goNext()" title="Next (→)" disabled>→</button>
           <button class="btn" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">☀</button>
           <a class="btn" href="/settings.html" title="Settings">⚙</a>
-          <button class="btn" onclick="copyText()">Copy</button>
+          <button class="btn btn-chat" onclick="chatOnClaude(this)" title="Copy transcript and open claude.ai">💬 Chat on Claude</button>
+          <button class="btn" onclick="copyText(this)">Copy</button>
           <button class="btn" onclick="downloadMd()">Download MD</button>
           <button class="btn btn-summarize" onclick="summarize()">✨ Summarize</button>
           <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
@@ -851,8 +860,37 @@
       document.getElementById('content').innerHTML = '<div class="error"><p>' + msg + '</p><a href="/">Back to Dashboard</a></div>';
     }
     
-    function copyText() {
-      navigator.clipboard.writeText(markdown);
+    function flashBtn(btn, msg, ms = 1500) {
+      if (!btn) return;
+      const original = btn.innerHTML;
+      btn.innerHTML = msg;
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.innerHTML = original;
+        btn.disabled = false;
+      }, ms);
+    }
+
+    async function copyText(btn) {
+      try {
+        await navigator.clipboard.writeText(markdown);
+        flashBtn(btn, '✅ Copied');
+      } catch {
+        flashBtn(btn, '❌ Failed');
+      }
+    }
+
+    async function chatOnClaude(btn) {
+      const titleMatch = markdown.match(/^#\s+(.+)$/m);
+      const title = titleMatch ? titleMatch[1].trim() : (document.getElementById('title').textContent || 'this transcript');
+      const prompt = `I'd like to chat about the following transcript: "${title}".\n\nPlease read it, then I'll ask questions.\n\n---\n\n${markdown}`;
+      try {
+        await navigator.clipboard.writeText(prompt);
+        flashBtn(btn, '✅ Copied — opening Claude');
+        window.open('https://claude.ai/new', '_blank', 'noopener');
+      } catch {
+        flashBtn(btn, '❌ Copy failed');
+      }
     }
     
     function downloadMd() {
