@@ -415,6 +415,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         { id: 'UCbDmEdLs-SB3FjrDFQJ4TDg', handle: '@reysu', name: 'Reysu' },
         { id: 'UCmL7cQmNgV-3FxaB3Ueoixg', handle: '@claudelog', name: 'Claude Code Updates' },
         { id: 'UCswG6FSbgZjbWtdf_hMLaow', handle: '@mattpocockuk', name: 'Matt Pocock' },
+        { id: 'UCLKPca3kwwd-B59HNr-_lvA', handle: '@aiDotEngineer', name: 'AI Engineer' },
       ];
       return jsonResponse(channels);
     }
