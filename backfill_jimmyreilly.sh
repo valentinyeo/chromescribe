@@ -21,8 +21,12 @@ log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
 
 log "=== backfill start: @thejimmyreilly ==="
 
-# 1. Refresh the video list (tab-delimited to dodge titles with pipes)
-yt-dlp --flat-playlist --print "%(id)s\t%(title)s" "$CHANNEL" 2>/dev/null > "$LIST"
+# 1. Refresh the video list (real tab via $'\t' — yt-dlp's --print does NOT
+# interpret backslash escapes, so the literal must come from the shell).
+# Skip refresh if list already exists and is non-empty (idempotent re-runs).
+if [ ! -s "$LIST" ]; then
+  yt-dlp --flat-playlist --print $'%(id)s\t%(title)s' "$CHANNEL" 2>/dev/null > "$LIST"
+fi
 TOTAL=$(wc -l < "$LIST")
 log "Enumerated $TOTAL videos"
 
@@ -48,7 +52,10 @@ while IFS=$'\t' read -r VID TITLE; do
   fi
 
   log "[$I/$TOTAL] PROCESS: $VID  $TITLE"
-  if "$SCRIPT_DIR/monitor.sh" --force "$VID" "$TITLE" >> "$LOG" 2>&1; then
+  # </dev/null is load-bearing: monitor.sh spawns yt-dlp/ffmpeg/python which
+  # otherwise read from this loop's stdin (the $LIST file), stealing partial
+  # lines and corrupting the next iteration's VID.
+  if "$SCRIPT_DIR/monitor.sh" --force "$VID" "$TITLE" < /dev/null >> "$LOG" 2>&1; then
     OK=$((OK+1))
     log "[$I/$TOTAL] OK"
   else
