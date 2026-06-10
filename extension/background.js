@@ -31,7 +31,7 @@ function cleanPageTitle(title) {
 }
 
 function buildCmd(tabUrl) {
-  return `cd /d "${PROJECT_DIR}" && bash process.sh "${tabUrl}"`;
+  return `cd /d "${PROJECT_DIR}" && .\\process.bat "${tabUrl}"`;
 }
 
 function openInTerminal(tabUrl, pageTitle) {
