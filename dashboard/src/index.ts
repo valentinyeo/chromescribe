@@ -340,6 +340,50 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       });
     }
 
+    // GET /api/stats - R2/D1 storage summary
+    if (request.method === 'GET' && path === 'stats') {
+      let cursor: string | undefined;
+      let totalBytes = 0;
+      let totalObjects = 0;
+      let mediaFiles = 0;
+      let mediaBytes = 0;
+      const groups: Record<string, { count: number; bytes: number }> = {};
+      const mediaRe = /\.(mp4|webm|mkv|mov|avi|mp3|m4a|wav|aac|opus|flac)$/i;
+
+      do {
+        const listed = await env.TRANSCRIPTS.list({ cursor, limit: 1000 });
+        for (const object of listed.objects) {
+          const bytes = object.size || 0;
+          const prefix = object.key.includes('/') ? `${object.key.split('/')[0]}/` : 'static';
+
+          totalBytes += bytes;
+          totalObjects += 1;
+          if (!groups[prefix]) groups[prefix] = { count: 0, bytes: 0 };
+          groups[prefix].count += 1;
+          groups[prefix].bytes += bytes;
+
+          if (mediaRe.test(object.key)) {
+            mediaFiles += 1;
+            mediaBytes += bytes;
+          }
+        }
+        cursor = listed.truncated ? listed.cursor : undefined;
+      } while (cursor);
+
+      const transcriptCount = await env.DB
+        .prepare('SELECT COUNT(*) AS n FROM transcripts')
+        .first<{ n: number }>();
+      const { results: categories } = await env.DB
+        .prepare("SELECT category, COUNT(*) AS n FROM transcripts WHERE category IS NOT NULL AND category != '' GROUP BY category ORDER BY n DESC")
+        .all<{ category: string; n: number }>();
+
+      return jsonResponse({
+        r2: { totalBytes, totalObjects, groups },
+        media: { files: mediaFiles, bytes: mediaBytes },
+        d1: { transcripts: transcriptCount?.n || 0, categories },
+      });
+    }
+
     // GET /api/thumb/:video_id - Cached thumbnail proxy
     if (request.method === 'GET' && path.startsWith('thumb/')) {
       const videoId = decodeURIComponent(path.replace('thumb/', ''));
@@ -1067,6 +1111,15 @@ export default {
 
     if (url.pathname === '/settings.html') {
       const object = await env.TRANSCRIPTS.get('settings.html');
+      if (object) {
+        return new Response(object.body, {
+          headers: HTML_HEADERS,
+        });
+      }
+    }
+
+    if (url.pathname === '/stats.html') {
+      const object = await env.TRANSCRIPTS.get('stats.html');
       if (object) {
         return new Response(object.body, {
           headers: HTML_HEADERS,

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stats · ChromeScribe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --foreground: #fff;
+      --background: #030303;
+      --border: #27272a;
+      --muted: #71717a;
+      --text: #a1a1aa;
+      --accent: #0057ff;
+      --accent-hover: #0066ff;
+      --error: #ef4444;
+      --success: #22c55e;
+      --card: #090909;
+      --card-hover: #111111;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      -webkit-font-smoothing: antialiased;
+    }
+    body { min-height: 100vh; }
+
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      max-width: 900px; margin: 0 auto;
+      padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 600; font-size: 18px;
+      letter-spacing: -0.02em;
+      color: var(--foreground); text-decoration: none;
+    }
+    .logo svg { width: 28px; height: 28px; fill: var(--foreground); }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; height: 36px; padding: 0 14px;
+      font-size: 14px; font-weight: 500;
+      border: none; border-radius: 6px; cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none; font-family: inherit;
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn:hover { background: var(--card-hover); color: var(--foreground); }
+
+    main {
+      max-width: 900px; margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    h1 {
+      font-size: 32px; font-weight: 600;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: var(--muted); font-size: 15px;
+      margin-bottom: 40px;
+    }
+
+    h2 {
+      font-size: 20px; font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 44px 0 16px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+    h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+
+    .eyebrow {
+      font-size: 12px; font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .storage-total {
+      font-size: 48px;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      font-weight: 700;
+      margin-bottom: 24px;
+    }
+    .banner {
+      border-radius: 6px;
+      padding: 16px 18px;
+      margin: 24px 0 8px;
+      font-size: 15px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+    }
+    .banner.success {
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.08);
+      color: #bbf7d0;
+    }
+    .banner.error {
+      border-color: rgba(239, 68, 68, 0.55);
+      background: rgba(239, 68, 68, 0.1);
+      color: #fecaca;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td { color: var(--text); }
+    td:last-child, th:last-child { text-align: right; }
+
+    .metric {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin: 8px 0 18px;
+    }
+    .metric strong {
+      font-size: 28px;
+      letter-spacing: -0.03em;
+    }
+    .metric span { color: var(--muted); }
+    .footnote {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      margin-top: 32px;
+    }
+    .error-text {
+      color: var(--error);
+      margin-top: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .header-inner { padding: 12px 16px; }
+      main { padding: 32px 16px 72px; }
+      .storage-total { font-size: 36px; }
+      table { font-size: 13px; }
+      th, td { padding: 9px 8px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 24 24">
+          <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+        </svg>
+        ChromeScribe
+      </a>
+      <a href="/" class="btn">Back</a>
+    </div>
+  </header>
+
+  <main>
+    <h1>Stats</h1>
+    <p class="subtitle">Storage usage and media-file verification for ChromeScribe.</p>
+
+    <section>
+      <div class="eyebrow">R2 storage</div>
+      <div id="storage-total" class="storage-total">Loading...</div>
+      <div id="media-banner" class="banner">Checking stored objects...</div>
+    </section>
+
+    <section>
+      <h2>R2 Prefixes</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Prefix</th>
+            <th>Objects</th>
+            <th>Size</th>
+            <th>Raw bytes</th>
+          </tr>
+        </thead>
+        <tbody id="r2-groups">
+          <tr><td colspan="4">Loading...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>D1</h2>
+      <div class="metric">
+        <strong id="transcript-count">0</strong>
+        <span>transcripts</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Transcripts</th>
+          </tr>
+        </thead>
+        <tbody id="category-groups">
+          <tr><td colspan="2">Loading...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="footnote">Audio is downloaded to a temp directory during processing and deleted immediately &mdash; it is never persisted. R2 holds only transcript markdown, cached thumbnails, and the static dashboard.</p>
+    <p id="error" class="error-text"></p>
+  </main>
+
+  <script>
+    function humanBytes(n) {
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let value = Number(n) || 0;
+      let unit = 0;
+      while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+      }
+      const digits = unit === 0 || value >= 10 ? 0 : 1;
+      return `${value.toFixed(digits)} ${units[unit]}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function renderStats(data) {
+      const r2 = data.r2 || { totalBytes: 0, totalObjects: 0, groups: {} };
+      const media = data.media || { files: 0, bytes: 0 };
+      const d1 = data.d1 || { transcripts: 0, categories: [] };
+      const objectLabel = r2.totalObjects === 1 ? 'object' : 'objects';
+
+      document.getElementById('storage-total').textContent =
+        `${humanBytes(r2.totalBytes)} | ${Number(r2.totalObjects || 0).toLocaleString()} ${objectLabel}`;
+
+      const banner = document.getElementById('media-banner');
+      if (media.files === 0) {
+        banner.className = 'banner success';
+        banner.innerHTML = '<strong>&#9989; No video or audio files stored (0 media objects).</strong>';
+      } else {
+        banner.className = 'banner error';
+        banner.innerHTML = `<strong>&#9888;&#65039; ${Number(media.files).toLocaleString()} media files found (${humanBytes(media.bytes)}).</strong>`;
+      }
+
+      const groupRows = Object.entries(r2.groups || {})
+        .sort((a, b) => b[1].bytes - a[1].bytes)
+        .map(([prefix, group]) => `
+          <tr>
+            <td>${escapeHtml(prefix)}</td>
+            <td>${Number(group.count || 0).toLocaleString()}</td>
+            <td>${humanBytes(group.bytes)}</td>
+            <td>${Number(group.bytes || 0).toLocaleString()}</td>
+          </tr>
+        `)
+        .join('');
+      document.getElementById('r2-groups').innerHTML =
+        groupRows || '<tr><td colspan="4">No R2 objects found.</td></tr>';
+
+      document.getElementById('transcript-count').textContent =
+        Number(d1.transcripts || 0).toLocaleString();
+
+      const categoryRows = (d1.categories || [])
+        .map((row) => `
+          <tr>
+            <td>${escapeHtml(row.category)}</td>
+            <td>${Number(row.n || 0).toLocaleString()}</td>
+          </tr>
+        `)
+        .join('');
+      document.getElementById('category-groups').innerHTML =
+        categoryRows || '<tr><td colspan="2">No categories found.</td></tr>';
+    }
+
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Stats request failed');
+        renderStats(payload.data);
+      } catch (error) {
+        document.getElementById('storage-total').textContent = 'Unavailable';
+        document.getElementById('media-banner').textContent = 'Stats could not be loaded.';
+        document.getElementById('error').textContent = error.message || String(error);
+      }
+    }
+
+    loadStats();
+  </script>
+</body>
+</html>

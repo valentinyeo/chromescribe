@@ -25,6 +25,7 @@ jobs:
           wrangler r2 object put chromescribe-transcripts/index.html --file=./public/index.html --remote
           wrangler r2 object put chromescribe-transcripts/transcript.html --file=./public/transcript.html --remote
           wrangler r2 object put chromescribe-transcripts/settings.html --file=./public/settings.html --remote
+          wrangler r2 object put chromescribe-transcripts/stats.html --file=./public/stats.html --remote
 
       - name: Deploy Worker
         run: wrangler deploy

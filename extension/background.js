@@ -34,17 +34,21 @@ function buildCmd(tabUrl) {
   return `cd /d "${PROJECT_DIR}" && .\\process.bat "${tabUrl}"`;
 }
 
-function openInTerminal(tabUrl, pageTitle) {
-  if (!isValidUrl(tabUrl)) return;
-
-  const title = (pageTitle && `CS: ${pageTitle}`) || deriveTitle(tabUrl);
+function openTerminal(cmd, title) {
   const params = new URLSearchParams({
     cwd: PROJECT_DIR,
-    cmd: buildCmd(tabUrl),
+    cmd,
     title
   });
 
   chrome.tabs.create({ url: `${TERMINAL_BASE}?${params.toString()}` });
+}
+
+function openInTerminal(tabUrl, pageTitle) {
+  if (!isValidUrl(tabUrl)) return;
+
+  const title = (pageTitle && `CS: ${pageTitle}`) || deriveTitle(tabUrl);
+  openTerminal(buildCmd(tabUrl), title);
 }
 
 // Icon click — open terminal directly
@@ -56,6 +60,12 @@ chrome.action.onClicked.addListener((tab) => {
 
 // Popup button clicks (for fallback)
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action === "addChannel" && msg.channelId) {
+    const label = msg.handle || msg.channelId;
+    const args = `"${msg.channelId}" "${msg.handle || ''}" "${msg.channelName || ''}"`;
+    openTerminal(`cd /d "${PROJECT_DIR}" && .\\add_channel.bat ${args}`, `CS: +channel ${label}`);
+  }
+
   if (msg.action === "process" && msg.tab) {
     const url = msg.tab.url;
     const pageTitle = cleanPageTitle(msg.tab.title);
