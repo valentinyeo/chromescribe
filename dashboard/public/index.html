@@ -911,6 +911,16 @@
     let channelsCache = [];
     let searchQuery = '';
 
+    // ponytail: SEO is a cross-cutting cluster (videos scattered across ~12 categories),
+    // so it's a keyword match over title/category/tags, not an exact category. Tune terms here.
+    const SEO_CLUSTER = '__seo__';
+    const SEO_RE = /\bseo\b|keyword|backlink|serp|search engine|on-page|link[- ]building|organic traffic|google search/i;
+    function isSeo(t) {
+      if (SEO_RE.test(t.title || '') || SEO_RE.test(t.category || '')) return true;
+      if (t.tags) { try { return JSON.parse(t.tags).some(x => SEO_RE.test(String(x))); } catch {} }
+      return false;
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       loadTranscripts();
       loadCategories();
@@ -923,6 +933,7 @@
         transcripts = data || [];
         renderTranscripts();
         renderChannels();
+        loadCategories(); // refresh chips so the SEO cluster count reflects loaded transcripts
       } catch (err) {
         showToast('Failed to load transcripts', 'error');
       }
@@ -945,8 +956,10 @@
         return;
       }
       const total = categories.reduce((s, c) => s + c.count, 0);
+      const seoCount = transcripts.filter(isSeo).length;
       const chips = [
         `<button class="category-chip ${activeCategory === null ? 'active' : ''}" onclick="setCategory(null)">All<span class="count">${total}</span></button>`,
+        `<button class="category-chip ${activeCategory === SEO_CLUSTER ? 'active' : ''}" onclick="setCategory('${SEO_CLUSTER}')">🔎 SEO<span class="count">${seoCount}</span></button>`,
         ...categories.map(c => `<button class="category-chip ${activeCategory === c.category ? 'active' : ''}" onclick="setCategory('${escapeAttr(c.category)}')">${escapeHtml(c.category)}<span class="count">${c.count}</span></button>`)
       ];
       chipsBox.innerHTML = chips.join('');
@@ -994,9 +1007,11 @@
 
       empty.classList.add('hidden');
 
-      let filtered = activeCategory
-        ? transcripts.filter(t => t.category === activeCategory)
-        : transcripts;
+      let filtered = activeCategory === SEO_CLUSTER
+        ? transcripts.filter(isSeo)
+        : activeCategory
+          ? transcripts.filter(t => t.category === activeCategory)
+          : transcripts;
       if (activeChannel) {
         const n = activeChannel.toLowerCase();
         filtered = filtered.filter(t => {
