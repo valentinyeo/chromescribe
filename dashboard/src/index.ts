@@ -9,7 +9,6 @@ interface Env {
   DB: D1Database;
   TRANSCRIPTS: R2Bucket;
   AI: Ai;
-  OPENROUTER_API_KEY: string;
 }
 
 interface Transcript {
@@ -34,6 +33,30 @@ interface WhisperResponse {
     text: string;
   }>;
 }
+
+interface TextGenerationResponse {
+  response?: string;
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
+const ANALYSIS_MODEL = '@cf/google/gemma-4-26b-a4b-it';
+const AI_GATEWAY_ID = 'default';
+
+const gatewayOptions = (task: 'transcription' | 'summarization' | 'classification') => ({
+  gateway: {
+    id: AI_GATEWAY_ID,
+    skipCache: true,
+    collectLog: true,
+    metadata: { project: 'chromescribe', task },
+  },
+});
+
+const textFromModelResponse = (result: TextGenerationResponse): string =>
+  result?.response || result?.choices?.[0]?.message?.content || '';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -133,10 +156,10 @@ function formatSRTTime(seconds: number): string {
   return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
 }
 
-// Phase 2: parse stored markdown, regenerate TL;DR + The Article via OpenRouter,
+// Phase 2: parse stored markdown, regenerate TL;DR + The Article via Workers AI,
 // return the rebuilt markdown. Handles both raw-only and already-structured input
 // (so re-summarize works). Throws on any failure — caller must not write on throw.
-async function summarizeContent(content: string, apiKey: string): Promise<string> {
+async function summarizeContent(content: string, ai: Ai): Promise<string> {
   // header = everything before the first "## " heading (title + Source/Date/Type + ---)
   const firstSection = content.search(/^##\s/m);
   const header = (firstSection >= 0 ? content.slice(0, firstSection) : content).trimEnd();
@@ -175,51 +198,31 @@ An 800-1500 word web article using the pyramid principle: lead with the single m
 CONTENT:
 ${transcriptBody}`;
 
-  // One OpenRouter attempt: 90s abort ceiling (typical call ~12s), validate output.
-  // reasoning disabled: Kimi K2.6's reasoning pass otherwise eats the token budget
-  // and intermittently returns empty content (finish_reason=length, len=0).
+  // One Workers AI attempt. Gemma 4's 256K context window accommodates long
+  // transcripts without local chunking or a third-party model subscription.
   const callModel = async (): Promise<string> => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 90_000);
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'moonshotai/kimi-k2.6',
-          reasoning: { enabled: false },
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-        }),
-        signal: ctrl.signal,
-      });
+    const result = await ai.run(ANALYSIS_MODEL as any, {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_completion_tokens: 4096,
+      temperature: 0.2,
+      chat_template_kwargs: { thinking: false },
+    } as any, gatewayOptions('summarization') as any) as TextGenerationResponse;
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`);
-      }
+    const raw = textFromModelResponse(result);
+    if (!raw || typeof raw !== 'string') throw new Error('Workers AI returned no content');
 
-      const data = await res.json() as any;
-      const raw = data?.choices?.[0]?.message?.content;
-      if (!raw || typeof raw !== 'string') throw new Error('OpenRouter returned no content');
-
-      // Take everything from the first "## TL;DR" onward; drop stray preamble/fences.
-      const start = raw.search(/##\s+TL;DR/);
-      if (start < 0 || !/##\s+The Article/.test(raw)) {
-        throw new Error('OpenRouter output missing TL;DR / The Article sections');
-      }
-      return raw.slice(start).replace(/\n*```\s*$/, '').trim();
-    } finally {
-      clearTimeout(timer);
+    // Take everything from the first "## TL;DR" onward; drop stray preamble/fences.
+    const start = raw.search(/##\s+TL;DR/);
+    if (start < 0 || !/##\s+The Article/.test(raw)) {
+      throw new Error('Workers AI output missing TL;DR / The Article sections');
     }
+    return raw.slice(start).replace(/\n*```\s*$/, '').trim();
   };
 
-  // Retry once — transient OpenRouter slowness / flaky provider routing is common.
+  // Retry once for transient Workers AI inference failures.
   let summary: string;
   try {
     summary = await callModel();
@@ -244,12 +247,13 @@ ${transcriptBody}
 `;
 }
 
-// Classify stored content into a category + tags via OpenRouter. Returns the
+// Classify stored content into a category + tags via Workers AI. Returns the
 // classification; caller writes it to D1. Throws on any failure.
 async function classifyContent(
   content: string,
   existingCats: string,
-  apiKey: string,
+  ai: Ai,
+  forbiddenCategory = '',
 ): Promise<{ category: string; tags: string[] }> {
   // Classification only needs a sample — the first ~12k chars cover the header
   // plus TL;DR/article (structured) or the transcript start (raw-only).
@@ -264,6 +268,7 @@ Category rules:
 - PREFER reusing an existing category from this list if one fits: ${existingCats}
 - Only invent a new one if none fit. Keep it short (1-3 words), Title Case (e.g. "AI Tools", "Claude Code", "Programming").
 - Broad enough to group multiple videos — not specific to one video.
+${forbiddenCategory ? `- FORBIDDEN category: "${forbiddenCategory}". Choose a narrower category instead.` : ''}
 
 Tag rules:
 - 3-5 specific topical tags (people, tools, techniques, products mentioned).
@@ -273,52 +278,33 @@ CONTENT:
 ${sample}`;
 
   const callModel = async (): Promise<{ category: string; tags: string[] }> => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60_000);
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'moonshotai/kimi-k2.6',
-          reasoning: { enabled: false },
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-        }),
-        signal: ctrl.signal,
-      });
+    const result = await ai.run(ANALYSIS_MODEL as any, {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_completion_tokens: 1024,
+      temperature: 0.1,
+      chat_template_kwargs: { thinking: false },
+    } as any, gatewayOptions('classification') as any) as TextGenerationResponse;
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`);
-      }
+    const raw = textFromModelResponse(result);
+    if (!raw || typeof raw !== 'string') throw new Error('Workers AI returned no content');
 
-      const data = await res.json() as any;
-      const raw = data?.choices?.[0]?.message?.content;
-      if (!raw || typeof raw !== 'string') throw new Error('OpenRouter returned no content');
-
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error('OpenRouter output had no JSON object');
-      const parsed = JSON.parse(match[0]);
-      const category = typeof parsed.category === 'string' ? parsed.category.trim() : '';
-      const tags = Array.isArray(parsed.tags)
-        ? parsed.tags.filter((t: any) => typeof t === 'string' && t.trim()).map((t: string) => t.trim())
-        : [];
-      if (!category || tags.length === 0) {
-        throw new Error('OpenRouter response missing category/tags');
-      }
-      return { category, tags };
-    } finally {
-      clearTimeout(timer);
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Workers AI output had no JSON object');
+    const parsed = JSON.parse(match[0]);
+    const category = typeof parsed.category === 'string' ? parsed.category.trim() : '';
+    const tags = Array.isArray(parsed.tags)
+      ? parsed.tags.filter((t: any) => typeof t === 'string' && t.trim()).map((t: string) => t.trim())
+      : [];
+    if (!category || tags.length === 0 || (forbiddenCategory && category.toLowerCase() === forbiddenCategory.toLowerCase())) {
+      throw new Error('Workers AI response missing category/tags');
     }
+    return { category, tags };
   };
 
-  // Retry once — transient OpenRouter slowness / flaky provider routing is common.
+  // Retry once for transient Workers AI inference failures.
   try {
     return await callModel();
   } catch {
@@ -464,6 +450,8 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         { id: 'UCNleq2p_chOqORPKQkMurOQ', handle: '@thejimmyreilly', name: 'Jimmy Reilly' },
         { id: 'UCsBjURrPoezykLs9EqgamOA', handle: '@Fireship', name: 'Fireship' },
         { id: 'UCAwT-7B6StW_xzXPku6v7MQ', handle: '@atmoio', name: 'Mo Bitar' },
+        { id: 'UC_x36zCEGilGpB1m-V4gmjg', handle: '@indydevdan', name: 'IndyDevDan' },
+        { id: 'UCkVfrGwV-iG9bSsgCbrNPxQ', handle: '@betterstack', name: 'Better Stack' },
       ];
       return jsonResponse(channels);
     }
@@ -478,9 +466,11 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
 
     // GET /api/transcripts - List all transcripts
     if (request.method === 'GET' && (path === 'transcripts' || path === '')) {
-      const { results } = await env.DB
-        .prepare('SELECT * FROM transcripts ORDER BY created_at DESC')
-        .all<Transcript>();
+      const requestedVideoId = url.searchParams.get('video_id');
+      const statement = requestedVideoId
+        ? env.DB.prepare('SELECT * FROM transcripts WHERE video_id = ?').bind(requestedVideoId)
+        : env.DB.prepare('SELECT * FROM transcripts ORDER BY created_at DESC');
+      const { results } = await statement.all<Transcript>();
       
       return jsonResponse(results.map(t => ({
         ...t,
@@ -545,7 +535,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         const audioB64 = Buffer.from(audioBuffer).toString('base64');
         const result = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
           audio: audioB64,
-        }) as WhisperResponse;
+        }, gatewayOptions('transcription') as any) as WhisperResponse;
         return jsonResponse({ text: result.text });
       } catch (e: any) {
         return handleError(new Error(`Whisper failed: ${e.message}`), 500);
@@ -631,8 +621,10 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
               if (infoRes.ok) {
                 const info = await infoRes.json() as any;
                 if (!info.error) {
-                  // Only use noembed title if our title is a file name
-                  if (!mdTitle || title) {
+                  // Replace placeholder headings produced by older/local clients
+                  // with the canonical YouTube title whenever metadata is available.
+                  const genericTitle = !mdTitle || /^(Video Transcript|Untitled|Video [A-Za-z0-9_-]+)$/i.test(mdTitle);
+                  if (genericTitle || title) {
                     videoTitle = info.title || videoTitle;
                   }
                   videoChannel = info.author_name || videoChannel;
@@ -773,7 +765,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           const audioB64 = Buffer.from(audioBuffer).toString('base64');
           transcript = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
             audio: audioB64,
-          }) as WhisperResponse;
+          }, gatewayOptions('transcription') as any) as WhisperResponse;
           console.log('Transcription complete, text length:', transcript.text?.length);
         } catch (e: any) {
           console.error('Transcription error:', e);
@@ -859,13 +851,68 @@ ${srtContent || transcript.text}
           .run();
 
         const transcriptId = result.meta?.last_row_id;
+        let enrichedMarkdown = markdownContent;
+        let finalWordCount = wordCount;
+        let summarized = false;
+        let classified = false;
+        let category: string | null = null;
+        let tags: string[] = [];
+        const enrichmentErrors: string[] = [];
+
+        // Manual dashboard uploads previously stopped after Whisper. Run the
+        // same summary and classification helpers used by the explicit API
+        // actions before returning the completed record.
+        if (transcriptId) {
+          try {
+            enrichedMarkdown = await summarizeContent(markdownContent, env.AI);
+            await env.TRANSCRIPTS.put(srtPath, enrichedMarkdown);
+            const enrichedWordCount = enrichedMarkdown.split(/\s+/).filter(w => w.length > 0).length;
+            finalWordCount = enrichedWordCount;
+            await env.DB
+              .prepare('UPDATE transcripts SET word_count = ? WHERE id = ?')
+              .bind(enrichedWordCount, transcriptId)
+              .run();
+            summarized = true;
+          } catch (e: any) {
+            console.error('Automatic summarization failed:', e);
+            enrichmentErrors.push(`Summarization: ${e.message}`);
+          }
+
+          try {
+            const { results: catRows } = await env.DB
+              .prepare("SELECT DISTINCT category FROM transcripts WHERE category IS NOT NULL AND category != ''")
+              .all<{ category: string }>();
+            const existingCats = catRows.map(row => row.category).join(', ') || '(none yet)';
+            const classification = await classifyContent(
+              enrichedMarkdown,
+              existingCats,
+              env.AI,
+            );
+            category = classification.category;
+            tags = classification.tags;
+            await env.DB
+              .prepare('UPDATE transcripts SET category = ?, tags = ? WHERE id = ?')
+              .bind(category, JSON.stringify(tags), transcriptId)
+              .run();
+            classified = true;
+          } catch (e: any) {
+            console.error('Automatic classification failed:', e);
+            enrichmentErrors.push(`Classification: ${e.message}`);
+          }
+        }
+
         return jsonResponse({
           id: transcriptId,
           video_id: videoId,
           title: videoTitle,
           channel: videoChannel,
-          word_count: wordCount,
+          word_count: finalWordCount,
           transcript_preview: transcript.text.substring(0, 500),
+          summarized,
+          classified,
+          category,
+          tags,
+          enrichment_errors: enrichmentErrors,
           view_url: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${transcriptId}`,
         }, 201);
       }
@@ -952,7 +999,72 @@ ${srtContent || transcript.text}
       }
     }
 
-    // POST /api/transcripts/:id/summarize - (re)generate TL;DR + The Article via OpenRouter
+    // POST /api/transcripts/:id/analyze - summarize and classify entirely on Workers AI
+    if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/analyze')) {
+      const parts = path.split('/');
+      if (parts.length === 3) {
+        const id = parts[1];
+        const existing = await env.DB
+          .prepare('SELECT srt_path FROM transcripts WHERE id = ?')
+          .bind(id)
+          .first<{ srt_path: string }>();
+        if (!existing) {
+          return handleError(new Error('Transcript not found'), 404);
+        }
+
+        const content = await env.TRANSCRIPTS.get(existing.srt_path);
+        if (!content) {
+          return handleError(new Error('Content file not found'), 404);
+        }
+        const rawMarkdown = await content.text();
+
+        let newMarkdown: string;
+        try {
+          newMarkdown = await summarizeContent(rawMarkdown, env.AI);
+        } catch (e: any) {
+          return handleError(new Error(`Analysis failed during summarization: ${e.message}`), 502);
+        }
+
+        await env.TRANSCRIPTS.put(existing.srt_path, newMarkdown);
+        const wordCount = newMarkdown.split(/\s+/).filter(w => w.length > 0).length;
+        await env.DB
+          .prepare('UPDATE transcripts SET word_count = ? WHERE id = ?')
+          .bind(wordCount, id)
+          .run();
+
+        const { results: catRows } = await env.DB
+          .prepare("SELECT DISTINCT category FROM transcripts WHERE category IS NOT NULL AND category != ''")
+          .all<{ category: string }>();
+        const existingCats = catRows.map(r => r.category).join(', ') || '(none yet)';
+
+        try {
+          const classification = await classifyContent(newMarkdown, existingCats, env.AI);
+          await env.DB
+            .prepare('UPDATE transcripts SET category = ?, tags = ? WHERE id = ?')
+            .bind(classification.category, JSON.stringify(classification.tags), id)
+            .run();
+          return jsonResponse({
+            id,
+            summarized: true,
+            classified: true,
+            word_count: wordCount,
+            category: classification.category,
+            tags: classification.tags,
+          });
+        } catch (e: any) {
+          console.error('Analysis classification failed:', e);
+          return jsonResponse({
+            id,
+            summarized: true,
+            classified: false,
+            word_count: wordCount,
+            warning: `Classification failed: ${e.message}`,
+          });
+        }
+      }
+    }
+
+    // POST /api/transcripts/:id/summarize - (re)generate TL;DR + The Article via Workers AI
     if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/summarize')) {
       const parts = path.split('/');
       if (parts.length === 3) {
@@ -966,10 +1078,6 @@ ${srtContent || transcript.text}
           return handleError(new Error('Transcript not found'), 404);
         }
 
-        if (!env.OPENROUTER_API_KEY) {
-          return handleError(new Error('OPENROUTER_API_KEY not configured'), 500);
-        }
-
         const content = await env.TRANSCRIPTS.get(existing.srt_path);
         if (!content) {
           return handleError(new Error('Content file not found'), 404);
@@ -978,7 +1086,7 @@ ${srtContent || transcript.text}
 
         let newMarkdown: string;
         try {
-          newMarkdown = await summarizeContent(rawMarkdown, env.OPENROUTER_API_KEY);
+          newMarkdown = await summarizeContent(rawMarkdown, env.AI);
         } catch (e: any) {
           // Leave R2 untouched on failure — no half-overwrite
           return handleError(new Error(`Summarization failed: ${e.message}`), 502);
@@ -995,7 +1103,7 @@ ${srtContent || transcript.text}
       }
     }
 
-    // POST /api/transcripts/:id/classify - (re)generate category + tags via OpenRouter
+    // POST /api/transcripts/:id/classify - (re)generate category + tags via Workers AI
     if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/classify')) {
       const parts = path.split('/');
       if (parts.length === 3) {
@@ -1009,8 +1117,10 @@ ${srtContent || transcript.text}
           return handleError(new Error('Transcript not found'), 404);
         }
 
-        if (!env.OPENROUTER_API_KEY) {
-          return handleError(new Error('OPENROUTER_API_KEY not configured'), 500);
+        let forbiddenCategory = '';
+        if ((request.headers.get('content-type') || '').includes('application/json')) {
+          const body = await request.json() as any;
+          forbiddenCategory = typeof body?.exclude_category === 'string' ? body.exclude_category.trim() : '';
         }
 
         const content = await env.TRANSCRIPTS.get(existing.srt_path);
@@ -1023,11 +1133,14 @@ ${srtContent || transcript.text}
         const { results: catRows } = await env.DB
           .prepare("SELECT DISTINCT category FROM transcripts WHERE category IS NOT NULL AND category != ''")
           .all<{ category: string }>();
-        const existingCats = catRows.map(r => r.category).join(', ') || '(none yet)';
+        const existingCats = catRows
+          .map(r => r.category)
+          .filter(category => !forbiddenCategory || category.toLowerCase() !== forbiddenCategory.toLowerCase())
+          .join(', ') || '(none yet)';
 
         let classification: { category: string; tags: string[] };
         try {
-          classification = await classifyContent(rawMarkdown, existingCats, env.OPENROUTER_API_KEY);
+          classification = await classifyContent(rawMarkdown, existingCats, env.AI, forbiddenCategory);
         } catch (e: any) {
           return handleError(new Error(`Classification failed: ${e.message}`), 502);
         }

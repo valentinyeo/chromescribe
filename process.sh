@@ -2,7 +2,7 @@
 # ChromeScribe processor
 # Handles both video (YouTube/TikTok) and article URLs.
 # Phase 1: extract raw content + upload (reliable, no AI)
-# Phase 2: Pi summarizes + updates dashboard entry (AI, best-effort)
+# Phase 2: Cloudflare Workers AI summarizes + classifies (best-effort)
 # Usage: ./process.sh <url>
 
 URL="$1"
@@ -20,13 +20,58 @@ is_video() {
 }
 
 DASHBOARD_BASE="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
+CF_ACCESS_ID="${CF_ACCESS_CLIENT_ID:-REMOVED_OLD_KEY}"
+CF_ACCESS_SECRET="${CF_ACCESS_CLIENT_SECRET:-REMOVED_OLD_KEY}"
+
+api_call() {
+    local method="$1" path="$2"
+    shift 2
+    curl -s -L \
+        -X "$method" \
+        -H "CF-Access-Client-Id: $CF_ACCESS_ID" \
+        -H "CF-Access-Client-Secret: $CF_ACCESS_SECRET" \
+        -c /tmp/cf-cookies-chromescribe.txt \
+        -b /tmp/cf-cookies-chromescribe.txt \
+        "$@" \
+        "${DASHBOARD_BASE}${path}"
+}
+
+run_hosted_analysis() {
+    local transcript_id="$1"
+    local result summary_ok classify_ok warning
+    echo ">>> Generating summary + classification on Cloudflare..."
+    result=$(api_call POST "/api/transcripts/$transcript_id/analyze" --max-time 240)
+    summary_ok=$(echo "$result" | python -c "
+import sys, json
+try: print('yes' if json.load(sys.stdin).get('data', {}).get('summarized') else '')
+except: print('')
+" 2>/dev/null)
+    classify_ok=$(echo "$result" | python -c "
+import sys, json
+try: print('yes' if json.load(sys.stdin).get('data', {}).get('classified') else '')
+except: print('')
+" 2>/dev/null)
+    if [ "$summary_ok" != "yes" ]; then
+        echo ">>> WARNING: Cloudflare analysis failed; raw content was preserved: $result"
+        return 1
+    fi
+    echo ">>> Cloudflare summary complete"
+    if [ "$classify_ok" = "yes" ]; then
+        echo ">>> Cloudflare classification complete"
+    else
+        warning=$(echo "$result" | python -c "
+import sys, json
+try: print(json.load(sys.stdin).get('data', {}).get('warning', 'unknown error'))
+except: print('unknown error')
+" 2>/dev/null)
+        echo ">>> WARNING: Classification failed: $warning"
+    fi
+    return 0
+}
 
 if is_video "$URL"; then
     # ---------- VIDEO FLOW (Cloudflare Workers AI Whisper) ----------
     echo ">>> Phase 1: Downloading audio + transcribing via Cloudflare..."
-
-    CF_ACCESS_ID="${CF_ACCESS_CLIENT_ID:-REMOVED_OLD_KEY}"
-    CF_ACCESS_SECRET="${CF_ACCESS_CLIENT_SECRET:-REMOVED_OLD_KEY}"
 
     TS=$(date +%s)
     TMPDIR="$(mktemp -d "/tmp/chromescribe.${TS}.XXXX")"
@@ -36,27 +81,64 @@ if is_video "$URL"; then
     # Convert paths via cygpath when available; fall back to the raw path on Linux.
     winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
 
-    api_call() {
-        local method="$1" path="$2"
-        shift 2
-        curl -s -L \
-            -X "$method" \
-            -H "CF-Access-Client-Id: $CF_ACCESS_ID" \
-            -H "CF-Access-Client-Secret: $CF_ACCESS_SECRET" \
-            -c /tmp/cf-cookies-chromescribe.txt \
-            -b /tmp/cf-cookies-chromescribe.txt \
-            "$@" \
-            "${DASHBOARD_BASE}${path}"
-    }
+    # Avoid downloading or transcribing media that is already in ChromeScribe.
+    # The API query is also filtered locally so this remains compatible with an
+    # older deployed Worker that still returns the full transcript list.
+    VIDEO_ID=$(URL="$URL" python -c '
+import os, re
+from urllib.parse import urlparse, parse_qs
+u = urlparse(os.environ["URL"])
+host = u.hostname or ""
+video_id = ""
+if host == "youtu.be":
+    video_id = u.path.strip("/").split("/")[0]
+elif host.endswith("youtube.com"):
+    video_id = parse_qs(u.query).get("v", [""])[0]
+    if not video_id:
+        match = re.match(r"/shorts/([A-Za-z0-9_-]{11})", u.path)
+        video_id = match.group(1) if match else ""
+elif host.endswith("tiktok.com"):
+    match = re.search(r"/video/(\d+)", u.path)
+    video_id = f"tiktok:{match.group(1)}" if match else ""
+print(video_id)
+' 2>/dev/null)
+
+    if [ -n "$VIDEO_ID" ]; then
+        LOOKUP_RESULT=$(api_call GET "/api/transcripts?video_id=$VIDEO_ID")
+        EXISTING_TRANSCRIPT=$(VIDEO_ID="$VIDEO_ID" python -c '
+import json, os, sys
+try:
+    payload = json.load(sys.stdin)
+    rows = payload.get("data", payload)
+    if isinstance(rows, dict): rows = [rows]
+    match = next((row for row in rows if row.get("video_id") == os.environ["VIDEO_ID"]), None)
+    if match: print(f"{match.get('"'"'id'"'"', '"'"''"'"')}\t{match.get('"'"'title'"'"', '"'"''"'"')}")
+except Exception:
+    pass
+' <<< "$LOOKUP_RESULT")
+        if [ -n "$EXISTING_TRANSCRIPT" ]; then
+            TRANSCRIPT_ID=${EXISTING_TRANSCRIPT%%$'\t'*}
+            TRANSCRIPT_TITLE=${EXISTING_TRANSCRIPT#*$'\t'}
+            DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
+            echo ">>> Already transcribed: #$TRANSCRIPT_ID — $TRANSCRIPT_TITLE"
+            echo ">>> Opening $DASHBOARD_URL"
+            cmd.exe /c start "" msedge "$DASHBOARD_URL" 2>/dev/null &
+            exit 0
+        fi
+    fi
 
     # yt-dlp downloads in the original format; ffmpeg converts to mp3.
     # `-S vcodec:h264` prefers h264 over h265/bytevc1 (TikTok defaults to h265,
     # which Windows ffmpeg builds often can't decode).
     DOWNLOAD_TEMPLATE="$TMPDIR/raw.%(ext)s"
-    if ! yt-dlp -S "vcodec:h264" -o "$DOWNLOAD_TEMPLATE" "$URL" 2>&1 | tail -3; then
+    TITLE_FILE="$TMPDIR/title.txt"
+    if ! yt-dlp -S "vcodec:h264" -o "$DOWNLOAD_TEMPLATE" \
+        --print-to-file "%(title)s" "$TITLE_FILE" "$URL" 2>&1 | tail -3; then
         echo ">>> ERROR: yt-dlp failed"
         exit 1
     fi
+    VIDEO_TITLE=$(head -1 "$TITLE_FILE" 2>/dev/null | tr -d '\r')
+    [ -n "$VIDEO_TITLE" ] || VIDEO_TITLE="Video Transcript"
     RAW_FILE=$(ls "$TMPDIR"/raw.* 2>/dev/null | head -1)
     if [ -z "$RAW_FILE" ] || [ ! -s "$RAW_FILE" ]; then
         echo ">>> ERROR: yt-dlp produced no file"
@@ -80,7 +162,8 @@ if is_video "$URL"; then
         echo ">>> Small file — uploading directly for transcription..."
         UPLOAD_RESULT=$(api_call POST /api/transcribe \
             -F "audio=@$(winpath "$AUDIO_FILE");type=audio/mpeg" \
-            -F "url=$URL")
+            -F "url=$URL" \
+            --form-string "title=$VIDEO_TITLE")
         TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id') or d.get('id',''))" 2>/dev/null)
         TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('title') or d.get('title',''))" 2>/dev/null)
         if [ -z "$TRANSCRIPT_ID" ]; then
@@ -126,13 +209,14 @@ if is_video "$URL"; then
         MD_FILE="$TMPDIR/markdown.md"
         TEXT_FILE="$TMPDIR/text.txt"
         echo "$COMBINED_TEXT" > "$TEXT_FILE"
-        TEXT_FILE="$TEXT_FILE" URL="$URL" TODAY="$TODAY" python -c '
+        TEXT_FILE="$TEXT_FILE" TITLE_FILE="$TITLE_FILE" URL="$URL" TODAY="$TODAY" python -c '
 import json, os, sys
 sys.stdout.reconfigure(encoding="utf-8")
 with open(os.environ["TEXT_FILE"], encoding="utf-8") as f: text = f.read().strip()
+with open(os.environ["TITLE_FILE"], encoding="utf-8") as f: title = f.readline().strip() or "Video Transcript"
 url, today = os.environ["URL"], os.environ["TODAY"]
-md = f"# Video Transcript\n\n**Source:** {url}\n**Date:** {today}\n**Type:** Video Transcription\n\n---\n\n## Full Transcript\n\n{text}\n\n---\n\n*Transcribed with Cloudflare Workers AI (chunked)*\n"
-print(json.dumps({"url": url, "markdown_content": md}, ensure_ascii=False))
+md = f"# {title}\n\n**Source:** {url}\n**Date:** {today}\n**Type:** Video Transcription\n\n---\n\n## Full Transcript\n\n{text}\n\n---\n\n*Transcribed with Cloudflare Workers AI (chunked)*\n"
+print(json.dumps({"url": url, "title": title, "markdown_content": md}, ensure_ascii=False))
 ' > "$MD_FILE"
 
         UPLOAD_RESULT=$(api_call POST /api/transcribe -H "Content-Type: application/json" -d @"$(winpath "$MD_FILE")")
@@ -148,153 +232,11 @@ print(json.dumps({"url": url, "markdown_content": md}, ensure_ascii=False))
 
     DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
     echo ">>> Opening $DASHBOARD_URL"
-    cmd.exe /c start msedge "$DASHBOARD_URL" 2>/dev/null &
+    cmd.exe /c start "" msedge "$DASHBOARD_URL" 2>/dev/null &
 
-    echo ">>> Phase 2: Generating AI summary + classification with pi..."
-
-    # Pi (Windows binary) can't reliably resolve MSYS /tmp paths, so write files
-    # pi reads/produces under output/ which has a known Windows location relative
-    # to the project dir. output/ is gitignored.
-    mkdir -p output
-    TRANSCRIPT_FILE="output/transcript_${TRANSCRIPT_ID}.txt"
-    api_call GET "/api/transcript/$TRANSCRIPT_ID/content" > "$TRANSCRIPT_FILE"
-    if [ ! -s "$TRANSCRIPT_FILE" ]; then
-        echo ">>> WARNING: Could not fetch transcript content for pi"
-        echo "=== Done ==="
-        exit 0
-    fi
-    echo ">>> Transcript fetched: $(wc -c < "$TRANSCRIPT_FILE") bytes"
-
-    EXISTING_CATS=$(api_call GET /api/categories 2>/dev/null | python -c "
-import sys, json
-try:
-    data = json.load(sys.stdin).get('data', [])
-    cats = [c['category'] for c in data if c.get('category')]
-    print(', '.join(cats) if cats else '(none yet)')
-except: print('(none yet)')
-" 2>/dev/null)
-    echo ">>> Existing categories: $EXISTING_CATS"
-
-    SUMMARY_FILE="output/summary_${TRANSCRIPT_ID}.md"
-    CLASSIFY_FILE="output/classify_${TRANSCRIPT_ID}.json"
-
-    UPDATE_HELPER="$TMPDIR/update.sh"
-    cat > "$UPDATE_HELPER" << UPDATEEOF
-#!/bin/bash
-# Args: \$1 = summary markdown path, \$2 = title.
-# Builds a UTF-8 JSON payload via Python (avoids cp1252 mojibake on Windows
-# where Python's default open() encoding is cp1252) and curls it with
-# --data-binary so curl preserves bytes exactly.
-SUMMARY_FILE="\$1"
-TITLE="\$2"
-PAYLOAD_FILE="\$(mktemp)"
-
-SUMMARY_FILE="\$SUMMARY_FILE" TITLE="\$TITLE" PAYLOAD_FILE="\$PAYLOAD_FILE" python -c '
-import json, os
-with open(os.environ["SUMMARY_FILE"], encoding="utf-8") as f:
-    md = f.read()
-with open(os.environ["PAYLOAD_FILE"], "w", encoding="utf-8") as f:
-    json.dump({"markdown_content": md, "title": os.environ["TITLE"]}, f, ensure_ascii=False)
-'
-
-WIN_PAYLOAD=\$(cygpath -w "\$PAYLOAD_FILE" 2>/dev/null || echo "\$PAYLOAD_FILE")
-curl -s -L -X PUT \\
-    -H "CF-Access-Client-Id: $CF_ACCESS_ID" \\
-    -H "CF-Access-Client-Secret: $CF_ACCESS_SECRET" \\
-    -H "Content-Type: application/json; charset=utf-8" \\
-    -c /tmp/cf-cookies-chromescribe.txt \\
-    -b /tmp/cf-cookies-chromescribe.txt \\
-    --data-binary "@\$WIN_PAYLOAD" \\
-    "${DASHBOARD_BASE}/api/transcripts/${TRANSCRIPT_ID}"
-rm -f "\$PAYLOAD_FILE"
-UPDATEEOF
-    chmod +x "$UPDATE_HELPER"
-
-    TODAY_DATE=$(date +%Y-%m-%d)
-
-    pi --provider minimax --model MiniMax-M2.7-highspeed --no-session < /dev/null \
-      "You are a content summarizer and classifier. Read the transcript file '$TRANSCRIPT_FILE' and produce TWO output files.
-
-=== FILE 1: '$SUMMARY_FILE' ===
-
-# $TRANSCRIPT_TITLE
-
-**Source:** $URL
-**Date:** $TODAY_DATE
-**Type:** Video Transcription
-
----
-
-## TL;DR
-
-<3-5 bullet points with key takeaways. Be specific — names, numbers, claims.>
-
----
-
-## The Article
-
-<800-1500 word web article using pyramid principle. Lead with the most important insight. Short paragraphs, bold key phrases, subheadings every 2-3 paragraphs.>
-
----
-
-## Full Transcript
-
-<details>
-<summary>Click to expand full transcript</summary>
-
-<Clean transcript text from the file. Remove any markdown headers or metadata — just the spoken words.>
-
-</details>
-
-=== FILE 2: '$CLASSIFY_FILE' ===
-
-Classify the content. Write EXACTLY this JSON (and nothing else) to the file:
-
-{\"category\": \"<ONE short category, 1-3 words>\", \"tags\": [\"<tag1>\", \"<tag2>\", \"<tag3>\", \"<tag4>\", \"<tag5>\"]}
-
-Category rules:
-- PREFER reusing an existing category from this list if it fits: $EXISTING_CATS
-- Only invent a new one if none fit. Keep it short (1-3 words), use Title Case.
-- Categories should be broad enough to group multiple videos.
-
-Tag rules:
-- 3-5 specific topical tags (people, tools, techniques, products mentioned)
-- Lowercase, short (1-3 words each), no hashtags
-
-IMPORTANT STEPS — do them in order, then exit:
-1. Read '$TRANSCRIPT_FILE' using cat
-2. Write the structured markdown to '$SUMMARY_FILE'
-3. Write the classification JSON to '$CLASSIFY_FILE'
-4. Upload summary by running: bash $UPDATE_HELPER '$SUMMARY_FILE' '$TRANSCRIPT_TITLE'
-5. Exit immediately. No questions. No further actions." 2>&1 | tail -5
-
-    echo ">>> Pi agent finished"
-
-    if [ -f "$CLASSIFY_FILE" ]; then
-        echo ">>> Uploading classification..."
-        CLASSIFY_PAYLOAD=$(CLASSIFY_FILE="$CLASSIFY_FILE" python -c "
-import json, os, sys
-sys.stdout.reconfigure(encoding='utf-8')
-try:
-    with open(os.environ['CLASSIFY_FILE'], encoding='utf-8') as f: c = json.load(f)
-    out = {}
-    if c.get('category'): out['category'] = c['category']
-    if isinstance(c.get('tags'), list): out['tags'] = c['tags']
-    print(json.dumps(out, ensure_ascii=False))
-except Exception as e:
-    print('')
-" 2>/dev/null)
-        if [ -n "$CLASSIFY_PAYLOAD" ] && [ "$CLASSIFY_PAYLOAD" != "{}" ]; then
-            api_call PUT "/api/transcripts/$TRANSCRIPT_ID" -H "Content-Type: application/json" -d "$CLASSIFY_PAYLOAD" > /dev/null
-            echo ">>> Classification uploaded: $CLASSIFY_PAYLOAD"
-        else
-            echo ">>> WARNING: classify.json invalid or empty"
-        fi
-    else
-        echo ">>> WARNING: pi did not produce classify.json"
-    fi
-
+    run_hosted_analysis "$TRANSCRIPT_ID" || true
     echo "=== Done ==="
+    exit 0
 else
     # ---------- ARTICLE FLOW ----------
     echo ">>> Article detected — extracting via Jina Reader..."
@@ -323,43 +265,10 @@ else
 
     DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
     echo ">>> Opening $DASHBOARD_URL"
-    cmd.exe /c start msedge "$DASHBOARD_URL" 2>/dev/null &
+    cmd.exe /c start "" msedge "$DASHBOARD_URL" 2>/dev/null &
 
-    echo ">>> Phase 2: Generating AI summary with Pi..."
-    pi --provider minimax --model MiniMax-M2.5-highspeed --no-session \
-      "You are a content summarizer. Read the article file '$ARTICLE_FILE' and create a structured markdown document.
-
-Write the output to a file called 'output/summary_${TRANSCRIPT_ID}.md' with this EXACT format:
-
-# <Title of the article>
-
-**Source:** $URL
-**Date:** $(date +%Y-%m-%d)
-**Type:** Article
-
----
-
-## TL;DR
-
-<3-5 bullet points with key takeaways. Be specific — names, numbers, claims, quotes.>
-
----
-
-## The Article
-
-<800-1500 word web summary using pyramid principle. Lead with the most important insight. Short paragraphs, bold key phrases, subheadings every 2-3 paragraphs. Do NOT copy the original verbatim — synthesize and reorganize by importance.>
-
----
-
-## Full Article
-
-<The full original article text from '$ARTICLE_FILE', cleaned up for readability. Preserve paragraph breaks. Do not add or remove content.>
-
-IMPORTANT:
-1. First read the file '$ARTICLE_FILE' using bash
-2. Write the output to 'output/summary_${TRANSCRIPT_ID}.md'
-3. Then run: python update_transcript.py $TRANSCRIPT_ID output/summary_${TRANSCRIPT_ID}.md \"<title>\"
-   Replace <title> with the actual article title you extracted."
-
+    run_hosted_analysis "$TRANSCRIPT_ID" || true
+    rm -f "$ARTICLE_FILE"
     echo "=== Done ==="
+    exit 0
 fi

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ChromeScribe is a video/article transcription platform with three components:
 
-1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs `bash process.sh`. Hardcoded to Windows paths. Video URLs (YouTube/TikTok): Phase 1 downloads audio via yt-dlp and transcribes through the dashboard's Cloudflare AI Whisper endpoints; Phase 2 uses `pi` CLI (MiniMax) for summary + classification (category + tags). Article URLs: Jina Reader extracts the page; Phase 2 summarizes.
+1. **Chrome Extension** (`extension/`) — Manifest V3 extension that sends URLs to a web terminal (`localhost:7681`) which runs `bash process.sh`. Hardcoded to Windows paths. Video URLs (YouTube/TikTok): the local script only downloads/chunks audio and uploads it; Cloudflare Workers AI performs Whisper transcription plus Gemma summary/classification through AI Gateway. Article URLs: Jina Reader extracts and uploads the page, then the Worker analyzes it.
 2. **Cloudflare Worker API + Dashboard** (`dashboard/`) — TypeScript Worker serving a transcript dashboard. Uses D1 (SQLite) for metadata, R2 for SRT/markdown storage, and Cloudflare AI (Whisper) for audio transcription.
 3. **Processing System Prompt** (this file, below) — Instructions for Claude Code instances that receive `process: <url>` commands from the extension.
 
@@ -18,7 +18,7 @@ Extension → localhost:7681 terminal → bash process.sh <url>
   if video URL (YouTube/TikTok):
     Phase 1: yt-dlp → ffmpeg chunk (>500KB) → POST /api/whisper per chunk → POST /api/transcribe (markdown JSON)
              or, for small files: POST /api/transcribe (audio multipart, Worker transcribes server-side)
-    Phase 2: pi reads /api/transcript/:id/content → summary + classification → PUT /api/transcripts/:id
+    Phase 2: POST /api/transcripts/:id/analyze → Workers AI summary + classification → R2/D1
   else (article URL):
     Phase 1: Jina Reader (r.jina.ai) → upload_article.py → dashboard API
     Phase 2: pi reads article file → summary → update_transcript.py → dashboard API
@@ -74,7 +74,7 @@ Push to `master` triggers `.github/workflows/deploy.yml` which uploads static fi
 - **D1 database**: `chromescribe-db` (`08532531-b2b5-4922-9e88-7cfdd074928a`)
 - **R2 bucket**: `chromescribe-transcripts` — stores both SRT files and the static HTML dashboard
 - **Worker URL**: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/`
-- **Transcription**: process.sh (video flow) and monitor.sh both use Cloudflare Workers AI Whisper (`@cf/openai/whisper-large-v3-turbo`) via the dashboard. The `@illyism/transcribe` CLI is no longer invoked by any active script.
+- **AI processing**: transcription uses Cloudflare Workers AI Whisper (`@cf/openai/whisper-large-v3-turbo`); summary/classification uses `@cf/google/gemma-4-26b-a4b-it`. All inference is routed through Cloudflare AI Gateway (`default`) and tagged with `project=chromescribe`. No active pipeline requires MiniMax or OpenRouter.
 - **TikTok URLs** are downloaded via `yt-dlp -x --audio-format mp3`, then the local audio is uploaded to the dashboard's `/api/transcribe` (multipart) or chunked through `/api/whisper`. The dashboard's `parseVideoUrl` accepts `tiktok.com/@user/video/id` and stores it as `tiktok:<id>`.
 - **Dashboard is behind Cloudflare Zero Trust** — API calls require `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers (service token creds in `process.sh`, `monitor.sh`, `update_transcript.py`, and `upload_article.py`)
 - **Windows encoding**: Python scripts need `sys.stdout.reconfigure(encoding='utf-8', errors='replace')` — API responses contain emoji that break Windows cp1252 console
@@ -83,7 +83,7 @@ Push to `master` triggers `.github/workflows/deploy.yml` which uploads static fi
 - **Open Edge from bash**: `cmd.exe /c start msedge "<url>"` — works in Git Bash. Use `&` suffix to avoid blocking.
 - **Frontend**: Vanilla HTML/CSS/JS, dark theme, Geist font. No framework.
 - **Gitignored**: `*.srt`, `output/`, `tmp/`, `docs/`, `.superpowers/` — these won't appear in the repo
-- **Two system prompts**: `system-prompt.txt` (for Claude Code) and `system-prompt-pi.txt` (for Pi/MiniMax via extension). The Pi prompt uses `yt-dlp` + dashboard API upload; the Claude prompt uses `transcribe` CLI + local file output.
+- `system-prompt-pi.txt` is legacy and is not used by the extension pipeline.
 
 ---
 
@@ -186,5 +186,5 @@ Do NOT print the article or transcript to the terminal — that's what the file 
 
 - `transcribe` CLI = `@illyism/transcribe` v3.1.0 — uses OpenAI Whisper API (cloud, ~$0.006/min)
 - Extension at `extension/` — Manifest V3, uses `localhost:7681` web terminal (VPSManager)
-- Extension invokes `pi` CLI (MiniMax M2.5-highspeed) via `localhost:7681` web terminal with `system-prompt-pi.txt`
+- Extension invokes `bash process.sh <url>` via the `localhost:7681` web terminal; analysis runs on the Cloudflare Worker.
 - Claude Code flow uses `transcribe` CLI directly and is invoked manually

@@ -942,12 +942,12 @@
         
         // Open terminal with retranscribe command
         const projectDir = 'C:/Users/valen/Documents/GitHub/chromescribe';
-        const cmd = `cd /d "${projectDir}" && pi --provider minimax --model MiniMax-M2.5-highspeed --no-session --append-system-prompt @system-prompt-pi.txt "process: ${sourceUrl}"`;
+        const cmd = `bash process.sh "${sourceUrl}"`;
         const terminalUrl = `http://localhost:7681/?cwd=${encodeURIComponent(projectDir)}&cmd=${encodeURIComponent(cmd)}&title=Retranscribe`;
         
         window.open(terminalUrl, '_blank');
         
-        btn.textContent = '✅ Opened in Pi';
+        btn.textContent = '✅ Processing opened';
         setTimeout(() => {
           btn.disabled = false;
           btn.textContent = '♻️ Retranscribe';
@@ -988,7 +988,7 @@
       btn.textContent = '⏳ Summarizing…';
 
       try {
-        const res = await fetch(`${API}/transcripts/${id}/summarize`, {
+        const res = await fetch(`${API}/transcripts/${id}/analyze`, {
           method: 'POST',
           credentials: 'same-origin',
         });

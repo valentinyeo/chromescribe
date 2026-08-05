@@ -198,37 +198,22 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
     fi
     log "  Transcribed and uploaded as #$transcript_id"
 
-    # Step 3: Generate AI summary via the dashboard's server-side endpoint.
-    # Replaces the old local `pi` summary job — the endpoint (OpenRouter Kimi
-    # K2.6, internal timeout + retry) is reliable and independent of this
-    # machine. Non-fatal on failure: the raw transcript is already uploaded and
-    # the dashboard "Summarize" button is the recovery path, so we don't block.
-    log "  Generating summary (server-side)..."
-    local summarize_result
-    summarize_result=$(api_call POST "/api/transcripts/$transcript_id/summarize" --max-time 240)
-    if echo "$summarize_result" | grep -q '"success":true'; then
-        local sum_wc
-        sum_wc=$(echo "$summarize_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('word_count','?'))" 2>/dev/null)
-        log "  Summary generated (word_count=$sum_wc)"
+    # Step 3: Summarize and classify through Cloudflare Workers AI + AI Gateway.
+    # Non-fatal on failure: the raw transcript is already uploaded and the
+    # dashboard "Summarize" button is the recovery path, so we don't block.
+    log "  Analyzing with Cloudflare Workers AI..."
+    local analyze_result
+    analyze_result=$(api_call POST "/api/transcripts/$transcript_id/analyze" --max-time 240)
+    if echo "$analyze_result" | grep -q '"summarized":true'; then
+        local sum_wc cs_cat
+        sum_wc=$(echo "$analyze_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('word_count','?'))" 2>/dev/null)
+        cs_cat=$(echo "$analyze_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('category','unclassified'))" 2>/dev/null)
+        log "  Analysis complete (word_count=$sum_wc, category=$cs_cat)"
     else
-        log "  WARNING: summary failed — raw transcript stands, use the dashboard Summarize button. Response: $summarize_result"
+        log "  WARNING: analysis failed — raw transcript stands, use the dashboard Summarize button. Response: $analyze_result"
     fi
 
-    # Step 4: Classify the content (category + tags) via the server-side endpoint.
-    # The Worker calls OpenRouter and writes category/tags straight to D1 — no
-    # local `pi`, no local API key needed. Non-fatal on failure.
-    log "  Classifying (server-side)..."
-    local classify_result
-    classify_result=$(api_call POST "/api/transcripts/$transcript_id/classify" --max-time 150)
-    if echo "$classify_result" | grep -q '"success":true'; then
-        local cs_cat
-        cs_cat=$(echo "$classify_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('category','?'))" 2>/dev/null)
-        log "  Classified: $cs_cat"
-    else
-        log "  WARNING: classification failed. Response: $classify_result"
-    fi
-
-    # Step 5: Send Telegram notification with ChromeScribe URL + thumbnail
+    # Step 4: Send Telegram notification with ChromeScribe URL + thumbnail
     local cs_url="$DASHBOARD_URL/transcript.html?id=$transcript_id"
     local thumb_url="https://img.youtube.com/vi/${video_id}/mqdefault.jpg"
     send_telegram "$(printf '📝 <b>New transcript</b>\n<b>%s</b>\n<a href="%s">View in ChromeScribe</a>' "$title" "$cs_url")" "$thumb_url"
