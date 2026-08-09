@@ -22,8 +22,12 @@ A private YouTube transcription dashboard hosted on Cloudflare Workers.
 
 1. **Create D1 Database:**
    ```bash
-   wrangler d1 create chromescribe --account-id <your-account-id>
+   wrangler d1 create chromescribe
    ```
+
+   Wrangler reads the Cloudflare account from `account_id` in
+   `wrangler.toml` (or `CLOUDFLARE_ACCOUNT_ID`). Commands do not accept an
+   `--account-id` flag.
 
 2. **Apply Schema:**
    ```bash
@@ -50,6 +54,10 @@ deploy.bat
 # Linux/Mac
 bash deploy.sh
 ```
+
+The deploy scripts upload each page with the Wrangler v4 object-path format,
+`chromescribe-transcripts/<page>`, and then deploy the Worker. Existing D1 and
+R2 resources are not recreated during a deployment.
 
 ## API Endpoints
 
