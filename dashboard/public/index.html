@@ -911,14 +911,66 @@
     let channelsCache = [];
     let searchQuery = '';
 
-    // ponytail: SEO is a cross-cutting cluster (videos scattered across ~12 categories),
-    // so it's a keyword match over title/category/tags, not an exact category. Tune terms here.
+    // Pinned clusters cut across the narrower model-generated categories. Match
+    // title, channel, category, and tags so a relevant channel belongs to the
+    // cluster even when one of its videos received an unexpected category.
+    const ALL_AI_CLUSTER = '__all_ai__';
+    const RUSSIA_CLUSTER = '__russia__';
+    const HEALTH_CLUSTER = '__health__';
     const SEO_CLUSTER = '__seo__';
+
+    const AI_TECH_CATEGORY_RE = /\bai\b|claude|vibe coding|programming|developer|software|consumer tech|cybersecurity|web development|system optimization|knowledge management|product design|open source|rag/i;
+    const AI_TECH_CONTENT_RE = /\b(?:ai|artificial intelligence|machine learning|deep learning|llm|chatgpt|gpt(?:-?\d+)?|claude|gemini|codex|copilot|openai|anthropic|deepseek|qwen|mistral|grok|agentic|ai agents?|language models?|neural networks?|inference|prompting?|mcp|gpu|automation|robotics?|coding|programming|developers?|software|technology|tech|api|database|cloudflare|linux|cybersecurity|typescript|javascript|python|web development|no-code|saas)\b/i;
+    const AI_TECH_CHANNEL_RE = /\b(?:ai|tech|code|coding|developer|software|cloudflare|jetbrains|posthog|figma|neuralnine|sentdex|fireship|aicodeking|worldofai|reysu|primetime|better stack|matt pocock|mo bitar|ray amjad|greg isenberg|lenny's podcast|jimmy reilly|income stream surfers|julian goldie|theo|t3|indydevdan|y combinator|simon willison|seangoedecke|jeff geerling|sabrina ramonov|turing post|caleb writes code|chris titus|craftzdog|practical it|mit media lab|superwhisper|warp)\b/i;
+    const RUSSIA_RE = /\b(?:russia|russian|putin|kremlin|moscow|ukraine|ukrainian|kyiv|kiev|zelensky|soviet|donbas|crimea)\b/i;
+    const HEALTH_CATEGORY_RE = /health|nutrition|diet|sports science|medicine|medical|food industry/i;
+    const HEALTH_RE = /\b(?:health|medical|medicine|doctor|physician|nutrition|diet|metabolic|vitamin|supplement|protein|ketosis|carnivore|diabetes|insulin|blood pressure|cholesterol|longevity|sleep|exercise|fitness|cardio|strength training|body fat|obesity|cancer|disease|hormone|testosterone|mental health|neuroscience)\b/i;
+    const HEALTH_CHANNEL_RE = /physionic|siim land|dr\.?\s|doctor|\bmd\b|health|nutrition|foundmyfitness|peter attia|paul saladino|steak and butter|butter bob|anthony chaffee|nick norwitz|felix harder|dan go/i;
     const SEO_RE = /\bseo\b|keyword|backlink|serp|search engine|on-page|link[- ]building|organic traffic|google search/i;
+
+    function parsedTags(t) {
+      if (!t.tags) return [];
+      try {
+        const tags = JSON.parse(t.tags);
+        return Array.isArray(tags) ? tags.map(String) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function clusterText(t) {
+      return [t.title, t.channel, t.category, ...parsedTags(t)].filter(Boolean).join(' ');
+    }
+
+    function isAiTech(t) {
+      return AI_TECH_CHANNEL_RE.test(t.channel || '') ||
+        AI_TECH_CATEGORY_RE.test(t.category || '') ||
+        AI_TECH_CONTENT_RE.test(clusterText(t));
+    }
+
+    function isRussia(t) {
+      return RUSSIA_RE.test(clusterText(t));
+    }
+
+    function isHealth(t) {
+      return HEALTH_CHANNEL_RE.test(t.channel || '') ||
+        HEALTH_CATEGORY_RE.test(t.category || '') ||
+        HEALTH_RE.test(clusterText(t));
+    }
+
     function isSeo(t) {
-      if (SEO_RE.test(t.title || '') || SEO_RE.test(t.category || '')) return true;
-      if (t.tags) { try { return JSON.parse(t.tags).some(x => SEO_RE.test(String(x))); } catch {} }
-      return false;
+      return SEO_RE.test(clusterText(t));
+    }
+
+    const PINNED_CLUSTERS = [
+      { id: ALL_AI_CLUSTER, label: 'All AI', matches: isAiTech },
+      { id: RUSSIA_CLUSTER, label: 'Russia', matches: isRussia },
+      { id: HEALTH_CLUSTER, label: 'Health', matches: isHealth },
+      { id: SEO_CLUSTER, label: 'SEO', matches: isSeo },
+    ];
+
+    function getActiveCluster() {
+      return PINNED_CLUSTERS.find(cluster => cluster.id === activeCategory) || null;
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -950,16 +1002,14 @@
     function renderCategoryFilters(categories) {
       const chipsBox = document.getElementById('categoryChips');
       const expandBtn = document.getElementById('categoryExpand');
-      if (!categories.length) {
-        chipsBox.innerHTML = '';
-        expandBtn.classList.add('hidden');
-        return;
-      }
-      const total = categories.reduce((s, c) => s + c.count, 0);
-      const seoCount = transcripts.filter(isSeo).length;
+      const total = transcripts.length;
+      const pinnedChips = PINNED_CLUSTERS.map(cluster => {
+        const count = transcripts.filter(cluster.matches).length;
+        return `<button class="category-chip ${activeCategory === cluster.id ? 'active' : ''}" onclick="setCategory('${cluster.id}')">${cluster.label}<span class="count">${count}</span></button>`;
+      });
       const chips = [
         `<button class="category-chip ${activeCategory === null ? 'active' : ''}" onclick="setCategory(null)">All<span class="count">${total}</span></button>`,
-        `<button class="category-chip ${activeCategory === SEO_CLUSTER ? 'active' : ''}" onclick="setCategory('${SEO_CLUSTER}')">🔎 SEO<span class="count">${seoCount}</span></button>`,
+        ...pinnedChips,
         ...categories.map(c => `<button class="category-chip ${activeCategory === c.category ? 'active' : ''}" onclick="setCategory('${escapeAttr(c.category)}')">${escapeHtml(c.category)}<span class="count">${c.count}</span></button>`)
       ];
       chipsBox.innerHTML = chips.join('');
@@ -1007,8 +1057,9 @@
 
       empty.classList.add('hidden');
 
-      let filtered = activeCategory === SEO_CLUSTER
-        ? transcripts.filter(isSeo)
+      const activeCluster = getActiveCluster();
+      let filtered = activeCluster
+        ? transcripts.filter(activeCluster.matches)
         : activeCategory
           ? transcripts.filter(t => t.category === activeCategory)
           : transcripts;

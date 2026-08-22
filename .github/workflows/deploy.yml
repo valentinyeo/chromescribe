@@ -16,6 +16,18 @@ jobs:
         working-directory: dashboard
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Worker changes
+        id: worker-changes
+        working-directory: .
+        run: |
+          if git diff --quiet "${{ github.event.before }}" "${{ github.sha }}" -- dashboard/src dashboard/wrangler.toml; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install wrangler
         run: npm install -g wrangler@4.82.2
@@ -28,4 +40,5 @@ jobs:
           wrangler r2 object put chromescribe-transcripts/stats.html --file=./public/stats.html --remote
 
       - name: Deploy Worker
+        if: steps.worker-changes.outputs.deploy == 'true'
         run: wrangler deploy
