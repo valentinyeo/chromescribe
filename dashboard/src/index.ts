@@ -182,12 +182,20 @@ async function summarizeContent(content: string, ai: Ai): Promise<string> {
   if (!transcriptBody) throw new Error('No transcript content to summarize');
 
   const systemPrompt =
-    'You are a content summarizer. You turn a raw transcript or article into a structured, readable summary in markdown.';
+    'You are a content summarizer. You turn a raw transcript or article into a structured, readable summary in markdown, shaped for a reader with ADHD: the answer first, numbered where work is involved, nothing wasted.';
   const userPrompt = `Summarize the content below. Output ONLY markdown with EXACTLY these two sections, in this order, and nothing else (no title, no preamble, no code fences):
 
 ## TL;DR
 
-- 3-5 bullet points, each starting with "- ". Be specific — names, numbers, claims. No filler.
+Take the FULL content below and run the i-have-adhd skill on it — the result of running the skill IS this section:
+
+- First line: the single most important point as a bold statement. Not context, not "This video covers...".
+- Numbered list (1. 2. 3.) for sequential or actionable takeaways; each item is one bounded point.
+- Specific numbers, names, and time references ("15 minutes", "3x the cost") — never vague ones ("a bit", "some work").
+- Matter-of-fact: state cause and fix. No hedging that adds no information, no idioms, no alarm.
+- If the content implies an action, the last line names one concrete thing the reader can do next.
+- Cap every list at 5 items.
+- No preamble ("This video discusses..."), no recap, no closers ("Hope this helps"). Start with the answer, end when the answer is done.
 
 ---
 
