@@ -43,7 +43,7 @@ The output file MUST have these sections in this exact order:
 
 ## TL;DR
 
-<3-5 bullet points capturing the key takeaways. This is a 30-second read. Be direct and specific — names, numbers, claims. No filler.>
+<Take the FULL transcript — the .srt content for videos, the extracted article text for articles — and run the i-have-adhd skill on it, verbatim. Read 'skills/i-have-adhd/SKILL.md' and apply every rule (lead with the point, numbered steps, lists capped at 5, specific numbers and time references, no preamble, no filler, no closers) to that text. The result of running the skill on the transcript IS this section. This is a 30-second read. It is presented above the article.>
 
 ---
 
@@ -86,6 +86,7 @@ Do NOT print the article or transcript to the terminal — that's what the file 
 - NEVER ask clarifying questions. Just process the URL.
 - NEVER skip saving to file.
 - ALWAYS include all three sections: TL;DR, The Article, and Full Transcript.
+- The TL;DR MUST be the output of running the i-have-adhd skill (skills/i-have-adhd/SKILL.md) on the full transcript — not generic bullet points.
 - The Article MUST use the pyramid principle: most important insight first, then descending importance.
 - The Article is a web article, NOT a topic-by-topic mirror of the video structure. Synthesize and reorganize by importance.
 - If `transcribe` fails, report the error and suggest checking if the CLI is installed.
