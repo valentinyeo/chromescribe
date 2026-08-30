@@ -96,17 +96,89 @@ for e in entries:
 "
 }
 
+# TikTok has no RSS. yt-dlp's profile extractor is frequently broken by TikTok
+# API changes, so fall back to scraping the SSR payload of the profile page.
+# Both paths return video IDs only (newest first); titles/thumbnails come from
+# TikTok's oEmbed API at processing time.
+get_tiktok_videos() {
+    local handle="$1"
+    local ids
+    ids=$(yt-dlp --no-check-certificate --flat-playlist --print "%(id)s" \
+        "https://www.tiktok.com/@${handle}" 2>/dev/null | grep -E '^[0-9]{15,21}$')
+    if [ -n "$ids" ]; then
+        echo "$ids"
+        return 0
+    fi
+    # stderr: this function's stdout is the video-ID list
+    echo "  yt-dlp listing failed, scraping profile page..." >&2
+    python3 - "$handle" <<'PYEOF'
+import re, sys, urllib.request
+handle = sys.argv[1]
+req = urllib.request.Request(
+    f"https://www.tiktok.com/@{handle}",
+    headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    })
+try:
+    html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "replace")
+except Exception as e:
+    print(f"Profile scrape error: {e}", file=sys.stderr)
+    sys.exit(1)
+seen, out = set(), []
+for vid in re.findall(r'"id":"(\d{15,21})"', html):
+    if vid not in seen:
+        seen.add(vid)
+        out.append(vid)
+print("\n".join(out))
+PYEOF
+}
+
+# Title + thumbnail for a TikTok video via public oEmbed. Prints "title\tthumb".
+# TikTok blocks datacenter IPs — this only works from residential networks.
+tiktok_meta() {
+    curl -s --max-time 20 "https://www.tiktok.com/oembed?url=$1" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print((d.get('title') or '').replace('\t', ' ').strip())
+    print(d.get('thumbnail_url') or '')
+except Exception:
+    print('')
+    print('')
+"
+}
+
+process_tiktok_video() {
+    local video_id="$1"
+    local handle="$2"
+    local url="https://www.tiktok.com/@${handle}/video/${video_id}"
+    local meta title thumb
+    meta=$(tiktok_meta "$url")
+    title=$(echo "$meta" | sed -n '1p')
+    thumb=$(echo "$meta" | sed -n '2p')
+    [ -z "$title" ] && title="TikTok @${handle} (${video_id})"
+    process_video "$video_id" "$title" "$url" "$thumb"
+}
+
 process_video() {
     local video_id="$1"
     local title="$2"
-    local url="https://www.youtube.com/watch?v=$video_id"
+    local url="${3:-https://www.youtube.com/watch?v=$video_id}"
+    local thumb_url="${4:-https://img.youtube.com/vi/${video_id}/mqdefault.jpg}"
 
     log "Processing: $title ($url)"
 
     # Step 1: Download audio
     local audio_file="$TMPDIR/${video_id}.mp3"
     log "  Downloading audio..."
-    if ! yt-dlp --cookies-from-browser chrome --no-check-certificate \
+    # Chrome cookies are only needed for YouTube (age-gated/consent); TikTok is public
+    local yt_extra=()
+    case "$url" in
+        *tiktok.com*) ;;
+        *) yt_extra=(--cookies-from-browser chrome) ;;
+    esac
+    if ! yt-dlp "${yt_extra[@]}" --no-check-certificate \
         --remote-components ejs:github -x --audio-format mp3 \
         -o "$audio_file" "$url" 2>&1 | tail -3; then
         log "  ERROR: yt-dlp download failed"
@@ -215,7 +287,6 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
 
     # Step 4: Send Telegram notification with ChromeScribe URL + thumbnail
     local cs_url="$DASHBOARD_URL/transcript.html?id=$transcript_id"
-    local thumb_url="https://img.youtube.com/vi/${video_id}/mqdefault.jpg"
     send_telegram "$(printf '📝 <b>New transcript</b>\n<b>%s</b>\n<a href="%s">View in ChromeScribe</a>' "$title" "$cs_url")" "$thumb_url"
 
     log "  Telegram sent: $cs_url"
@@ -238,6 +309,21 @@ fi
 touch "$PROCESSED_FILE"
 
 if [ -n "$FORCE_VIDEO" ]; then
+    if [[ "$FORCE_VIDEO" == *tiktok.com/@* ]]; then
+        tt_vid=$(echo "$FORCE_VIDEO" | sed -n 's#.*/video/\([0-9]\+\).*#\1#p')
+        tt_handle=$(echo "$FORCE_VIDEO" | sed -n 's#.*tiktok.com/@\([^/?]*\).*#\1#p')
+        if [ -n "$tt_vid" ] && [ -n "$tt_handle" ]; then
+            if process_tiktok_video "$tt_vid" "$tt_handle"; then
+                echo "tiktok:${tt_vid}" >> "$PROCESSED_FILE"
+            else
+                log "  FAILED: $FORCE_VIDEO — not marking as processed"
+                exit 1
+            fi
+            exit 0
+        fi
+        log "  ERROR: Could not parse TikTok URL: $FORCE_VIDEO"
+        exit 1
+    fi
     if process_video "$FORCE_VIDEO" "$FORCE_TITLE"; then
         echo "$FORCE_VIDEO" >> "$PROCESSED_FILE"
     else
@@ -256,6 +342,60 @@ while IFS= read -r line; do
     [ -z "$line" ] && continue
 
     channel_id="$line"
+
+    if [[ "$channel_id" == tiktok:* ]]; then
+        handle="${channel_id#tiktok:}"
+        handle="${handle#@}"
+        log "Checking TikTok channel: @${handle}"
+
+        # First run: seed the current backlog as processed so we don't
+        # transcribe the channel's entire history — only new videos from now on.
+        # Only seed from a full listing (>= 10 ids): TikTok sometimes serves a
+        # degraded page with a couple of ids, and seeding from that would later
+        # treat the whole backlog as new.
+        SEED_FILE="$SCRIPT_DIR/.seeded_tiktok_${handle}"
+        if [ ! -f "$SEED_FILE" ]; then
+            TT_LIST=$(get_tiktok_videos "$handle")
+            TT_COUNT=$(echo "$TT_LIST" | grep -cE '^[0-9]{15,21}$')
+            if [ "$TT_COUNT" -lt 10 ]; then
+                log "  WARNING: got only $TT_COUNT video(s) for @${handle} — waiting for a full listing before seeding (nothing processed yet)"
+                continue
+            fi
+            while IFS= read -r video_id; do
+                [ -n "$video_id" ] && echo "tiktok:${video_id}" >> "$PROCESSED_FILE"
+            done <<< "$TT_LIST"
+            touch "$SEED_FILE"
+            log "  Seeded @${handle} ($TT_COUNT videos) — backlog marked processed, watching for new videos"
+            continue
+        fi
+
+        # Cap per run: a listing hiccup (e.g. a degraded page surfacing old
+        # pinned videos as "new") must not trigger a transcription flood
+        tt_new=0
+        while IFS= read -r video_id; do
+            [ -z "$video_id" ] && continue
+
+            if grep -qF "tiktok:${video_id}" "$PROCESSED_FILE"; then
+                log "  Already processed: $video_id"
+                continue
+            fi
+
+            if [ "$tt_new" -ge 5 ]; then
+                log "  Cap reached (5/run) — $video_id deferred to next run"
+                break
+            fi
+
+            if process_tiktok_video "$video_id" "$handle"; then
+                echo "tiktok:${video_id}" >> "$PROCESSED_FILE"
+                NEW_COUNT=$((NEW_COUNT + 1))
+                tt_new=$((tt_new + 1))
+            else
+                log "  FAILED: $video_id — not marking as processed, will retry next run"
+            fi
+        done < <(get_tiktok_videos "$handle")
+        continue
+    fi
+
     log "Checking channel: $channel_id"
 
     while IFS=$'\t' read -r video_id title; do
