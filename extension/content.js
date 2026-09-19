@@ -91,6 +91,9 @@ function ensureCardStyles() {
 
     .chromescribe-card-host {
       position: relative !important;
+      /* Reserve the 30px action row plus a 4px gap below the card content.
+         Compact layouts can put channel names and dates on the last line. */
+      padding-bottom: 34px !important;
     }
 
     .chromescribe-card-button {
