@@ -4,6 +4,24 @@ Load this directory as an unpacked extension in Chrome or Edge. After updating
 the files, reload ChromeScribe on the browser's extensions page, then refresh
 any open YouTube tabs.
 
+## TikTok transcription
+
+Open a TikTok video and click the ChromeScribe extension icon. The extension
+runs the local `process.bat` script, which downloads the video with `yt-dlp`,
+extracts its audio with `ffmpeg`, and sends it to Cloudflare for transcription.
+
+If downloading fails with `Unexpected response from webpage request`, check
+`yt-dlp --version`. Version 2026.07.04 has a known TikTok extraction bug fixed
+in 2026.08.19. Update the standalone Windows executable with `yt-dlp -U`, then
+retry the video. For pip installations, update through that installation's
+Python package manager instead. See the
+[upstream issue](https://github.com/yt-dlp/yt-dlp/issues/17403).
+
+Run the version check in the same environment as the processing script if
+multiple copies of `yt-dlp` are installed. Repeating the download with an old
+extractor does not fix this error. No extension reload is needed after updating
+the downloader.
+
 ## Video card actions
 
 ChromeScribe reserves 34px below each video card's content for its 30px action
