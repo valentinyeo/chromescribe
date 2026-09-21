@@ -19,3 +19,14 @@ CREATE INDEX IF NOT EXISTS idx_video_id ON transcripts(video_id);
 CREATE INDEX IF NOT EXISTS idx_created_at ON transcripts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_title ON transcripts(title);
 CREATE INDEX IF NOT EXISTS idx_category ON transcripts(category);
+
+-- Queue of URLs shared from the Android companion app.
+-- queue.sh (cron, on the box with yt-dlp) drains pending rows via monitor.sh --force.
+CREATE TABLE IF NOT EXISTS queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    video_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending | done | failed
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_queue_status ON queue(status);

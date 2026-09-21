@@ -1162,6 +1162,61 @@ ${srtContent || transcript.text}
       }
     }
 
+
+    // --- Android companion queue ---
+    // The phone can't run yt-dlp, so a shared URL is parked here and drained by
+    // queue.sh on the box that can (cron -> monitor.sh --force).
+
+    // POST /api/queue { url } - enqueue a shared URL
+    if (request.method === 'POST' && path === 'queue') {
+      const body = await request.json<{ url?: string }>();
+      const sharedUrl = (body.url || '').trim();
+      const parsed = parseVideoUrl(sharedUrl);
+      if (!parsed) return handleError(new Error('Unsupported URL'), 400);
+      if (parsed.platform !== 'youtube') {
+        return handleError(new Error('Only YouTube URLs can be queued for now'), 400);
+      }
+
+      // Already transcribed? Tell the app to just open it.
+      const existing = await env.DB
+        .prepare('SELECT id FROM transcripts WHERE video_id = ?')
+        .bind(parsed.prefixedId)
+        .first<{ id: number }>();
+      if (existing) return jsonResponse({ queued: false, transcript_id: existing.id });
+
+      // Already waiting? Don't queue it twice.
+      const pending = await env.DB
+        .prepare("SELECT id FROM queue WHERE video_id = ? AND status = 'pending'")
+        .bind(parsed.prefixedId)
+        .first<{ id: number }>();
+      if (pending) return jsonResponse({ queued: true, id: pending.id, duplicate: true });
+
+      const inserted = await env.DB
+        .prepare("INSERT INTO queue (url, video_id, status) VALUES (?, ?, 'pending')")
+        .bind(sharedUrl, parsed.prefixedId)
+        .run();
+      return jsonResponse({ queued: true, id: inserted.meta.last_row_id });
+    }
+
+    // GET /api/queue - pending rows, oldest first (queue.sh)
+    if (request.method === 'GET' && path === 'queue') {
+      const { results } = await env.DB
+        .prepare("SELECT id, url, video_id FROM queue WHERE status = 'pending' ORDER BY id ASC LIMIT 10")
+        .all();
+      return jsonResponse(results);
+    }
+
+    // PUT /api/queue/:id { status } - mark done/failed (queue.sh)
+    if (request.method === 'PUT' && path.startsWith('queue/')) {
+      const id = path.split('/')[1];
+      const { status } = await request.json<{ status?: string }>();
+      if (status !== 'done' && status !== 'failed') {
+        return handleError(new Error('status must be done or failed'), 400);
+      }
+      await env.DB.prepare('UPDATE queue SET status = ? WHERE id = ?').bind(status, id).run();
+      return jsonResponse({ id, status });
+    }
+
     // Search transcripts
     if (request.method === 'GET' && path === 'search') {
       const query = url.searchParams.get('q') || '';
