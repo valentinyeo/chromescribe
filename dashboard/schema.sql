@@ -30,3 +30,8 @@ CREATE TABLE IF NOT EXISTS queue (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_queue_status ON queue(status);
+
+-- Race guard for the Android queue: at most one pending row per video_id.
+-- Mirrors dashboard/migrations/0001_queue.sql; keep both in sync.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_queue_pending_video
+    ON queue(video_id) WHERE status = 'pending';
