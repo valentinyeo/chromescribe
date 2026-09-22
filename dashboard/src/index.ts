@@ -4,6 +4,7 @@
  */
 
 import { Buffer } from 'node:buffer';
+import { enqueueSharedUrl } from './queue-lib.mjs';
 
 interface Env {
   DB: D1Database;
@@ -1169,33 +1170,18 @@ ${srtContent || transcript.text}
 
     // POST /api/queue { url } - enqueue a shared URL
     if (request.method === 'POST' && path === 'queue') {
-      const body = await request.json<{ url?: string }>();
-      const sharedUrl = (body.url || '').trim();
-      const parsed = parseVideoUrl(sharedUrl);
-      if (!parsed) return handleError(new Error('Unsupported URL'), 400);
-      if (parsed.platform !== 'youtube') {
-        return handleError(new Error('Only YouTube URLs can be queued for now'), 400);
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return handleError(new Error('Invalid JSON body'), 400);
       }
+      const sharedUrl =
+        body && typeof (body as any).url === 'string' ? (body as any).url : '';
 
-      // Already transcribed? Tell the app to just open it.
-      const existing = await env.DB
-        .prepare('SELECT id FROM transcripts WHERE video_id = ?')
-        .bind(parsed.prefixedId)
-        .first<{ id: number }>();
-      if (existing) return jsonResponse({ queued: false, transcript_id: existing.id });
-
-      // Already waiting? Don't queue it twice.
-      const pending = await env.DB
-        .prepare("SELECT id FROM queue WHERE video_id = ? AND status = 'pending'")
-        .bind(parsed.prefixedId)
-        .first<{ id: number }>();
-      if (pending) return jsonResponse({ queued: true, id: pending.id, duplicate: true });
-
-      const inserted = await env.DB
-        .prepare("INSERT INTO queue (url, video_id, status) VALUES (?, ?, 'pending')")
-        .bind(sharedUrl, parsed.prefixedId)
-        .run();
-      return jsonResponse({ queued: true, id: inserted.meta.last_row_id });
+      const result = await enqueueSharedUrl(env.DB, sharedUrl);
+      if (result.error) return handleError(new Error(result.error), result.status);
+      return jsonResponse(result.data, result.status);
     }
 
     // GET /api/queue - pending rows, oldest first (queue.sh)
@@ -1209,7 +1195,16 @@ ${srtContent || transcript.text}
     // PUT /api/queue/:id { status } - mark done/failed (queue.sh)
     if (request.method === 'PUT' && path.startsWith('queue/')) {
       const id = path.split('/')[1];
-      const { status } = await request.json<{ status?: string }>();
+      if (!/^\d+$/.test(id)) {
+        return handleError(new Error('Invalid queue id'), 400);
+      }
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return handleError(new Error('Invalid JSON body'), 400);
+      }
+      const status = body && typeof (body as any).status === 'string' ? (body as any).status : '';
       if (status !== 'done' && status !== 'failed') {
         return handleError(new Error('status must be done or failed'), 400);
       }

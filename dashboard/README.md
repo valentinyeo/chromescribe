@@ -99,6 +99,52 @@ DELETE /api/transcripts/:id
 GET /api/search?q=query
 ```
 
+### Android share queue
+
+The Android companion app shares a YouTube URL; `queue.sh` (cron, on the box
+with yt-dlp) drains it. Only strict YouTube watch/shorts/live/youtu.be URLs on
+the exact https hosts `youtube.com`, `www.youtube.com`, `m.youtube.com` and
+`youtu.be` are accepted.
+
+```
+POST /api/queue            { "url": "https://youtu.be/<11-char-id>" }
+GET  /api/queue            # up to 10 pending rows, oldest first (queue.sh)
+PUT  /api/queue/:id        { "status": "done" | "failed" } (queue.sh)
+```
+
+`POST` returns `{success:true,data:{queued:true,id}}`, adds `duplicate:true`
+when a pending row already existed, or `{queued:false,transcript_id}` when the
+video is already transcribed. Malformed input returns HTTP 400, never 500.
+
+## Queue setup, migration and verification
+
+1. **Credentials** (parent-managed, never committed). `queue.sh` reads
+   `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` from the environment or
+   from a gitignored `.env.chromescribe` (see `.env.chromescribe.example`).
+2. **Migration** (additive, production `queue` exists but is empty):
+   ```bash
+   cd dashboard
+   wrangler d1 migrations apply chromescribe --remote
+   ```
+   `0001_queue.sql` only creates queue objects that are missing and the
+   partial unique index `idx_queue_pending_video`. It never touches
+   `transcripts` and never deletes queue rows. If duplicate pending rows for
+   one video ever exist the index build aborts; resolve by marking the extras
+   `failed` (a status change) and re-run.
+3. **Tests** (Node built-ins, no dependencies):
+   ```bash
+   cd dashboard && node --test test/*.test.mjs
+   ```
+4. **Shell syntax / dry-run**:
+   ```bash
+   bash -n queue.sh && bash -n monitor.sh
+   cd dashboard && wrangler deploy --dry-run
+   ```
+
+The canonical Android client lives at
+https://github.com/valentinyeo/chromescribe-android. The `android/` folder in
+this repo is the original prototype and is no longer the source of truth.
+
 ## Pages
 
 - `/` - Dashboard with video grid

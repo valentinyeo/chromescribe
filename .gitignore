@@ -6,3 +6,4 @@ docs/
 .processed_videos
 .seeded_*
 monitor.log
+.env.chromescribe

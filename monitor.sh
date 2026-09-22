@@ -283,6 +283,13 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
         log "  Analysis complete (word_count=$sum_wc, category=$cs_cat)"
     else
         log "  WARNING: analysis failed — raw transcript stands, use the dashboard Summarize button. Response: $analyze_result"
+        # The Android queue asks for a complete transcribe+summary, so it sets
+        # REQUIRE_ANALYZE=1 and treats this as a failure. Ordinary cron monitor
+        # runs leave it unset and keep the best-effort behavior above.
+        if [ "${REQUIRE_ANALYZE:-0}" = "1" ]; then
+            log "  ERROR: analysis required (REQUIRE_ANALYZE=1) but failed"
+            return 1
+        fi
     fi
 
     # Step 4: Send Telegram notification with ChromeScribe URL + thumbnail

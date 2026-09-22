@@ -8,55 +8,156 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
-CF_ACCESS_ID="${CF_ACCESS_CLIENT_ID:-REMOVED_OLD_KEY}"
-CF_ACCESS_SECRET="${CF_ACCESS_CLIENT_SECRET:-REMOVED_OLD_KEY}"
+
+# Credentials: prefer the environment, else a gitignored local file that uses
+# normal shell `export KEY=value` syntax. No hardcoded fallback is kept here
+# (the old shared secrets were removed); without creds the drainer refuses to
+# run rather than silently calling the API as an anonymous client.
+ENV_FILE="${CHROMESCRIBE_ENV_FILE:-$SCRIPT_DIR/.env.chromescribe}"
+if [ -f "$ENV_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+fi
+: "${CF_ACCESS_CLIENT_ID:?CF_ACCESS_CLIENT_ID is required (env or $ENV_FILE)}"
+: "${CF_ACCESS_CLIENT_SECRET:?CF_ACCESS_CLIENT_SECRET is required (env or $ENV_FILE)}"
+export CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET
 
 export PATH="$HOME/.local/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
 
+MONITOR_SH="${MONITOR_SH:-$SCRIPT_DIR/monitor.sh}"
+QUEUE_LOCK_FILE="${QUEUE_LOCK_FILE:-/tmp/chromescribe-queue.lock}"
+API_MAX_TIME="${QUEUE_API_MAX_TIME:-30}"
+
 # Only one drainer at a time — a transcription run takes minutes, cron fires every minute.
-exec 9>/tmp/chromescribe-queue.lock
+exec 9>"$QUEUE_LOCK_FILE"
 flock -n 9 || exit 0
+
+TMPDIR_Q="$(mktemp -d /tmp/chromescribe-queue.XXXXXX)"
+cleanup() { rm -rf "$TMPDIR_Q"; }
+trap cleanup EXIT
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
+# api_call METHOD PATH [extra curl args...]
+# On success ($? == 0) the raw `data` field is not needed by callers; the full
+# response body is left at "$TMPDIR_Q/api.json" and we return 0 only when the
+# request succeeded AND the {success:true,...} envelope validated.
+#
+# No -L: service-token headers must never follow a redirect to another host.
+# No shared cookiejar: the service token is sent on every request instead.
 api_call() {
     local method="$1" path="$2"
     shift 2
-    curl -s -L -X "$method" \
-        -H "CF-Access-Client-Id: $CF_ACCESS_ID" \
-        -H "CF-Access-Client-Secret: $CF_ACCESS_SECRET" \
-        -c /tmp/cf-cookies-chromescribe.txt \
-        -b /tmp/cf-cookies-chromescribe.txt \
+    local out="$TMPDIR_Q/api.json"
+    local err="$TMPDIR_Q/curl.err"
+    local code rc
+    code=$(curl -sS -f --max-time "$API_MAX_TIME" --proto '=https' \
+        -X "$method" \
+        -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+        -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+        -H "Accept: application/json" \
+        -o "$out" -w '%{http_code}' \
         "$@" \
-        "${DASHBOARD_URL}${path}"
+        "${DASHBOARD_URL}${path}" 2>"$err")
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        log "ERROR: $method $path: curl failed (rc=$rc, HTTP ${code:-?}): $(tr '\n' ' ' < "$err" 2>/dev/null | cut -c1-200)"
+        return 1
+    fi
+    if ! python3 - "$out" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1]) as fh:
+        body = json.load(fh)
+except Exception as exc:  # noqa: BLE001
+    print("invalid JSON:", exc, file=sys.stderr)
+    sys.exit(1)
+if not isinstance(body, dict) or body.get("success") is not True:
+    print("API envelope missing success:true", file=sys.stderr)
+    sys.exit(1)
+PY
+    then
+        log "ERROR: $method $path: response was not a valid success envelope (HTTP ${code:-?})"
+        return 1
+    fi
+    return 0
 }
 
-pending=$(api_call GET /api/queue)
-rows=$(echo "$pending" | python3 -c '
-import sys, json
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for r in d.get("data", []):
-    print("%s\t%s\t%s" % (r["id"], r["video_id"], r["url"]))
-' 2>/dev/null)
+log "Polling queue..."
+if ! api_call GET /api/queue; then
+    log "ERROR: could not fetch pending queue; aborting this run"
+    exit 1
+fi
 
-[ -z "$rows" ] && exit 0
+rows_file="$TMPDIR_Q/rows.tsv"
+if ! python3 - "$TMPDIR_Q/api.json" "$rows_file" <<'PY'
+import json, re, sys
+src, dst = sys.argv[1], sys.argv[2]
+with open(src) as fh:
+    body = json.load(fh)
+data = body.get("data")
+if not isinstance(data, list):
+    print("queue data is not a list", file=sys.stderr)
+    sys.exit(1)
+lines = []
+for i, row in enumerate(data):
+    if not isinstance(row, dict):
+        print(f"queue[{i}] is not an object", file=sys.stderr)
+        sys.exit(1)
+    qid = row.get("id")
+    video_id = row.get("video_id")
+    url = row.get("url")
+    if qid is None or not re.fullmatch(r"\d+", str(qid)):
+        print(f"queue[{i}] has invalid id", file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(video_id, str) or not video_id.strip():
+        print(f"queue[{i}] missing video_id", file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(url, str) or not url.strip():
+        print(f"queue[{i}] missing url", file=sys.stderr)
+        sys.exit(1)
+    lines.append("%s\t%s\t%s" % (qid, video_id, url))
+with open(dst, "w") as fh:
+    for line in lines:
+        fh.write(line + "\n")
+PY
+then
+    log "ERROR: /api/queue returned a malformed row payload; aborting this run"
+    exit 1
+fi
 
+[ -s "$rows_file" ] || exit 0
+
+overall_rc=0
 while IFS=$'\t' read -r qid video_id url; do
     [ -n "$qid" ] || continue
-    # Real title, so the dashboard entry isn't called "Manual run". Non-fatal.
-    title=$(curl -s --max-time 10 "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${video_id}" \
-        | python3 -c 'import sys,json; print(json.load(sys.stdin)["title"])' 2>/dev/null)
+
+    # Real title, so the dashboard entry isn't called "Manual run". Non-fatal,
+    # unauthenticated (does not touch the service token).
+    title=$( { curl -sS -f --max-time 10 --proto '=https' \
+        "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${video_id}" \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin)["title"])'; } 2>/dev/null )
     [ -n "$title" ] || title="Shared from Android"
 
     log "Queue #$qid: $title ($url)"
-    if "$SCRIPT_DIR/monitor.sh" --force "$video_id" "$title" < /dev/null; then
-        api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"done"}' > /dev/null
-        log "Queue #$qid: done"
+    # REQUIRE_ANALYZE=1 makes monitor.sh fail the row when the summary step
+    # fails, so a queued row is only "done" once transcribe *and* analyze have
+    # succeeded. Plain cron monitor runs are unaffected (var unset there).
+    if REQUIRE_ANALYZE=1 "$MONITOR_SH" --force "$video_id" "$title" < /dev/null; then
+        # Transcription succeeded; the row is only "done" once the API agrees.
+        if api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"done"}'; then
+            log "Queue #$qid: done"
+        else
+            log "ERROR: Queue #$qid: transcription finished but marking done failed; will retry next run"
+            overall_rc=1
+        fi
     else
-        api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"failed"}' > /dev/null
-        log "Queue #$qid: FAILED"
+        log "Queue #$qid: FAILED (downloader/transcription), marking failed and continuing"
+        if ! api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"failed"}'; then
+            log "ERROR: Queue #$qid: could not mark failed"
+        fi
+        overall_rc=1
     fi
-done <<< "$rows"
+done < "$rows_file"
+
+exit "$overall_rc"
