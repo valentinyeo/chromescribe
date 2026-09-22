@@ -5,6 +5,7 @@
 
 import { Buffer } from 'node:buffer';
 import { enqueueSharedUrl } from './queue-lib.mjs';
+import { handleAndroidUpdates } from './android-updates.mjs';
 
 interface Env {
   DB: D1Database;
@@ -1250,6 +1251,10 @@ export default {
 
     // API routes
     if (url.pathname.startsWith('/api/')) {
+      // Android self-updater routes (latest manifest + immutable APKs).
+      // Returns null for every other /api/ path so existing routing is intact.
+      const updaterResponse = await handleAndroidUpdates(request, env);
+      if (updaterResponse) return updaterResponse;
       return handleApi(request, env);
     }
 
