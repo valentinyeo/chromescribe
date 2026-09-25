@@ -786,14 +786,15 @@
         .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
         .replace(/^---$/gm, '<hr>')
         .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/(<li>.+<\/li>)+/g, '<ul>$&</ul>')
+        .replace(/(?:<li>.+<\/li>\n)*<li>.+<\/li>/g, '<ul>$&</ul>')
         .replace(/^\d+\. (.+)$/gm, '<oli>$1</oli>')
-        .replace(/(<oli>.+<\/oli>)+/g, '<ol>$&</ol>')
+        .replace(/(?:<oli>.+<\/oli>\n)*<oli>.+<\/oli>/g, '<ol>$&</ol>')
         .replace(/<oli>/g, '<li>')
         .replace(/<\/oli>/g, '</li>')
         .replace(/\n\n/g, '</p><p>')
         .replace(/^(?!<[houpbld])(.+)$/gm, '<p>$1</p>')
-        .replace(/<p><\/p>/g, '');
+        .replace(/<p><\/p>/g, '')
+        .replace(/<\/li><\/p>/g, '</li>');
     }
     
     function loadVideo() {
