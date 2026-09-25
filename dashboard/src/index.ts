@@ -192,8 +192,8 @@ async function summarizeContent(content: string, ai: Ai): Promise<string> {
 Take the FULL content below and run the i-have-adhd skill on it — the result of running the skill IS this section:
 
 - First line: the single most important point as a bold statement, max 25 words. Start with the claim itself. NEVER open with "The speaker", "The author", "The video", "This article", or anyone's name + "argues/explains/says".
-  Bad: "The speaker argues that Jev Mode is fast but its confidence scores are unreliable."
-  Good: "**Jev Mode is 2.6-5.5x faster, but its confidence scores are unreliable until you calibrate them.**"
+  Bad: "The speaker argues that sleeping less than 6 hours hurts memory more than most people think."
+  Good: "**Under 6 hours of sleep cuts next-day recall by about 40%, and weekend catch-up sleep does not undo it.**"
 - Every list item max 20 words. Cut explanation; keep the number or name that makes it concrete.
 - Numbered list (1. 2. 3.) for sequential or actionable takeaways; each item is one bounded point.
 - Specific numbers, names, and time references ("15 minutes", "3x the cost") — never vague ones ("a bit", "some work").
