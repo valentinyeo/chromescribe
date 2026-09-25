@@ -221,38 +221,12 @@
       display: block;
     }
 
-    /* Article mode — iframe of original page */
-    .article-frame {
-      flex: 1;
-      width: 100%;
-      border: none;
-      background: #fff;
-      display: none;
-    }
-    .article-blocked {
-      flex: 1;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      padding: 32px;
-      text-align: center;
-      color: #ccc;
-    }
-    .article-blocked .domain { font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: #888; margin-bottom: 12px; }
-    .article-blocked .msg { font-size: 15px; max-width: 420px; margin-bottom: 20px; line-height: 1.5; }
-    .article-blocked a.open-btn {
-      display: inline-block;
-      padding: 10px 18px;
-      background: #3ea6ff;
-      color: #000;
-      border-radius: 6px;
-      font-weight: 500;
-      text-decoration: none;
-      font-size: 14px;
-    }
-    .article-blocked a.open-btn:hover { background: #5ab6ff; }
+    /* Article mode — our summary centered, original linked out (most sites block iframes) */
+    .article-reader { flex: 1; overflow-y: auto; background: #181818; display: none; justify-content: center; }
+    .article-reader .transcript-content { flex: none; overflow: visible; max-width: 760px; width: 100%; padding: 32px 24px; font-size: 16px; line-height: 1.7; }
+    .open-original { display: inline-block; margin-top: 8px; padding: 6px 14px; background: #3ea6ff; color: #000; border-radius: 6px; font-weight: 500; text-decoration: none; font-size: 14px; }
+    .open-original:hover { background: #5ab6ff; }
+    [data-theme="light"] .article-reader { background: #fafafa; }
 
     .video-info {
       padding: 12px 16px;
@@ -489,11 +463,7 @@
         aspect-ratio: 16 / 9;
         min-height: 0;
       }
-      .article-frame, .article-blocked {
-        flex: none;
-        width: 100%;
-        aspect-ratio: 4 / 3;
-      }
+      .article-reader { flex: none; overflow: visible; }
       .transcript-side { width: 100%; flex: 1 1 auto; border-left: none; border-top: 1px solid #333; }
       .header { flex-wrap: wrap; gap: 8px; }
       .header-btns { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -557,12 +527,7 @@
         </div>
         <iframe id="video" src="" allowfullscreen></iframe>
       </div>
-      <iframe class="article-frame" id="articleFrame" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-popups allow-forms"></iframe>
-      <div class="article-blocked" id="articleBlocked">
-        <div class="domain" id="articleDomain"></div>
-        <div class="msg">This site blocks being shown inside another page. Click below to open it in a new tab — the summary on the right still works.</div>
-        <a id="articleOpen" class="open-btn" target="_blank" rel="noopener">Open article →</a>
-      </div>
+      <div class="article-reader" id="articleReader"></div>
       <div class="video-info">
         <h1 class="video-title" id="title"></h1>
         <p class="video-meta" id="meta"></p>
@@ -642,39 +607,17 @@
         let thumbUrl = meta.thumbnail_url || null;
 
         if (isArticle) {
-          // Article mode: left = iframe of original URL, right = summary (TL;DR + The Article)
+          // Article mode: summary centered full-width, original linked out
           const summaryMd = markdown.replace(/\n##\s+Full Article[\s\S]*$/i, '').trim();
           const sourceMatch = markdown.match(/\*\*Source:\*\*\s*(https?:\/\/[^\s]+)/);
           const sourceUrl = sourceMatch ? sourceMatch[1] : '';
 
           document.getElementById('videoWrapper').style.display = 'none';
-
-          const frame = document.getElementById('articleFrame');
-          const blocked = document.getElementById('articleBlocked');
-          let domain = '';
-          try { domain = new URL(sourceUrl).hostname.replace(/^www\./, ''); } catch {}
-          document.getElementById('articleDomain').textContent = domain;
-          document.getElementById('articleOpen').href = sourceUrl;
-
-          if (sourceUrl) {
-            frame.style.display = 'block';
-            frame.src = sourceUrl;
-            // If the site blocks iframing, X-Frame-Options/CSP blocks it silently.
-            // Fall back to the "Open in tab" panel if iframe is still blank after 4s.
-            setTimeout(() => {
-              try {
-                const doc = frame.contentDocument;
-                if (!doc || !doc.body || doc.body.childElementCount === 0) {
-                  frame.style.display = 'none';
-                  blocked.style.display = 'flex';
-                }
-              } catch {
-                // Cross-origin — iframe loaded from another origin. That's fine.
-              }
-            }, 4000);
-          } else {
-            blocked.style.display = 'flex';
-          }
+          const reader = document.getElementById('articleReader');
+          reader.style.display = 'flex';
+          reader.appendChild(document.getElementById('content'));
+          reader.before(document.querySelector('.video-info'));
+          document.querySelector('.transcript-side').style.display = 'none';
 
           const titleMatch2 = markdown.match(/^#\s+(.+)$/m);
           const displayTitle2 = titleMatch2 ? titleMatch2[1] : meta.title;
@@ -690,8 +633,16 @@
             } catch {}
           }
           document.getElementById('videoTags').innerHTML = tagParts2.join('');
+          if (sourceUrl) {
+            const open = document.createElement('a');
+            open.className = 'open-original';
+            open.href = sourceUrl;
+            open.target = '_blank';
+            open.rel = 'noopener';
+            open.textContent = 'Read original →';
+            document.querySelector('.video-info').appendChild(open);
+          }
 
-          document.querySelector('.transcript-header').textContent = 'Summary';
           document.getElementById('content').innerHTML = parseMarkdown(summaryMd);
           applySummarizeState();
           return;
