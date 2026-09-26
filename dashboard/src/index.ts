@@ -191,7 +191,7 @@ async function summarizeContent(content: string, ai: Ai): Promise<string> {
 
 Take the FULL content below and run the i-have-adhd skill on it — the result of running the skill IS this section:
 
-- First line: the single most important point or verdict, one sentence. Start with the claim itself. NEVER open with "The speaker", "The author", "The video", "This article", or anyone's name + "argues/explains/says".
+- First line: the single most important point or verdict, one plain sentence (not a bullet). Start with the claim itself. NEVER open with "The speaker", "The author", "The video", "This article", or anyone's name + "argues/explains/says".
   Bad: "The speaker argues that sleeping less than 6 hours hurts memory more than most people think."
   Good: "Under 6 hours of sleep cuts next-day recall by about 40%, and weekend catch-up sleep does not undo it."
 - Then 3-5 bullets, each "- **Short label**: one sentence explaining the point." State what the content says as facts and findings. Do NOT rewrite them as instructions ("Use...", "Leverage...") unless the content is a tutorial or how-to.
