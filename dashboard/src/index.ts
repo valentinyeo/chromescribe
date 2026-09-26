@@ -191,15 +191,14 @@ async function summarizeContent(content: string, ai: Ai): Promise<string> {
 
 Take the FULL content below and run the i-have-adhd skill on it — the result of running the skill IS this section:
 
-- First line: the single most important point as a bold statement, max 25 words. Start with the claim itself. NEVER open with "The speaker", "The author", "The video", "This article", or anyone's name + "argues/explains/says".
+- First line: the single most important point or verdict, one sentence. Start with the claim itself. NEVER open with "The speaker", "The author", "The video", "This article", or anyone's name + "argues/explains/says".
   Bad: "The speaker argues that sleeping less than 6 hours hurts memory more than most people think."
-  Good: "**Under 6 hours of sleep cuts next-day recall by about 40%, and weekend catch-up sleep does not undo it.**"
-- Every list item max 20 words. Cut explanation; keep the number or name that makes it concrete.
-- Numbered list (1. 2. 3.) for sequential or actionable takeaways; each item is one bounded point.
+  Good: "Under 6 hours of sleep cuts next-day recall by about 40%, and weekend catch-up sleep does not undo it."
+- Then 3-5 bullets, each "- **Short label**: one sentence explaining the point." State what the content says as facts and findings. Do NOT rewrite them as instructions ("Use...", "Leverage...") unless the content is a tutorial or how-to.
+- If the creator gives an opinion or verdict (good/bad, worth it or not, who it is for), include it.
 - Specific numbers, names, and time references ("15 minutes", "3x the cost") — never vague ones ("a bit", "some work").
-- Matter-of-fact: state cause and fix. No hedging that adds no information, no idioms, no alarm.
-- If the content implies an action, the last line names one concrete thing the reader can do next.
-- Cap every list at 5 items.
+- Matter-of-fact. No hedging that adds no information, no idioms, no alarm.
+- Only for tutorials or advice: end with one concrete thing the reader can do next. Never end with "watch the video", "read the full article", or similar.
 - No preamble ("This video discusses..."), no recap, no closers ("Hope this helps"). Start with the answer, end when the answer is done.
 
 ---
