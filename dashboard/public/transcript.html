@@ -494,6 +494,17 @@
       /* Reserve space so content isn't hidden by the fixed bar */
       body { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
     }
+    /* Ctrl+K command menu */
+    #cmdk { border: 1px solid #333; border-radius: 10px; padding: 0; width: min(520px, calc(100vw - 32px)); background: #1a1a1a; color: #eee; margin: 12vh auto auto; }
+    #cmdk::backdrop { background: rgba(0,0,0,0.5); }
+    #cmdkInput { width: 100%; box-sizing: border-box; padding: 14px 16px; font-size: 15px; background: transparent; color: inherit; border: none; border-bottom: 1px solid #333; outline: none; }
+    #cmdkList { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow-y: auto; }
+    #cmdkList li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    #cmdkList li.active { background: #333; }
+    #cmdkList kbd { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: #999; }
+    [data-theme="light"] #cmdk { background: #fff; color: #111; border-color: #ddd; }
+    [data-theme="light"] #cmdkInput { border-bottom-color: #ddd; }
+    [data-theme="light"] #cmdkList li.active { background: #eee; }
   </style>
 </head>
 <body>
@@ -559,6 +570,10 @@
     </button>
   </nav>
   
+  <dialog id="cmdk">
+    <input id="cmdkInput" placeholder="Type a command…" autocomplete="off">
+    <ul id="cmdkList"></ul>
+  </dialog>
   <script>
     const API = '/api';
     let markdown = '';
@@ -654,7 +669,7 @@
 
         // YouTube (plain ID or with prefixes)
         if (/^[a-zA-Z0-9_-]{11}$/.test(meta.video_id)) {
-          videoSrc = 'https://www.youtube.com/embed/' + meta.video_id + '?autoplay=1';
+          videoSrc = 'https://www.youtube.com/embed/' + meta.video_id + '?autoplay=1&enablejsapi=1';
           thumbUrl = 'https://img.youtube.com/vi/' + meta.video_id + '/maxresdefault.jpg';
         } else if (meta.video_id.startsWith('tiktok:')) {
           const tiktokId = meta.video_id.replace('tiktok:', '');
@@ -664,7 +679,7 @@
           const ytMatch = markdown.match(/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/);
           const ttMatch = meta.video_id.match(/([0-9]{19,20})/);
           if (ytMatch) {
-            videoSrc = 'https://www.youtube.com/embed/' + ytMatch[1] + '?autoplay=1';
+            videoSrc = 'https://www.youtube.com/embed/' + ytMatch[1] + '?autoplay=1&enablejsapi=1';
             thumbUrl = 'https://img.youtube.com/vi/' + ytMatch[1] + '/maxresdefault.jpg';
           } else if (ttMatch) {
             videoSrc = 'https://www.tiktok.com/embed/' + ttMatch[1];
@@ -769,10 +784,100 @@
       window.location.search = '?id=' + navList[navIndex + 1];
     }
 
+    const COMMANDS = [
+      { label: 'Previous', key: '← / K', run: goPrev, ok: () => !document.querySelector('.nav-prev')?.disabled },
+      { label: 'Next', key: '→ / J', run: goNext, ok: () => !document.querySelector('.nav-next')?.disabled },
+      { label: 'Play / pause video', key: 'Space', run: togglePlay, ok: () => !!window.videoSrc },
+      { label: 'Delete', key: '# / Del', run: deleteTranscript },
+      { label: 'Home', key: 'Esc', run: () => { window.location.href = '/'; } },
+      { label: 'Open original', key: 'O', run: openOriginal },
+      { label: 'Chat on Claude', run: () => chatOnClaude(document.querySelector('.btn-chat')) },
+      { label: 'Copy markdown', run: () => copyText([...document.querySelectorAll('.btn')].find(b => b.textContent.trim() === 'Copy')) },
+      { label: 'Download MD', run: downloadMd },
+      { label: 'Re-summarize', run: summarize },
+      { label: 'Retranscribe', run: retranscribe },
+      { label: 'Toggle theme', run: toggleTheme },
+      { label: 'Keyboard shortcuts', key: '?', run: () => openCmdk(true) },
+      { label: 'Command menu', key: 'Ctrl+K', run: () => openCmdk() },
+      { label: 'Settings', key: '$', run: () => { window.location.href = '/settings.html'; } },
+    ];
+
+    function openOriginal() {
+      const m = markdown.match(/\*\*Source:\*\*\s*(https?:\/\/[^\s]+)/);
+      if (m) window.open(m[1], '_blank', 'noopener');
+    }
+
+    // YouTube player state via the iframe API postMessage protocol (enablejsapi=1)
+    let videoPlaying = false;
+    window.addEventListener('message', (e) => {
+      if (!/youtube\.com$/.test(new URL(e.origin).hostname)) return;
+      try {
+        const d = JSON.parse(e.data);
+        if (d.info && d.info.playerState !== undefined) videoPlaying = d.info.playerState === 1;
+      } catch {}
+    });
+    function togglePlay() {
+      const wrapper = document.getElementById('videoWrapper');
+      if (!wrapper.classList.contains('playing')) {
+        loadVideo();
+        videoPlaying = true;
+        return;
+      }
+      const iframe = document.getElementById('video');
+      iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: videoPlaying ? 'pauseVideo' : 'playVideo', args: [] }), '*');
+      videoPlaying = !videoPlaying;
+    }
+
+    const cmdk = document.getElementById('cmdk');
+    const cmdkInput = document.getElementById('cmdkInput');
+    const cmdkList = document.getElementById('cmdkList');
+    let cmdkItems = [], cmdkActive = 0;
+    let cmdkKeysOnly = false;
+    function renderCmdk() {
+      const q = cmdkInput.value.toLowerCase();
+      cmdkItems = COMMANDS.filter(c => (!c.ok || c.ok()) && (!cmdkKeysOnly || c.key) && c.label.toLowerCase().includes(q));
+      cmdkActive = Math.min(cmdkActive, Math.max(cmdkItems.length - 1, 0));
+      cmdkList.innerHTML = cmdkItems.map((c, i) =>
+        `<li data-i="${i}" class="${i === cmdkActive ? 'active' : ''}"><span>${c.label}</span><kbd>${c.key || ''}</kbd></li>`).join('');
+    }
+    function runCmdk(i) {
+      const c = cmdkItems[i];
+      cmdk.close();
+      if (c) c.run();
+    }
+    function openCmdk(keysOnly = false) {
+      if (cmdk.open) cmdk.close();
+      cmdkKeysOnly = keysOnly;
+      cmdkInput.placeholder = keysOnly ? 'Keyboard shortcuts' : 'Type a command…';
+      cmdkInput.value = '';
+      cmdkActive = 0;
+      renderCmdk();
+      cmdk.showModal();
+      cmdkInput.focus();
+    }
+    cmdkInput.addEventListener('input', () => { cmdkActive = 0; renderCmdk(); });
+    cmdkInput.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); cmdkActive = (cmdkActive + 1) % cmdkItems.length; renderCmdk(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkActive = (cmdkActive - 1 + cmdkItems.length) % cmdkItems.length; renderCmdk(); }
+      else if (e.key === 'Enter') { e.preventDefault(); runCmdk(cmdkActive); }
+    });
+    cmdkList.addEventListener('click', (e) => { const li = e.target.closest('li'); if (li) runCmdk(+li.dataset.i); });
+    cmdk.addEventListener('click', (e) => { if (e.target === cmdk) cmdk.close(); });
+
     document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); cmdk.open ? cmdk.close() : openCmdk(); return; }
+      if (cmdk.open || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target.matches('input, textarea, [contenteditable]')) return;
-      if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
+      // Keys follow Hypertask's conventions (? list, Esc back, # delete, J/K next/prev, $ settings)
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (k === 'ArrowLeft' || k === 'k') { e.preventDefault(); goPrev(); }
+      else if (k === 'ArrowRight' || k === 'j') { e.preventDefault(); goNext(); }
+      else if (k === ' ' && window.videoSrc) { e.preventDefault(); togglePlay(); }
+      else if (k === '#' || k === 'Delete') { e.preventDefault(); deleteTranscript(); }
+      else if (k === 'Escape') { window.location.href = '/'; }
+      else if (k === 'o') { openOriginal(); }
+      else if (k === '?') { e.preventDefault(); openCmdk(true); }
+      else if (k === '$') { window.location.href = '/settings.html'; }
     });
 
     function parseMarkdown(text) {
@@ -874,7 +979,8 @@
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || `HTTP ${res.status}`);
         }
-        window.location.href = '/';
+        const nextId = navList && navIndex >= 0 ? (navList[navIndex + 1] ?? navList[navIndex - 1]) : null;
+        window.location.href = nextId ? '/transcript.html?id=' + nextId : '/';
       } catch (err) {
         alert('Failed to delete: ' + err.message);
       }
