@@ -1,11 +1,9 @@
 /**
- * Strict YouTube URL validation + race-free enqueue for the Android queue.
+ * Strict shared URL validation + race-free enqueue for the Android queue.
  *
  * Kept as a plain .mjs module (no TypeScript syntax) so the same code is
  * imported by the Worker and exercised directly by Node's built-in test
- * runner. The generic `parseVideoUrl` in index.ts stays permissive for the
- * existing transcribe/article/tiktok call sites; the queue has a much
- * narrower trust boundary, so it gets this dedicated parser.
+ * runner. Queue parsing validates each platform before enqueueing.
  */
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
@@ -86,7 +84,7 @@ export function parseStrictYouTubeUrl(rawUrl) {
  * @returns {Promise<{status: number, data?: any, error?: string}>}
  */
 export async function enqueueSharedUrl(db, rawUrl) {
-  const parsed = parseStrictYouTubeUrl(rawUrl);
+  const parsed = parseSharedUrl(rawUrl);
   if (!parsed) return { status: 400, error: 'Unsupported URL' };
 
   // Already transcribed? Tell the app to open it instead of queueing.
@@ -95,7 +93,7 @@ export async function enqueueSharedUrl(db, rawUrl) {
     .bind(parsed.prefixedId)
     .first();
   if (existing) {
-    return { status: 200, data: { queued: false, transcript_id: existing.id } };
+    return { status: 200, data: { queued: false, transcript_id: existing.id, platform: parsed.platform } };
   }
 
   const inserted = await db
@@ -116,7 +114,60 @@ export async function enqueueSharedUrl(db, rawUrl) {
   if (!row) return { status: 500, error: 'Failed to enqueue URL' };
 
   const changes = inserted && inserted.meta ? inserted.meta.changes || 0 : 0;
-  const data = { queued: true, id: row.id };
+  const data = { queued: true, id: row.id, platform: parsed.platform };
   if (changes === 0) data.duplicate = true;
   return { status: 200, data };
+}
+
+// Stable 8-char hex hash (djb2), shared with transcript ingestion.
+export function hashUrl(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+export function parseSharedUrl(rawUrl) {
+  if (typeof rawUrl !== 'string') return null;
+  const value = rawUrl.trim();
+  let u;
+  try { u = new URL(value); } catch { return null; }
+  if (u.protocol !== 'https:' || u.username || u.password) return null;
+  const host = u.hostname;
+  if (YOUTUBE_HOSTS.has(host)) return parseStrictYouTubeUrl(rawUrl);
+  if (/[\u0000-\u0020\u007f\\]/.test(value)) return null;
+  const full = ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'];
+  const short = ['vm.tiktok.com', 'vt.tiktok.com'];
+  if (full.includes(host) || short.includes(host)) {
+    if (u.port) return null;
+    if (short.includes(host)) {
+      const match = u.pathname.match(/^\/([A-Za-z0-9]+)\/?$/);
+      return match ? { platform: 'tiktok', prefixedId: `tiktok-short:${match[1]}`, url: `https://${host}/${match[1]}/` } : null;
+    }
+    const match = u.pathname.match(/^\/@([A-Za-z0-9_.]+)\/video\/(\d{15,21})\/?$/);
+    return match ? { platform: 'tiktok', prefixedId: `tiktok:${match[2]}`, url: `https://www.tiktok.com/@${match[1]}/video/${match[2]}` } : null;
+  }
+  // Reject platform look-alikes and unsupported platform subdomains, rather
+  // than accepting them through the article fallback.
+  if (/(?:youtube\.com|youtu\.be|tiktok\.com)/i.test(host)) return null;
+  const bareHost = host.replace(/\.$/, '');
+  if (value.length > 2048 || host.startsWith('[') || /^\d+\.\d+\.\d+\.\d+$/.test(host) ||
+      /(?:^|\.)(?:localhost|local|internal)$/.test(bareHost)) return null;
+  // Preserve the input spelling for parity with transcript ingestion.
+  const url = value.split('#')[0];
+  return { platform: 'article', prefixedId: `article:${hashUrl(url)}`, url };
+}
+
+export async function listPendingQueue(db, params) {
+  const values = params.getAll('platforms');
+  const platforms = values.length ? values[0].split(',') : null;
+  if (values.length > 1 || platforms?.some(p => !['youtube', 'article', 'tiktok'].includes(p))) {
+    return { status: 400, error: 'Invalid platforms parameter' };
+  }
+  const platformSql = "CASE WHEN video_id GLOB 'tiktok:*' OR video_id GLOB 'tiktok-short:*' THEN 'tiktok' WHEN video_id GLOB 'article:*' THEN 'article' ELSE 'youtube' END";
+  let query = db.prepare("SELECT id, url, video_id FROM queue WHERE status = 'pending'" +
+    (platforms ? ` AND (${platformSql}) IN (${platforms.map(() => '?').join(',')})` : '') +
+    ' ORDER BY id ASC LIMIT 10');
+  if (platforms) query = query.bind(...platforms);
+  const { results } = await query.all();
+  return { status: 200, data: results };
 }

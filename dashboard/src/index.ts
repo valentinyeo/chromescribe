@@ -3,8 +3,9 @@
  * YouTube Transcription with Cloudflare AI
  */
 
+import { transcriptSourceResponse } from './source-lib.mjs';
 import { Buffer } from 'node:buffer';
-import { enqueueSharedUrl } from './queue-lib.mjs';
+import { enqueueSharedUrl, hashUrl, listPendingQueue } from './queue-lib.mjs';
 import { handleAndroidUpdates } from './android-updates.mjs';
 
 interface Env {
@@ -72,21 +73,16 @@ interface ParsedVideo {
   prefixedId: string;
 }
 
-// Stable 8-char hex hash (djb2) so the same article URL always maps to the same video_id
-const hashUrl = (s: string): string => {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(16).padStart(8, '0');
-};
-
 const parseVideoUrl = (url: string): ParsedVideo | null => {
+  let host: string;
+  try { host = new URL(url).hostname; } catch { return null; }
   // YouTube
   const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
-  if (ytMatch) return { platform: 'youtube', id: ytMatch[1], prefixedId: ytMatch[1] };
+  if ((host === 'youtu.be' || /(?:^|\.)youtube\.com$/.test(host)) && ytMatch) return { platform: 'youtube', id: ytMatch[1], prefixedId: ytMatch[1] };
 
   // TikTok
   const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
-  if (ttMatch) return { platform: 'tiktok', id: ttMatch[1], prefixedId: `tiktok:${ttMatch[1]}` };
+  if (/(?:^|\.)tiktok\.com$/.test(host) && ttMatch) return { platform: 'tiktok', id: ttMatch[1], prefixedId: `tiktok:${ttMatch[1]}` };
 
   // Article — any other http(s) URL
   if (/^https?:\/\//i.test(url)) {
@@ -492,6 +488,10 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           hour: '2-digit', minute: '2-digit'
         })
       })));
+    }
+
+    if (request.method === 'GET' && /^transcripts\/\d+\/source$/.test(path)) {
+      return transcriptSourceResponse(env, path.split('/')[1]);
     }
 
     // GET /api/transcripts/:id - Get single transcript
@@ -1189,10 +1189,9 @@ ${srtContent || transcript.text}
 
     // GET /api/queue - pending rows, oldest first (queue.sh)
     if (request.method === 'GET' && path === 'queue') {
-      const { results } = await env.DB
-        .prepare("SELECT id, url, video_id FROM queue WHERE status = 'pending' ORDER BY id ASC LIMIT 10")
-        .all();
-      return jsonResponse(results);
+      const result = await listPendingQueue(env.DB, url.searchParams);
+      if (result.error) return handleError(new Error(result.error), result.status);
+      return jsonResponse(result.data);
     }
 
     // PUT /api/queue/:id { status } - mark done/failed (queue.sh)

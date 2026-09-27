@@ -13,10 +13,22 @@ fi
 
 cd "$(dirname "$0")"
 
+if python3 -c 'import sys; sys.exit(0)' >/dev/null 2>&1; then
+    PYTHON=python3
+elif python -c 'import sys; sys.exit(0)' >/dev/null 2>&1; then
+    PYTHON=python
+else
+    echo ">>> ERROR: Python is required"
+    exit 1
+fi
+
 echo "=== ChromeScribe: Processing $URL ==="
 
 is_video() {
-    echo "$1" | grep -qiE "(youtube\.com|youtu\.be|tiktok\.com)"
+    "$PYTHON" -c 'import sys
+from urllib.parse import urlsplit
+host = urlsplit(sys.argv[1]).hostname
+sys.exit(0 if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be", "tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"} else 1)' "$1"
 }
 
 DASHBOARD_BASE="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
@@ -36,17 +48,33 @@ api_call() {
         "${DASHBOARD_BASE}${path}"
 }
 
+open_transcript() {
+    if [ "${CHROMESCRIBE_NO_OPEN:-0}" != "1" ]; then
+        echo ">>> Opening $DASHBOARD_URL"
+        cmd.exe /c start "" msedge "$DASHBOARD_URL" 2>/dev/null &
+    fi
+}
+
+upload_already_exists() {
+    "$PYTHON" -c 'import json, sys
+try:
+    payload = json.load(sys.stdin)
+    sys.exit(0 if payload.get("already_exists") or payload.get("data", {}).get("already_exists") else 1)
+except (ValueError, AttributeError):
+    sys.exit(1)' <<< "$UPLOAD_RESULT"
+}
+
 run_hosted_analysis() {
     local transcript_id="$1"
     local result summary_ok classify_ok warning
     echo ">>> Generating summary + classification on Cloudflare..."
     result=$(api_call POST "/api/transcripts/$transcript_id/analyze" --max-time 240)
-    summary_ok=$(echo "$result" | python -c "
+    summary_ok=$(echo "$result" | "$PYTHON" -c "
 import sys, json
 try: print('yes' if json.load(sys.stdin).get('data', {}).get('summarized') else '')
 except: print('')
 " 2>/dev/null)
-    classify_ok=$(echo "$result" | python -c "
+    classify_ok=$(echo "$result" | "$PYTHON" -c "
 import sys, json
 try: print('yes' if json.load(sys.stdin).get('data', {}).get('classified') else '')
 except: print('')
@@ -59,7 +87,7 @@ except: print('')
     if [ "$classify_ok" = "yes" ]; then
         echo ">>> Cloudflare classification complete"
     else
-        warning=$(echo "$result" | python -c "
+        warning=$(echo "$result" | "$PYTHON" -c "
 import sys, json
 try: print(json.load(sys.stdin).get('data', {}).get('warning', 'unknown error'))
 except: print('unknown error')
@@ -84,7 +112,7 @@ if is_video "$URL"; then
     # Avoid downloading or transcribing media that is already in ChromeScribe.
     # The API query is also filtered locally so this remains compatible with an
     # older deployed Worker that still returns the full transcript list.
-    VIDEO_ID=$(URL="$URL" python -c '
+    VIDEO_ID=$(URL="$URL" "$PYTHON" -c '
 import os, re
 from urllib.parse import urlparse, parse_qs
 u = urlparse(os.environ["URL"])
@@ -105,7 +133,7 @@ print(video_id)
 
     if [ -n "$VIDEO_ID" ]; then
         LOOKUP_RESULT=$(api_call GET "/api/transcripts?video_id=$VIDEO_ID")
-        EXISTING_TRANSCRIPT=$(VIDEO_ID="$VIDEO_ID" python -c '
+        EXISTING_TRANSCRIPT=$(VIDEO_ID="$VIDEO_ID" "$PYTHON" -c '
 import json, os, sys
 try:
     payload = json.load(sys.stdin)
@@ -121,8 +149,7 @@ except Exception:
             TRANSCRIPT_TITLE=${EXISTING_TRANSCRIPT#*$'\t'}
             DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
             echo ">>> Already transcribed: #$TRANSCRIPT_ID — $TRANSCRIPT_TITLE"
-            echo ">>> Opening $DASHBOARD_URL"
-            cmd.exe /c start "" msedge "$DASHBOARD_URL" 2>/dev/null &
+            open_transcript
             exit 0
         fi
     fi
@@ -132,11 +159,23 @@ except Exception:
     # which Windows ffmpeg builds often can't decode).
     DOWNLOAD_TEMPLATE="$TMPDIR/raw.%(ext)s"
     TITLE_FILE="$TMPDIR/title.txt"
+    CANONICAL_URL_FILE="$TMPDIR/url.txt"
     if ! yt-dlp -S "vcodec:h264" -o "$DOWNLOAD_TEMPLATE" \
-        --print-to-file "%(title)s" "$TITLE_FILE" "$URL" 2>&1 | tail -3; then
+        --print-to-file "%(title)s" "$TITLE_FILE" \
+        --print-to-file "%(webpage_url)s" "$CANONICAL_URL_FILE" "$URL" 2>&1 | tail -3; then
         echo ">>> ERROR: yt-dlp failed"
         exit 1
     fi
+    case "$URL" in
+        https://vm.tiktok.com/*|https://vt.tiktok.com/*)
+            CANONICAL_URL=$(head -1 "$CANONICAL_URL_FILE" 2>/dev/null | tr -d '\r')
+            if [[ ! "$CANONICAL_URL" =~ ^https://(www\.|m\.)?tiktok\.com/@[^/]+/video/[0-9]{15,21}([/?].*)?$ ]]; then
+                echo ">>> ERROR: TikTok short link did not resolve to a video URL"
+                exit 1
+            fi
+            URL="$CANONICAL_URL"
+            ;;
+    esac
     VIDEO_TITLE=$(head -1 "$TITLE_FILE" 2>/dev/null | tr -d '\r')
     [ -n "$VIDEO_TITLE" ] || VIDEO_TITLE="Video Transcript"
     RAW_FILE=$(ls "$TMPDIR"/raw.* 2>/dev/null | head -1)
@@ -164,8 +203,12 @@ except Exception:
             -F "audio=@$(winpath "$AUDIO_FILE");type=audio/mpeg" \
             -F "url=$URL" \
             --form-string "title=$VIDEO_TITLE")
-        TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id') or d.get('id',''))" 2>/dev/null)
-        TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('title') or d.get('title',''))" 2>/dev/null)
+        if upload_already_exists; then
+            echo ">>> Already transcribed"
+            exit 0
+        fi
+        TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | "$PYTHON" -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id') or d.get('id',''))" 2>/dev/null)
+        TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | "$PYTHON" -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('title') or d.get('title',''))" 2>/dev/null)
         if [ -z "$TRANSCRIPT_ID" ]; then
             echo ">>> ERROR: Upload failed. Response: $UPLOAD_RESULT"
             exit 1
@@ -189,7 +232,7 @@ except Exception:
             CHUNK_COUNT=$((CHUNK_COUNT + 1))
             echo "    Transcribing chunk $CHUNK_COUNT ($(du -h "$chunk" | cut -f1))..."
             CHUNK_RESULT=$(api_call POST /api/whisper --max-time 60 -F "audio=@$(winpath "$chunk");type=audio/mpeg")
-            CHUNK_TEXT=$(echo "$CHUNK_RESULT" | python -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('text',''))" 2>/dev/null)
+            CHUNK_TEXT=$(echo "$CHUNK_RESULT" | "$PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('text',''))" 2>/dev/null)
             if [ -z "$CHUNK_TEXT" ]; then
                 FAIL_COUNT=$((FAIL_COUNT + 1))
                 echo "    WARNING: Chunk $CHUNK_COUNT failed: $CHUNK_RESULT"
@@ -209,7 +252,7 @@ except Exception:
         MD_FILE="$TMPDIR/markdown.md"
         TEXT_FILE="$TMPDIR/text.txt"
         echo "$COMBINED_TEXT" > "$TEXT_FILE"
-        TEXT_FILE="$TEXT_FILE" TITLE_FILE="$TITLE_FILE" URL="$URL" TODAY="$TODAY" python -c '
+        TEXT_FILE="$TEXT_FILE" TITLE_FILE="$TITLE_FILE" URL="$URL" TODAY="$TODAY" "$PYTHON" -c '
 import json, os, sys
 sys.stdout.reconfigure(encoding="utf-8")
 with open(os.environ["TEXT_FILE"], encoding="utf-8") as f: text = f.read().strip()
@@ -220,8 +263,12 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}, ensure_as
 ' > "$MD_FILE"
 
         UPLOAD_RESULT=$(api_call POST /api/transcribe -H "Content-Type: application/json" -d @"$(winpath "$MD_FILE")")
-        TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id') or d.get('id',''))" 2>/dev/null)
-        TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('title') or d.get('title',''))" 2>/dev/null)
+        if upload_already_exists; then
+            echo ">>> Already transcribed"
+            exit 0
+        fi
+        TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | "$PYTHON" -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id') or d.get('id',''))" 2>/dev/null)
+        TRANSCRIPT_TITLE=$(echo "$UPLOAD_RESULT" | "$PYTHON" -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('title') or d.get('title',''))" 2>/dev/null)
         if [ -z "$TRANSCRIPT_ID" ]; then
             echo ">>> ERROR: Combined upload failed. Response: $UPLOAD_RESULT"
             exit 1
@@ -231,20 +278,31 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}, ensure_as
     echo ">>> Phase 1 complete! Transcript #$TRANSCRIPT_ID — $TRANSCRIPT_TITLE"
 
     DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
-    echo ">>> Opening $DASHBOARD_URL"
-    cmd.exe /c start "" msedge "$DASHBOARD_URL" 2>/dev/null &
+    open_transcript
 
-    run_hosted_analysis "$TRANSCRIPT_ID" || true
+    if ! run_hosted_analysis "$TRANSCRIPT_ID"; then
+        if [ "${REQUIRE_ANALYZE:-0}" = "1" ]; then exit 1; fi
+    fi
     echo "=== Done ==="
     exit 0
 else
     # ---------- ARTICLE FLOW ----------
-    echo ">>> Article detected — extracting via Jina Reader..."
-
     ARTICLE_FILE="article_$(date +%s).md"
-    curl -sL --max-time 45 "https://r.jina.ai/$URL" > "$ARTICLE_FILE"
+    trap 'rm -f "$ARTICLE_FILE"' EXIT
+    STATUS_ID=$("$PYTHON" fxtwitter_article.py --status-id "$URL")
+    if [ -n "$STATUS_ID" ]; then
+        echo ">>> X/Twitter content detected, extracting via FXTwitter..."
+        if ! curl -fsSL --max-time 45 "https://api.fxtwitter.com/i/status/$STATUS_ID" |
+            "$PYTHON" fxtwitter_article.py > "$ARTICLE_FILE"; then
+            echo ">>> ERROR: FXTwitter extraction failed"
+            exit 1
+        fi
+    else
+        echo ">>> Article detected, extracting via Jina Reader..."
+        curl -sL --max-time 45 "https://r.jina.ai/$URL" > "$ARTICLE_FILE"
+    fi
 
-    if [ ! -s "$ARTICLE_FILE" ] || [ "$(wc -c < "$ARTICLE_FILE")" -lt 200 ]; then
+    if [ ! -s "$ARTICLE_FILE" ] || { [ -z "$STATUS_ID" ] && [ "$(wc -c < "$ARTICLE_FILE")" -lt 200 ]; }; then
         echo ">>> ERROR: Jina Reader returned no/minimal content. Site may block scraping."
         rm -f "$ARTICLE_FILE"
         exit 1
@@ -253,21 +311,29 @@ else
     echo ">>> Extracted $WORDS words -> $ARTICLE_FILE"
 
     echo ">>> Uploading raw article to dashboard..."
-    UPLOAD_RESULT=$(python upload_article.py "$URL" "$ARTICLE_FILE")
+    if ! UPLOAD_RESULT=$("$PYTHON" upload_article.py "$URL" "$ARTICLE_FILE"); then
+        echo ">>> ERROR: Article upload failed: $UPLOAD_RESULT"
+        exit 1
+    fi
     echo "$UPLOAD_RESULT"
 
-    TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | python -c "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null)
+    if upload_already_exists; then
+        echo ">>> Already transcribed"
+        exit 0
+    fi
+    TRANSCRIPT_ID=$(echo "$UPLOAD_RESULT" | "$PYTHON" -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id') or d.get('id',''))" 2>/dev/null)
     if [ -z "$TRANSCRIPT_ID" ]; then
-        echo ">>> Upload failed or already exists. Skipping Phase 2."
+        echo ">>> Upload failed. Skipping Phase 2."
         exit 1
     fi
     echo ">>> Phase 1 complete! Article #$TRANSCRIPT_ID on dashboard."
 
     DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
-    echo ">>> Opening $DASHBOARD_URL"
-    cmd.exe /c start "" msedge "$DASHBOARD_URL" 2>/dev/null &
+    open_transcript
 
-    run_hosted_analysis "$TRANSCRIPT_ID" || true
+    if ! run_hosted_analysis "$TRANSCRIPT_ID"; then
+        if [ "${REQUIRE_ANALYZE:-0}" = "1" ]; then exit 1; fi
+    fi
     rm -f "$ARTICLE_FILE"
     echo "=== Done ==="
     exit 0

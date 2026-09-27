@@ -27,6 +27,16 @@ export PATH="$HOME/.local/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
 MONITOR_SH="${MONITOR_SH:-$SCRIPT_DIR/monitor.sh}"
 QUEUE_LOCK_FILE="${QUEUE_LOCK_FILE:-/tmp/chromescribe-queue.lock}"
 API_MAX_TIME="${QUEUE_API_MAX_TIME:-30}"
+QUEUE_PLATFORMS="${QUEUE_PLATFORMS:-youtube,article}"
+
+if python3 -c 'import sys; sys.exit(0)' >/dev/null 2>&1; then
+    PYTHON=python3
+elif python -c 'import sys; sys.exit(0)' >/dev/null 2>&1; then
+    PYTHON=python
+else
+    echo "ERROR: a working Python interpreter is required" >&2
+    exit 1
+fi
 
 # Only one drainer at a time — a transcription run takes minutes, cron fires every minute.
 exec 9>"$QUEUE_LOCK_FILE"
@@ -64,7 +74,7 @@ api_call() {
         log "ERROR: $method $path: curl failed (rc=$rc, HTTP ${code:-?}): $(tr '\n' ' ' < "$err" 2>/dev/null | cut -c1-200)"
         return 1
     fi
-    if ! python3 - "$out" <<'PY'
+    if ! "$PYTHON" - "$out" <<'PY'
 import json, sys
 try:
     with open(sys.argv[1]) as fh:
@@ -84,13 +94,13 @@ PY
 }
 
 log "Polling queue..."
-if ! api_call GET /api/queue; then
+if ! api_call GET /api/queue --get --data-urlencode "platforms=$QUEUE_PLATFORMS"; then
     log "ERROR: could not fetch pending queue; aborting this run"
     exit 1
 fi
 
 rows_file="$TMPDIR_Q/rows.tsv"
-if ! python3 - "$TMPDIR_Q/api.json" "$rows_file" <<'PY'
+if ! "$PYTHON" - "$TMPDIR_Q/api.json" "$rows_file" <<'PY'
 import json, re, sys
 src, dst = sys.argv[1], sys.argv[2]
 with open(src) as fh:
@@ -132,18 +142,24 @@ overall_rc=0
 while IFS=$'\t' read -r qid video_id url; do
     [ -n "$qid" ] || continue
 
-    # Real title, so the dashboard entry isn't called "Manual run". Non-fatal,
-    # unauthenticated (does not touch the service token).
-    title=$( { curl -sS -f --max-time 10 --proto '=https' \
-        "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${video_id}" \
-        | python3 -c 'import sys,json; print(json.load(sys.stdin)["title"])'; } 2>/dev/null )
-    [ -n "$title" ] || title="Shared from Android"
-
-    log "Queue #$qid: $title ($url)"
-    # REQUIRE_ANALYZE=1 makes monitor.sh fail the row when the summary step
-    # fails, so a queued row is only "done" once transcribe *and* analyze have
-    # succeeded. Plain cron monitor runs are unaffected (var unset there).
-    if REQUIRE_ANALYZE=1 "$MONITOR_SH" --force "$video_id" "$title" < /dev/null; then
+    case "$video_id" in
+        article:*|tiktok:*|tiktok-short:*)
+            log "Queue #$qid: $url"
+            (cd "$SCRIPT_DIR" && CHROMESCRIBE_NO_OPEN=1 REQUIRE_ANALYZE=1 bash ./process.sh "$url" < /dev/null)
+            process_rc=$?
+            ;;
+        *)
+            # Real title, so the dashboard entry isn't called "Manual run".
+            title=$( { curl -sS -f --max-time 10 --proto '=https' \
+                "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${video_id}" \
+                | "$PYTHON" -c 'import sys,json; print(json.load(sys.stdin)["title"])'; } 2>/dev/null )
+            [ -n "$title" ] || title="Shared from Android"
+            log "Queue #$qid: $title ($url)"
+            REQUIRE_ANALYZE=1 "$MONITOR_SH" --force "$video_id" "$title" < /dev/null
+            process_rc=$?
+            ;;
+    esac
+    if [ "$process_rc" -eq 0 ]; then
         # Transcription succeeded; the row is only "done" once the API agrees.
         if api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"done"}'; then
             log "Queue #$qid: done"

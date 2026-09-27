@@ -1,0 +1,1 @@
+{"tweet":{"author":{"name":"Example Author"},"article":{"title":"Example Article","content":{"blocks":[{"type":"header-one","text":"Main heading"},{"type":"header-two","text":"Subheading"},{"type":"unstyled","text":"Paragraph with café."},{"type":"unordered-list-item","text":"Bullet"},{"type":"ordered-list-item","text":"Step"},{"type":"blockquote","text":"Other paragraph"}]}}}}
