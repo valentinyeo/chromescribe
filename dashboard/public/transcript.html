@@ -831,7 +831,10 @@
         let d = e.data;
         if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
         if (!d || !d['x-tiktok-player']) return;
-        if (d.type === 'onPlayerReady' && pendingSeek) { tiktokCommand('seekTo', pendingSeek); pendingSeek = 0; }
+        if (d.type === 'onPlayerReady') {
+          tiktokCommand('unMute'); // autoplay starts muted; the user already clicked play
+          if (pendingSeek) { tiktokCommand('seekTo', pendingSeek); pendingSeek = 0; }
+        }
         if (d.type === 'onStateChange') videoPlaying = d.value === 1;
       }
     });
