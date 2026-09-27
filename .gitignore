@@ -7,3 +7,4 @@ docs/
 .seeded_*
 monitor.log
 .env.chromescribe
+tiktok-saves/config.js
