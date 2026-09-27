@@ -676,7 +676,7 @@
           thumbUrl = 'https://img.youtube.com/vi/' + meta.video_id + '/maxresdefault.jpg';
         } else if (meta.video_id.startsWith('tiktok:')) {
           const tiktokId = meta.video_id.replace('tiktok:', '');
-          videoSrc = 'https://www.tiktok.com/embed/' + tiktokId;
+          videoSrc = 'https://www.tiktok.com/player/v1/' + tiktokId + '?autoplay=1';
         } else {
           // Try to extract from source URL in content
           const ytMatch = markdown.match(/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/);
@@ -685,7 +685,7 @@
             videoSrc = 'https://www.youtube.com/embed/' + ytMatch[1] + '?autoplay=1&enablejsapi=1';
             thumbUrl = 'https://img.youtube.com/vi/' + ytMatch[1] + '/maxresdefault.jpg';
           } else if (ttMatch) {
-            videoSrc = 'https://www.tiktok.com/embed/' + ttMatch[1];
+            videoSrc = 'https://www.tiktok.com/player/v1/' + ttMatch[1] + '?autoplay=1';
           }
         }
         
@@ -810,14 +810,30 @@
       if (m) window.open(m[1], '_blank', 'noopener');
     }
 
-    // YouTube player state via the iframe API postMessage protocol (enablejsapi=1)
+    // Player state via postMessage: YouTube iframe API (enablejsapi=1) and
+    // TikTok's embed player v1 (the old /embed/ page returns 500 in browsers).
     let videoPlaying = false;
+    let pendingSeek = 0;
+    function tiktokCommand(type, value) {
+      const msg = { 'x-tiktok-player': true, type };
+      if (value !== undefined) msg.value = value;
+      document.getElementById('video').contentWindow.postMessage(msg, 'https://www.tiktok.com');
+    }
     window.addEventListener('message', (e) => {
-      if (!/youtube\.com$/.test(new URL(e.origin).hostname)) return;
-      try {
-        const d = JSON.parse(e.data);
-        if (d.info && d.info.playerState !== undefined) videoPlaying = d.info.playerState === 1;
-      } catch {}
+      let host = '';
+      try { host = new URL(e.origin).hostname; } catch { return; }
+      if (/youtube\.com$/.test(host)) {
+        try {
+          const d = JSON.parse(e.data);
+          if (d.info && d.info.playerState !== undefined) videoPlaying = d.info.playerState === 1;
+        } catch {}
+      } else if (host === 'www.tiktok.com') {
+        let d = e.data;
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
+        if (!d || !d['x-tiktok-player']) return;
+        if (d.type === 'onPlayerReady' && pendingSeek) { tiktokCommand('seekTo', pendingSeek); pendingSeek = 0; }
+        if (d.type === 'onStateChange') videoPlaying = d.value === 1;
+      }
     });
     function togglePlay() {
       const wrapper = document.getElementById('videoWrapper');
@@ -826,8 +842,12 @@
         videoPlaying = true;
         return;
       }
-      const iframe = document.getElementById('video');
-      iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: videoPlaying ? 'pauseVideo' : 'playVideo', args: [] }), '*');
+      if (isTikTok()) {
+        tiktokCommand(videoPlaying ? 'pause' : 'play');
+      } else {
+        const iframe = document.getElementById('video');
+        iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: videoPlaying ? 'pauseVideo' : 'playVideo', args: [] }), '*');
+      }
       videoPlaying = !videoPlaying;
     }
 
@@ -884,7 +904,7 @@
     });
 
     function parseMarkdown(text) {
-      if (isYouTube()) {
+      if (isYouTube() || isTikTok()) {
         text = text.replace(/\[(?:(\d+):)?(\d{1,2}):([0-5]\d)\]/g, (marker, hours, minutes, seconds) => {
           const t = Number(hours || 0) * 3600 + Number(minutes) * 60 + Number(seconds);
           return '<a class="ts" data-t="' + t + '" href="#t=' + t + '">' + marker + '</a>';
@@ -919,13 +939,20 @@
       return (window.videoSrc || '').startsWith('https://www.youtube.com/embed/');
     }
 
+    function isTikTok() {
+      return (window.videoSrc || '').startsWith('https://www.tiktok.com/player/v1/');
+    }
+
     document.getElementById('content').addEventListener('click', (event) => {
       const link = event.target.closest('a.ts');
-      if (!link || !isYouTube()) return;
+      if (!link || !(isYouTube() || isTikTok())) return;
       event.preventDefault();
       const seconds = Number(link.dataset.t);
       if (!document.getElementById('videoWrapper').classList.contains('playing')) {
         loadVideo(seconds);
+      } else if (isTikTok()) {
+        tiktokCommand('seekTo', seconds);
+        tiktokCommand('play');
       } else {
         const player = document.getElementById('video').contentWindow;
         player.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [seconds, true] }), 'https://www.youtube.com');
@@ -940,6 +967,7 @@
       const iframe = document.getElementById('video');
       const src = new URL(window.videoSrc);
       if (isYouTube()) src.searchParams.set('start', String(start));
+      if (isTikTok()) pendingSeek = start;
       iframe.src = src.href;
       wrapper.classList.add('playing');
     }
