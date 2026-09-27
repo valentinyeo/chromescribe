@@ -1,3 +1,4 @@
+importScripts('tiktok-saves.js'); // TikTok Favourites -> ChromeScribe queue
 const PROJECT_DIR = "C:/Users/valen/Documents/GitHub/chromescribe";
 const TERMINAL_BASE = "http://localhost:7681/";
 const DASHBOARD_BASE = "https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev";

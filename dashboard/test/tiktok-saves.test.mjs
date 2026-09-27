@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const src = fs.readFileSync(new URL('../../tiktok-saves/background.js', import.meta.url), 'utf8');
+const src = fs.readFileSync(new URL('../../extension/tiktok-saves.js', import.meta.url), 'utf8');
 
 function load({ favs, queueOk = () => true }) {
   const store = {};

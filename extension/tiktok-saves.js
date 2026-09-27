@@ -1,7 +1,9 @@
 // Polls the logged-in user's TikTok Favourites and enqueues new videos in
 // ChromeScribe (/api/queue). The first successful run only records what is
 // already saved, so old favourites are never imported.
-importScripts('config.js'); // gitignored: self.CS_ACCESS = { id, secret }
+// Service token lives in gitignored config.js (self.CS_ACCESS = { id, secret }).
+// A missing config must not take down the rest of the extension.
+try { importScripts('config.js'); } catch (e) { console.warn('[tiktok-saves] config.js missing'); }
 
 const SEC_UID = 'MS4wLjABAAAAO8vjkqSS1JkvuHoW-QqfEGHehWGnNUw7e__oQOp6csS2ko6HkiSgZOLvWDR6GPph';
 const QUEUE_URL = 'https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/queue';
@@ -21,6 +23,7 @@ async function setStatus(status) {
 }
 
 async function check() {
+  if (!self.CS_ACCESS) return setStatus({ ok: false, error: 'config.js missing' });
   let items;
   try {
     const res = await fetch(FAVS_URL, { credentials: 'include' });
