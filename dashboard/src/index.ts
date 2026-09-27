@@ -4,6 +4,7 @@
  */
 
 import { transcriptSourceResponse } from './source-lib.mjs';
+import { addEstimatedTimestamps } from './timestamps.mjs';
 import { Buffer } from 'node:buffer';
 import { enqueueSharedUrl, hashUrl, listPendingQueue } from './queue-lib.mjs';
 import { handleAndroidUpdates } from './android-updates.mjs';
@@ -154,10 +155,10 @@ function formatSRTTime(seconds: number): string {
   return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
 }
 
-// Phase 2: parse stored markdown, regenerate TL;DR + The Article via Workers AI,
+// Phase 2: parse stored markdown, regenerate TL;DR + Summary + Talking Points via Workers AI,
 // return the rebuilt markdown. Handles both raw-only and already-structured input
 // (so re-summarize works). Throws on any failure — caller must not write on throw.
-async function summarizeContent(content: string, ai: Ai): Promise<string> {
+async function summarizeContent(content: string, ai: Ai, metadata: { video_id: string; duration: number }): Promise<string> {
   // header = everything before the first "## " heading (title + Source/Date/Type + ---)
   const firstSection = content.search(/^##\s/m);
   const header = (firstSection >= 0 ? content.slice(0, firstSection) : content).trimEnd();
@@ -179,9 +180,17 @@ async function summarizeContent(content: string, ai: Ai): Promise<string> {
 
   if (!transcriptBody) throw new Error('No transcript content to summarize');
 
+  const timed = !metadata.video_id.startsWith('article:') && metadata.duration > 0 && Number.isFinite(metadata.duration);
+  const modelBody = addEstimatedTimestamps(transcriptBody, metadata.duration, metadata.video_id);
+  const timestampRules = timed
+    ? 'These timestamps are estimates. Copy timestamps ONLY from the supplied transcript markers, never invent them. Append the nearest relevant marker to every TL;DR bullet, Summary big point, downside, verdict, and next action. Also timestamp the bottom line. Talking Points timestamps must strictly increase; combine points sharing a marker.'
+    : 'Do NOT include timestamps or time markers anywhere in your output. Talking Points use plain "- point" lines.';
+
   const systemPrompt =
     'You are a content summarizer. You turn a raw transcript or article into a structured, readable summary in markdown, shaped for a reader with ADHD: the answer first, numbered where work is involved, nothing wasted.';
-  const userPrompt = `Summarize the content below. Output ONLY markdown with EXACTLY these two sections, in this order, and nothing else (no title, no preamble, no code fences):
+  const userPrompt = `Summarize the content below. Output ONLY markdown with EXACTLY these three sections, in this order, and nothing else (no title, no preamble, no code fences):
+
+${timestampRules}
 
 ## TL;DR
 
@@ -199,12 +208,25 @@ Take the FULL content below and run the i-have-adhd skill on it — the result o
 
 ---
 
-## The Article
+## Summary
 
-An 800-1500 word web article using the pyramid principle: lead with the single most important insight, then descending importance. Short 2-4 sentence paragraphs. **Bold** key phrases. Use "### " subheadings every 2-3 paragraphs. Scale length to the content — never pad.
+**Bottom line:** 1-2 sentences giving the verdict or central point.
+
+**The big points:** A numbered list of 1-5 points (up to 7 when needed). Each uses "1. **Label.** 1-3 short sentences" with specific numbers from the content.
+
+**Downsides:** 1-4 bullets ONLY if the content contains criticisms or limits. Omit this entire block otherwise.
+
+**Verdict:** The creator's own conclusion in one sentence. Omit if there is none.
+
+**Next:** One concrete action ONLY for tutorials or advice. Never "watch the video". Omit otherwise.
+
+## Talking Points
+
+Every major talking point in the order it appears, one line each. ${timed ? 'Use "- [m:ss] point" (or [h:mm:ss] past an hour).' : 'Use "- point".'}
+No cap on the list; aim for one point per 30-60 seconds of content. Skip filler intros, outros, and sponsor reads unless substantive. Cover the whole content through its conclusion.
 
 CONTENT:
-${transcriptBody}`;
+${modelBody}`;
 
   // One Workers AI attempt. Gemma 4's 256K context window accommodates long
   // transcripts without local chunking or a third-party model subscription.
@@ -214,7 +236,7 @@ ${transcriptBody}`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      max_completion_tokens: 4096,
+      max_completion_tokens: 8192,
       temperature: 0.2,
       chat_template_kwargs: { thinking: false },
     } as any, gatewayOptions('summarization') as any) as TextGenerationResponse;
@@ -223,9 +245,10 @@ ${transcriptBody}`;
     if (!raw || typeof raw !== 'string') throw new Error('Workers AI returned no content');
 
     // Take everything from the first "## TL;DR" onward; drop stray preamble/fences.
-    const start = raw.search(/##\s+TL;DR/);
-    if (start < 0 || !/##\s+The Article/.test(raw)) {
-      throw new Error('Workers AI output missing TL;DR / The Article sections');
+    const start = raw.search(/^##[ \t]+TL;DR[ \t]*$/m);
+    const headings = raw.slice(Math.max(0, start)).match(/^##[ \t]+[^\r\n]+/gm);
+    if (start < 0 || headings?.map(h => h.replace(/^##[ \t]+/, '').trim()).join('|') !== 'TL;DR|Summary|Talking Points') {
+      throw new Error('Workers AI output missing or misordered TL;DR / Summary / Talking Points sections');
     }
     return raw.slice(start).replace(/\n*```\s*$/, '').trim();
   };
@@ -876,7 +899,7 @@ ${srtContent || transcript.text}
         // actions before returning the completed record.
         if (transcriptId) {
           try {
-            enrichedMarkdown = await summarizeContent(markdownContent, env.AI);
+            enrichedMarkdown = await summarizeContent(markdownContent, env.AI, { video_id: videoId, duration: Math.round(wordCount / 2.5) });
             await env.TRANSCRIPTS.put(srtPath, enrichedMarkdown);
             const enrichedWordCount = enrichedMarkdown.split(/\s+/).filter(w => w.length > 0).length;
             finalWordCount = enrichedWordCount;
@@ -1017,9 +1040,9 @@ ${srtContent || transcript.text}
       if (parts.length === 3) {
         const id = parts[1];
         const existing = await env.DB
-          .prepare('SELECT srt_path FROM transcripts WHERE id = ?')
+          .prepare('SELECT srt_path, video_id, duration FROM transcripts WHERE id = ?')
           .bind(id)
-          .first<{ srt_path: string }>();
+          .first<{ srt_path: string; video_id: string; duration: number }>();
         if (!existing) {
           return handleError(new Error('Transcript not found'), 404);
         }
@@ -1032,7 +1055,7 @@ ${srtContent || transcript.text}
 
         let newMarkdown: string;
         try {
-          newMarkdown = await summarizeContent(rawMarkdown, env.AI);
+          newMarkdown = await summarizeContent(rawMarkdown, env.AI, existing);
         } catch (e: any) {
           return handleError(new Error(`Analysis failed during summarization: ${e.message}`), 502);
         }
@@ -1076,16 +1099,16 @@ ${srtContent || transcript.text}
       }
     }
 
-    // POST /api/transcripts/:id/summarize - (re)generate TL;DR + The Article via Workers AI
+    // POST /api/transcripts/:id/summarize - (re)generate TL;DR + Summary + Talking Points via Workers AI
     if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/summarize')) {
       const parts = path.split('/');
       if (parts.length === 3) {
         const id = parts[1];
 
         const existing = await env.DB
-          .prepare('SELECT srt_path FROM transcripts WHERE id = ?')
+          .prepare('SELECT srt_path, video_id, duration FROM transcripts WHERE id = ?')
           .bind(id)
-          .first<{ srt_path: string }>();
+          .first<{ srt_path: string; video_id: string; duration: number }>();
         if (!existing) {
           return handleError(new Error('Transcript not found'), 404);
         }
@@ -1098,7 +1121,7 @@ ${srtContent || transcript.text}
 
         let newMarkdown: string;
         try {
-          newMarkdown = await summarizeContent(rawMarkdown, env.AI);
+          newMarkdown = await summarizeContent(rawMarkdown, env.AI, existing);
         } catch (e: any) {
           // Leave R2 untouched on failure — no half-overwrite
           return handleError(new Error(`Summarization failed: ${e.message}`), 502);

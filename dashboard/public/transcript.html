@@ -24,6 +24,9 @@
       color: #fff;
     }
     
+    a.ts { font-family: monospace; color: #8ab4f8; font-size: .85em; text-decoration: none; }
+    a.ts:hover { text-decoration: underline; }
+
     .container {
       display: flex;
       height: 100vh;
@@ -881,6 +884,12 @@
     });
 
     function parseMarkdown(text) {
+      if (isYouTube()) {
+        text = text.replace(/\[(?:(\d+):)?(\d{1,2}):([0-5]\d)\]/g, (marker, hours, minutes, seconds) => {
+          const t = Number(hours || 0) * 3600 + Number(minutes) * 60 + Number(seconds);
+          return '<a class="ts" data-t="' + t + '" href="#t=' + t + '">' + marker + '</a>';
+        });
+      }
       // Convert plain URLs to clickable links first
       const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`\[\]]+)/g;
       text = text.replace(urlRegex, '<a href="$1" target="_blank">$1</a>');
@@ -906,11 +915,32 @@
         .replace(/<\/li><\/p>/g, '</li>');
     }
     
-    function loadVideo() {
+    function isYouTube() {
+      return (window.videoSrc || '').startsWith('https://www.youtube.com/embed/');
+    }
+
+    document.getElementById('content').addEventListener('click', (event) => {
+      const link = event.target.closest('a.ts');
+      if (!link || !isYouTube()) return;
+      event.preventDefault();
+      const seconds = Number(link.dataset.t);
+      if (!document.getElementById('videoWrapper').classList.contains('playing')) {
+        loadVideo(seconds);
+      } else {
+        const player = document.getElementById('video').contentWindow;
+        player.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [seconds, true] }), 'https://www.youtube.com');
+        player.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), 'https://www.youtube.com');
+      }
+      videoPlaying = true;
+    });
+
+    function loadVideo(start = 0) {
       if (!window.videoSrc) return;
       const wrapper = document.getElementById('videoWrapper');
       const iframe = document.getElementById('video');
-      iframe.src = window.videoSrc;
+      const src = new URL(window.videoSrc);
+      if (isYouTube()) src.searchParams.set('start', String(start));
+      iframe.src = src.href;
       wrapper.classList.add('playing');
     }
     
