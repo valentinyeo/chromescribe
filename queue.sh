@@ -39,8 +39,12 @@ else
 fi
 
 # Only one drainer at a time — a transcription run takes minutes, cron fires every minute.
-exec 9>"$QUEUE_LOCK_FILE"
-flock -n 9 || exit 0
+# Git Bash on Windows has no flock; there Task Scheduler's default "do not start
+# a new instance" policy prevents overlapping runs instead.
+if command -v flock >/dev/null 2>&1; then
+    exec 9>"$QUEUE_LOCK_FILE"
+    flock -n 9 || exit 0
+fi
 
 TMPDIR_Q="$(mktemp -d /tmp/chromescribe-queue.XXXXXX)"
 cleanup() { rm -rf "$TMPDIR_Q"; }
