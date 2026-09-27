@@ -745,6 +745,15 @@
         grid-template-columns: 1fr;
       }
     }
+    /* Keyboard selection + Ctrl+K command menu (same keys as transcript page / Hypertask) */
+    .card.kb-selected { border-color: #3ea6ff; box-shadow: 0 0 0 2px #3ea6ff; }
+    #cmdk { border: 1px solid var(--border); border-radius: 10px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--card); color: inherit; margin: 12vh auto auto; }
+    #cmdk::backdrop { background: rgba(0,0,0,0.5); }
+    #cmdkInput { width: 100%; box-sizing: border-box; padding: 14px 16px; font-size: 15px; background: transparent; color: inherit; border: none; border-bottom: 1px solid var(--border); outline: none; }
+    #cmdkList { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow-y: auto; }
+    #cmdkList li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    #cmdkList li.active { background: var(--card-hover); }
+    #cmdkList kbd { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -903,6 +912,10 @@
     </div>
   </div>
 
+  <dialog id="cmdk">
+    <input id="cmdkInput" placeholder="Type a command…" autocomplete="off">
+    <ul id="cmdkList"></ul>
+  </dialog>
   <script>
     const API_BASE = '/api';
     let transcripts = [];
@@ -1266,6 +1279,87 @@
 
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') { closeAddModal(); closeViewModal(); }
+    });
+
+    // Keyboard shortcuts, following Hypertask's conventions (same as transcript page)
+    let kbIndex = -1;
+    const kbCards = () => [...document.querySelectorAll('#grid .card, .grid .card')];
+    function kbSelect(i) {
+      const cards = kbCards();
+      if (!cards.length) return;
+      kbIndex = Math.max(0, Math.min(i, cards.length - 1));
+      cards.forEach((c, j) => c.classList.toggle('kb-selected', j === kbIndex));
+      cards[kbIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    const kbCard = () => kbCards()[kbIndex];
+    function kbOpen() { const a = kbCard()?.querySelector('a[href^="transcript.html"]'); if (a) window.location.href = a.href; }
+    function kbOpenOriginal() { const a = kbCard()?.querySelector('.card-actions a[target="_blank"]'); if (a) window.open(a.href, '_blank', 'noopener'); }
+    function kbDelete() { kbCard()?.querySelector('.js-delete')?.click(); }
+    function focusSearch() { const s = document.getElementById('searchInput'); s.focus(); s.select(); }
+
+    const COMMANDS = [
+      { label: 'Next item', key: 'J', run: () => kbSelect(kbIndex + 1) },
+      { label: 'Previous item', key: 'K', run: () => kbSelect(kbIndex - 1) },
+      { label: 'Open selected', key: 'Enter', run: kbOpen, ok: () => !!kbCard() },
+      { label: 'Open original of selected', key: 'O', run: kbOpenOriginal, ok: () => !!kbCard() },
+      { label: 'Delete selected', key: '# / Del', run: kbDelete, ok: () => !!kbCard() },
+      { label: 'Search', key: '/', run: focusSearch },
+      { label: 'Add video', key: 'C', run: openAddModal },
+      { label: 'Keyboard shortcuts', key: '?', run: () => openCmdk(true) },
+      { label: 'Command menu', key: 'Ctrl+K', run: () => openCmdk() },
+      { label: 'Stats', run: () => { window.location.href = '/stats.html'; } },
+      { label: 'Settings', key: '$', run: () => { window.location.href = '/settings.html'; } },
+    ];
+
+    const cmdk = document.getElementById('cmdk');
+    const cmdkInput = document.getElementById('cmdkInput');
+    const cmdkList = document.getElementById('cmdkList');
+    let cmdkItems = [], cmdkActive = 0, cmdkKeysOnly = false;
+    function renderCmdk() {
+      const q = cmdkInput.value.toLowerCase();
+      cmdkItems = COMMANDS.filter(c => (!c.ok || c.ok()) && (!cmdkKeysOnly || c.key) && c.label.toLowerCase().includes(q));
+      cmdkActive = Math.min(cmdkActive, Math.max(cmdkItems.length - 1, 0));
+      cmdkList.innerHTML = cmdkItems.map((c, i) =>
+        `<li data-i="${i}" class="${i === cmdkActive ? 'active' : ''}"><span>${c.label}</span><kbd>${c.key || ''}</kbd></li>`).join('');
+    }
+    function runCmdk(i) { const c = cmdkItems[i]; cmdk.close(); if (c) c.run(); }
+    function openCmdk(keysOnly = false) {
+      if (cmdk.open) cmdk.close();
+      cmdkKeysOnly = keysOnly;
+      cmdkInput.placeholder = keysOnly ? 'Keyboard shortcuts' : 'Type a command…';
+      cmdkInput.value = '';
+      cmdkActive = 0;
+      renderCmdk();
+      cmdk.showModal();
+      cmdkInput.focus();
+    }
+    cmdkInput.addEventListener('input', () => { cmdkActive = 0; renderCmdk(); });
+    cmdkInput.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); cmdkActive = (cmdkActive + 1) % cmdkItems.length; renderCmdk(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkActive = (cmdkActive - 1 + cmdkItems.length) % cmdkItems.length; renderCmdk(); }
+      else if (e.key === 'Enter') { e.preventDefault(); runCmdk(cmdkActive); }
+    });
+    cmdkList.addEventListener('click', e => { const li = e.target.closest('li'); if (li) runCmdk(+li.dataset.i); });
+    cmdk.addEventListener('click', e => { if (e.target === cmdk) cmdk.close(); });
+
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); cmdk.open ? cmdk.close() : openCmdk(); return; }
+      if (cmdk.open || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target.matches('input, textarea, select, [contenteditable]')) {
+        if (e.key === 'Escape') e.target.blur();
+        return;
+      }
+      if (!document.getElementById('addModal').classList.contains('hidden')) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (k === 'j') { e.preventDefault(); kbSelect(kbIndex + 1); }
+      else if (k === 'k') { e.preventDefault(); kbSelect(kbIndex - 1); }
+      else if (k === 'Enter' && kbCard()) { e.preventDefault(); kbOpen(); }
+      else if (k === 'o') { kbOpenOriginal(); }
+      else if (k === '#' || k === 'Delete') { e.preventDefault(); kbDelete(); }
+      else if (k === '/') { e.preventDefault(); focusSearch(); }
+      else if (k === 'c') { e.preventDefault(); openAddModal(); }
+      else if (k === '?') { e.preventDefault(); openCmdk(true); }
+      else if (k === '$') { window.location.href = '/settings.html'; }
     });
 
     // Channels panel
