@@ -463,12 +463,18 @@
 
     @media (max-width: 768px) {
       .container { flex-direction: column; height: auto; min-height: 100vh; }
-      .video-side { flex: none; width: 100%; }
+      /* Unwrap video-side so the sticky player below is bounded by the whole
+         page rather than by its own column, which is only a few hundred px tall. */
+      .video-side { display: contents; }
       .video-wrapper {
         flex: none;
         width: 100%;
         aspect-ratio: 16 / 9;
         min-height: 0;
+        /* Keep the video on screen while the transcript scrolls under it. */
+        position: sticky;
+        top: 0;
+        z-index: 40;
       }
       .article-reader { flex: none; overflow: visible; }
       .transcript-side { width: 100%; flex: 1 1 auto; border-left: none; border-top: 1px solid #333; }
