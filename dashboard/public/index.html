@@ -5,6 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChromeScribe</title>
   <script>
+    // Shared theme bootstrap. This block is identical in index.html and
+    // transcript.html on purpose — change both or neither. It runs before
+    // paint so the page never flashes the wrong theme.
+    (function () {
+      var KEY = 'cs-theme';
+      var ORDER = ['system', 'dark', 'light'];
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      function choice() {
+        try {
+          var v = localStorage.getItem(KEY);
+          return ORDER.indexOf(v) === -1 ? 'system' : v;
+        } catch (e) { return 'system'; }
+      }
+      function paint(c) {
+        var root = document.documentElement;
+        root.setAttribute('data-theme', c === 'system' ? (mq.matches ? 'dark' : 'light') : c);
+        root.setAttribute('data-theme-choice', c);
+      }
+      window.csTheme = {
+        get: choice,
+        icon: function () { var c = choice(); return c === 'system' ? '◐' : c === 'dark' ? '☀' : '🌙'; },
+        label: function () { return 'Theme: ' + choice(); },
+        set: function (c) {
+          try { localStorage.setItem(KEY, c); } catch (e) {}
+          paint(c);
+          if (window.csThemeRender) window.csThemeRender();
+        },
+        cycle: function () { window.csTheme.set(ORDER[(ORDER.indexOf(choice()) + 1) % ORDER.length]); }
+      };
+      // Following the device means following it as it changes, not just at load.
+      mq.addEventListener('change', function () { if (choice() === 'system') paint('system'); });
+      paint(choice());
+    })();
+  </script>
+  <script>
     history.scrollRestoration = 'manual';
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,6 +57,34 @@
       --success: #22c55e;
       --card: #090909;
       --card-hover: #111111;
+      --surface: #1a1a1a;
+      --chip-bg: rgba(255, 255, 255, 0.05);
+      --chip-on-accent-bg: rgba(255, 255, 255, 0.18);
+      --chip-on-accent-fg: rgba(255, 255, 255, 0.8);
+      --accent-soft-bg: rgba(0, 87, 255, 0.12);
+      --accent-soft-border: rgba(0, 87, 255, 0.4);
+      --accent-soft-fg: #6ea8ff;
+    }
+
+    :root[data-theme="light"] {
+      --foreground: #111113;
+      --background: #f7f7f9;
+      --border: #e1e1e7;
+      --muted: #6b6b76;
+      --text: #3f3f4a;
+      --accent: #0057ff;
+      --accent-hover: #0047d6;
+      --error: #d92d20;
+      --success: #15803d;
+      --card: #ffffff;
+      --card-hover: #f1f1f4;
+      --surface: #ececf0;
+      --chip-bg: rgba(0, 0, 0, 0.06);
+      --chip-on-accent-bg: rgba(255, 255, 255, 0.25);
+      --chip-on-accent-fg: rgba(255, 255, 255, 0.92);
+      --accent-soft-bg: rgba(0, 87, 255, 0.10);
+      --accent-soft-border: rgba(0, 87, 255, 0.35);
+      --accent-soft-fg: #0b43c0;
     }
     
     * {
@@ -291,7 +354,7 @@
       font-size: 11px;
       padding: 2px 8px;
       border-radius: 10px;
-      background: #1a1a1a;
+      background: var(--surface);
       border: 1px solid var(--border);
       color: var(--text);
       white-space: nowrap;
@@ -301,9 +364,9 @@
       font-size: 11px;
       padding: 2px 8px;
       border-radius: 10px;
-      background: rgba(0, 87, 255, 0.12);
-      border: 1px solid rgba(0, 87, 255, 0.4);
-      color: #6ea8ff;
+      background: var(--accent-soft-bg);
+      border: 1px solid var(--accent-soft-border);
+      color: var(--accent-soft-fg);
       font-weight: 500;
       white-space: nowrap;
     }
@@ -727,14 +790,14 @@
     .channel-chip-count {
       font-size: 11px;
       color: var(--muted);
-      background: rgba(255,255,255,0.05);
+      background: var(--chip-bg);
       padding: 0 6px;
       border-radius: 3px;
     }
 
     .channel-chip.active .channel-chip-count {
-      color: rgba(255,255,255,0.8);
-      background: rgba(255,255,255,0.18);
+      color: var(--chip-on-accent-fg);
+      background: var(--chip-on-accent-bg);
     }
 
     /* Hide */
@@ -782,6 +845,7 @@
       
       <div class="header-actions">
         <span id="stats" class="stats"></span>
+        <button id="themeToggle" class="btn btn-secondary" onclick="csTheme.cycle()" title="Theme" aria-label="Theme">◐</button>
         <a href="/stats.html" class="btn btn-secondary">Stats</a>
         <a href="/settings.html" class="btn btn-secondary" title="Settings" aria-label="Settings">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -934,6 +998,16 @@
     let transcripts = [];
     let activeCategory = null;
     let activeChannel = null; // canonical channel name or null
+
+    // Keeps the theme button in step with the stored choice.
+    window.csThemeRender = function () {
+      var btn = document.getElementById('themeToggle');
+      if (!btn) return;
+      btn.textContent = csTheme.icon();
+      btn.title = csTheme.label();
+      btn.setAttribute('aria-label', csTheme.label());
+    };
+    csThemeRender();
     let channelsCache = [];
     let searchQuery = '';
 

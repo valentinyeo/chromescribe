@@ -5,13 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Transcript - ChromeScribe</title>
   <script>
-    // Apply saved theme before paint to avoid flash
-    (function() {
-      try {
-        var stored = localStorage.getItem('cs-theme');
-        var preferLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
-        document.documentElement.setAttribute('data-theme', stored || (preferLight ? 'light' : 'dark'));
-      } catch (e) {}
+    // Shared theme bootstrap. This block is identical in index.html and
+    // transcript.html on purpose — change both or neither. It runs before
+    // paint so the page never flashes the wrong theme.
+    (function () {
+      var KEY = 'cs-theme';
+      var ORDER = ['system', 'dark', 'light'];
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      function choice() {
+        try {
+          var v = localStorage.getItem(KEY);
+          return ORDER.indexOf(v) === -1 ? 'system' : v;
+        } catch (e) { return 'system'; }
+      }
+      function paint(c) {
+        var root = document.documentElement;
+        root.setAttribute('data-theme', c === 'system' ? (mq.matches ? 'dark' : 'light') : c);
+        root.setAttribute('data-theme-choice', c);
+      }
+      window.csTheme = {
+        get: choice,
+        icon: function () { var c = choice(); return c === 'system' ? '◐' : c === 'dark' ? '☀' : '🌙'; },
+        label: function () { return 'Theme: ' + choice(); },
+        set: function (c) {
+          try { localStorage.setItem(KEY, c); } catch (e) {}
+          paint(c);
+          if (window.csThemeRender) window.csThemeRender();
+        },
+        cycle: function () { window.csTheme.set(ORDER[(ORDER.indexOf(choice()) + 1) % ORDER.length]); }
+      };
+      // Following the device means following it as it changes, not just at load.
+      mq.addEventListener('change', function () { if (choice() === 'system') paint('system'); });
+      paint(choice());
     })();
   </script>
   <style>
@@ -527,7 +552,7 @@
         <div class="header-btns">
           <button class="btn nav-btn desktop-only nav-prev" onclick="goPrev()" title="Previous (←)" disabled>←</button>
           <button class="btn nav-btn desktop-only nav-next" onclick="goNext()" title="Next (→)" disabled>→</button>
-          <button class="btn" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">☀</button>
+          <button class="btn" id="themeToggle" onclick="csTheme.cycle()" title="Theme" aria-label="Theme">◐</button>
           <a class="btn" href="/settings.html" title="Settings">⚙</a>
           <button class="btn btn-chat" onclick="chatOnClaude(this)" title="Copy transcript and open claude.ai">💬 Chat on Claude</button>
           <button class="btn" onclick="copyText(this)">Copy</button>
@@ -594,18 +619,18 @@
     window.addEventListener('pagehide', stopReadAloud);
 
     // Sync the toggle icon with the theme that was applied in <head>
-    (function syncThemeIcon() {
-      const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    // Keeps the theme button in step with the stored choice.
+    window.csThemeRender = function () {
       const btn = document.getElementById('themeToggle');
-      if (btn) btn.textContent = theme === 'light' ? '🌙' : '☀';
-    })();
+      if (!btn) return;
+      btn.textContent = csTheme.icon();
+      btn.title = csTheme.label();
+      btn.setAttribute('aria-label', csTheme.label());
+    };
+    csThemeRender();
+    // Kept as a name because the Ctrl+K menu binds to it.
     function toggleTheme() {
-      const current = document.documentElement.getAttribute('data-theme') || 'dark';
-      const next = current === 'light' ? 'dark' : 'light';
-      localStorage.setItem('cs-theme', next);
-      document.documentElement.setAttribute('data-theme', next);
-      const btn = document.getElementById('themeToggle');
-      if (btn) btn.textContent = next === 'light' ? '🌙' : '☀';
+      csTheme.cycle();
     }
 
     function escapeHtml(s) {
