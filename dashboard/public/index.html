@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChromeScribe</title>
+  <script>
+    history.scrollRestoration = 'manual';
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -924,6 +927,31 @@
     let channelsCache = [];
     let searchQuery = '';
 
+    function saveScrollPosition() {
+      try {
+        sessionStorage.setItem('cs-list-scroll', String(window.scrollY));
+      } catch (err) {}
+    }
+
+    function restoreScrollPosition() {
+      requestAnimationFrame(() => {
+        try {
+          const saved = sessionStorage.getItem('cs-list-scroll');
+          if (saved === null) return;
+          window.scrollTo(0, Number(saved));
+          sessionStorage.removeItem('cs-list-scroll');
+        } catch (err) {}
+      });
+    }
+
+    document.getElementById('videoGrid').addEventListener('click', e => {
+      if (e.target.closest('a[href^="transcript.html"]')) saveScrollPosition();
+    });
+
+    window.addEventListener('pageshow', e => {
+      if (e.persisted) restoreScrollPosition();
+    });
+
     // Pinned clusters cut across the narrower model-generated categories. Match
     // title, channel, category, and tags so a relevant channel belongs to the
     // cluster even when one of its videos received an unexpected category.
@@ -998,6 +1026,7 @@
         transcripts = data || [];
         renderTranscripts();
         renderChannels();
+        restoreScrollPosition();
         loadCategories(); // refresh chips so the SEO cluster count reflects loaded transcripts
       } catch (err) {
         showToast('Failed to load transcripts', 'error');
@@ -1292,7 +1321,7 @@
       cards[kbIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
     const kbCard = () => kbCards()[kbIndex];
-    function kbOpen() { const a = kbCard()?.querySelector('a[href^="transcript.html"]'); if (a) window.location.href = a.href; }
+    function kbOpen() { const a = kbCard()?.querySelector('a[href^="transcript.html"]'); if (a) { saveScrollPosition(); window.location.href = a.href; } }
     function kbOpenOriginal() { const a = kbCard()?.querySelector('.card-actions a[target="_blank"]'); if (a) window.open(a.href, '_blank', 'noopener'); }
     function kbDelete() { kbCard()?.querySelector('.js-delete')?.click(); }
     function focusSearch() { const s = document.getElementById('searchInput'); s.focus(); s.select(); }
