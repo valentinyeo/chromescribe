@@ -13,6 +13,7 @@ interface Env {
   DB: D1Database;
   TRANSCRIPTS: R2Bucket;
   AI: Ai;
+  DEEPGRAM_API_KEY: string;
 }
 
 interface Transcript {
@@ -343,6 +344,45 @@ ${sample}`;
   }
 }
 
+function spokenSummary(markdown: string): string {
+  return markdown
+    .split(/^##[ \t]+Full (?:Transcript|Article)\b/im)[0]
+    .replace(/\*\*|`/g, '')
+    .replace(/^[ \t]*(?:Source|Date|Type):.*$/gim, '')
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, '')
+    .replace(/^[ \t]*---+[ \t]*$/gm, '')
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, '$1')
+    .replace(/https?:\/\/[^\s<>)]+/g, '')
+    .replace(/[ \t]*\[\d+:\d{2}(?::\d{2})?\]/g, '')
+    .replace(/^[ \t]*[-*][ \t]+/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\bTL;DR\b/gi, 'Key points')
+    .trim();
+}
+
+function speechChunks(text: string): string[] {
+  const chunks = [];
+  let chunk = '';
+  const sentences = text.match(/[\s\S]+?(?:[.!?]+["’”')\]]*(?=\s|$)|$)/g) || [];
+  for (const sentence of sentences) {
+    let part = sentence.trim();
+    if (!part) continue;
+    if (chunk && chunk.length + part.length + 1 >= 1800) {
+      chunks.push(chunk);
+      chunk = '';
+    }
+    while (part.length >= 1800) {
+      let end = part.lastIndexOf(' ', 1799);
+      if (end <= 0) end = 1799;
+      chunks.push(part.slice(0, end));
+      part = part.slice(end).trim();
+    }
+    chunk = chunk ? chunk + ' ' + part : part;
+  }
+  if (chunk) chunks.push(chunk);
+  return chunks;
+}
+
 // API Routes
 const handleApi = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
@@ -555,6 +595,79 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       return new Response(content.body, {
         headers: { 'Content-Type': 'text/plain' },
       });
+    }
+
+    // GET /api/speak/:id - Cached Deepgram summary audio
+    if (request.method === 'GET' && /^speak\/[^/]+$/.test(path)) {
+      const id = path.split('/')[1];
+      const result = await env.DB
+        .prepare('SELECT srt_path FROM transcripts WHERE id = ?')
+        .bind(id)
+        .first<{ srt_path: string }>();
+      if (!result) return handleError(new Error('Transcript not found'), 404);
+
+      const content = await env.TRANSCRIPTS.get(result.srt_path);
+      if (!content) return handleError(new Error('Content file not found'), 404);
+      const text = spokenSummary(await content.text());
+      if (!text) return handleError(new Error('No summary text to read aloud'), 422);
+
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 16);
+      const key = `tts/${id}-${hash}.mp3`;
+      const cached = await env.TRANSCRIPTS.get(key);
+      let audio: Uint8Array;
+      if (cached) {
+        audio = new Uint8Array(await cached.arrayBuffer());
+      } else {
+        const parts: Uint8Array[] = [];
+        try {
+          for (const chunk of speechChunks(text)) {
+            const response = await fetch('https://api.deepgram.com/v1/speak?model=aura-2-thalia-en&encoding=mp3', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Token ${env.DEEPGRAM_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ text: chunk }),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            if (!bytes.length) throw new Error('Empty audio response');
+            parts.push(bytes);
+          }
+        } catch (error: any) {
+          return handleError(new Error(`Deepgram speech generation failed: ${error.message}`), 502);
+        }
+        audio = new Uint8Array(parts.reduce((size, part) => size + part.length, 0));
+        let offset = 0;
+        for (const part of parts) {
+          audio.set(part, offset);
+          offset += part.length;
+        }
+        await env.TRANSCRIPTS.put(key, audio, { httpMetadata: { contentType: 'audio/mpeg' } });
+      }
+
+      const headers = {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': String(audio.length),
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        ...CORS_HEADERS,
+      };
+      // Native audio controls request byte ranges when seeking.
+      const range = request.headers.get('Range')?.match(/^bytes=(\d*)-(\d*)$/);
+      if (range && (range[1] || range[2])) {
+        const start = range[1] ? Number(range[1]) : Math.max(0, audio.length - Number(range[2]));
+        const end = range[1] && range[2] ? Math.min(Number(range[2]), audio.length - 1) : audio.length - 1;
+        if (start > end || start >= audio.length) {
+          return new Response(null, { status: 416, headers: { ...headers, 'Content-Length': '0', 'Content-Range': `bytes */${audio.length}` } });
+        }
+        return new Response(audio.slice(start, end + 1), {
+          status: 206,
+          headers: { ...headers, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${audio.length}` },
+        });
+      }
+      return new Response(audio, { headers });
     }
 
     // POST /api/whisper - Raw transcription only, returns text (no DB storage)

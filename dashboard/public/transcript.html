@@ -526,10 +526,12 @@
           <button class="btn btn-chat" onclick="chatOnClaude(this)" title="Copy transcript and open claude.ai">💬 Chat on Claude</button>
           <button class="btn" onclick="copyText(this)">Copy</button>
           <button class="btn" onclick="downloadMd()">Download MD</button>
+          <button class="btn" id="readAloudBtn" onclick="readAloud()">Read aloud</button>
           <button class="btn btn-summarize" onclick="summarize()">✨ Summarize</button>
           <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
           <button class="btn btn-danger" onclick="deleteTranscript()">🗑 Delete</button>
         </div>
+        <div id="readAloudPlayer"></div>
       </header>
       <div class="video-wrapper" id="videoWrapper" onclick="loadVideo()">
         <img id="videoThumb" class="video-thumbnail" alt="Video thumbnail" style="display:none;">
@@ -582,6 +584,8 @@
     let markdown = '';
     let navList = null;
     let navIndex = -1;
+    let readAloudAudio = null;
+    window.addEventListener('pagehide', stopReadAloud);
 
     // Sync the toggle icon with the theme that was applied in <head>
     (function syncThemeIcon() {
@@ -996,6 +1000,44 @@
         btn.innerHTML = original;
         btn.disabled = false;
       }, ms);
+    }
+
+    function stopReadAloud() {
+      if (readAloudAudio) readAloudAudio.pause();
+      document.getElementById('readAloudBtn').textContent = 'Read aloud';
+    }
+
+    async function readAloud() {
+      if (readAloudAudio && !readAloudAudio.paused) {
+        stopReadAloud();
+        return;
+      }
+      const btn = document.getElementById('readAloudBtn');
+      if (!readAloudAudio) {
+        const id = new URLSearchParams(window.location.search).get('id');
+        readAloudAudio = document.createElement('audio');
+        readAloudAudio.preload = 'none';
+        readAloudAudio.src = `${API}/speak/${id}`;
+        readAloudAudio.controls = true;
+        readAloudAudio.style.cssText = 'display:block;width:100%;margin-top:12px;';
+        readAloudAudio.addEventListener('playing', () => { btn.textContent = 'Stop'; });
+        readAloudAudio.addEventListener('pause', () => { btn.textContent = 'Read aloud'; });
+        readAloudAudio.addEventListener('ended', stopReadAloud);
+        readAloudAudio.addEventListener('error', () => {
+          stopReadAloud();
+          btn.title = 'Could not load read-aloud audio';
+        });
+        document.getElementById('readAloudPlayer').appendChild(readAloudAudio);
+      }
+      btn.title = '';
+      btn.textContent = 'Loading…';
+      try {
+        if (readAloudAudio.error) readAloudAudio.load();
+        await readAloudAudio.play();
+      } catch (e) {
+        stopReadAloud();
+        if (e.name !== 'AbortError') btn.title = 'Could not play read-aloud audio';
+      }
     }
 
     async function copyText(btn) {
