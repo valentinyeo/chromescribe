@@ -292,6 +292,18 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
         fi
     fi
 
+    # Step 3b: Warm the read-aloud audio. Generating it on the first tap costs
+    # about 90 seconds of staring at a loading button; doing it here means the
+    # R2 copy is already there by the time the transcript is opened. Best
+    # effort — a failure here must not fail the run, and the endpoint
+    # regenerates on demand.
+    log "  Warming read-aloud audio..."
+    if api_call GET "/api/speak/$transcript_id" --max-time 300 --fail -o /dev/null; then
+        log "  Read-aloud audio cached"
+    else
+        log "  WARNING: read-aloud warm-up failed — it will generate on first play"
+    fi
+
     # Step 4: Send Telegram notification with ChromeScribe URL + thumbnail
     local cs_url="$DASHBOARD_URL/transcript.html?id=$transcript_id"
     send_telegram "$(printf '📝 <b>New transcript</b>\n<b>%s</b>\n<a href="%s">View in ChromeScribe</a>' "$title" "$cs_url")" "$thumb_url"
