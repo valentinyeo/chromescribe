@@ -713,7 +713,8 @@
           const tiktokId = meta.video_id.replace('tiktok:', '');
           videoSrc = 'https://www.tiktok.com/player/v1/' + tiktokId + '?autoplay=1';
         } else if (meta.video_id.startsWith('x:')) {
-          // X posts have no iframe embed; the Source link opens the post
+          // X's own post embed plays the video inline (no seek API, so timestamps don't jump)
+          videoSrc = 'https://platform.twitter.com/embed/Tweet.html?dnt=true&theme=dark&id=' + meta.video_id.replace('x:', '');
         } else {
           // Try to extract from source URL in content
           const ytMatch = markdown.match(/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/);
