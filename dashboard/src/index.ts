@@ -70,7 +70,7 @@ const CORS_HEADERS = {
 };
 
 interface ParsedVideo {
-  platform: 'youtube' | 'tiktok' | 'article';
+  platform: 'youtube' | 'tiktok' | 'x' | 'article';
   id: string;
   prefixedId: string;
 }
@@ -85,6 +85,10 @@ const parseVideoUrl = (url: string): ParsedVideo | null => {
   // TikTok
   const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
   if (/(?:^|\.)tiktok\.com$/.test(host) && ttMatch) return { platform: 'tiktok', id: ttMatch[1], prefixedId: `tiktok:${ttMatch[1]}` };
+
+  // X / Twitter video posts
+  const xMatch = url.match(/(?:\/\/|\.)(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/);
+  if (xMatch) return { platform: 'x', id: xMatch[1], prefixedId: `x:${xMatch[1]}` };
 
   // Article — any other http(s) URL
   if (/^https?:\/\//i.test(url)) {
@@ -705,9 +709,14 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           return handleError(new Error('URL is required'), 400);
         }
 
-        const parsed = parseVideoUrl(videoUrl);
+        let parsed = parseVideoUrl(videoUrl);
         if (!parsed) {
           return handleError(new Error('Unsupported video URL'), 400);
+        }
+        // X text posts arrive from the article flow; only video transcripts keep the x: id
+        if (parsed.platform === 'x' && !/\*\*Type:\*\*\s*Video/.test(markdown_content || '')) {
+          const id = hashUrl(videoUrl);
+          parsed = { platform: 'article', id, prefixedId: `article:${id}` };
         }
 
         const videoId = parsed.prefixedId;
@@ -744,10 +753,14 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           let videoTitle = title || mdTitle || `Video ${parsed.id}`;
           let videoChannel =
             parsed.platform === 'tiktok' ? 'TikTok' :
+            parsed.platform === 'x' ? 'X' :
             parsed.platform === 'article' ? 'Article' : 'YouTube';
           let noembedThumbnail: string | undefined;
 
           try {
+            if (parsed.platform === 'x') {
+              // Title comes from yt-dlp via process.sh; noembed has no X video metadata
+            } else
             if (parsed.platform === 'article') {
               // Article — channel = domain, title from markdown
               try {

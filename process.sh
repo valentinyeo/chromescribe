@@ -25,10 +25,21 @@ fi
 echo "=== ChromeScribe: Processing $URL ==="
 
 is_video() {
-    "$PYTHON" -c 'import sys
+    "$PYTHON" -c 'import json, re, sys, urllib.request
 from urllib.parse import urlsplit
-host = urlsplit(sys.argv[1]).hostname
-sys.exit(0 if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be", "tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"} else 1)' "$1"
+u = urlsplit(sys.argv[1])
+host = u.hostname
+is_x = False
+m = re.search(r"/status/(\d+)", u.path)
+if m and host in {"x.com", "www.x.com", "mobile.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"}:
+    # Only X posts with a video take the video path; text posts and X articles stay on the FXTwitter article path
+    try:
+        req = urllib.request.Request(f"https://api.fxtwitter.com/i/status/{m.group(1)}", headers={"User-Agent": "chromescribe"})
+        tweet = json.load(urllib.request.urlopen(req, timeout=20)).get("tweet") or {}
+        is_x = bool((tweet.get("media") or {}).get("videos"))
+    except Exception:
+        pass
+sys.exit(0 if is_x or host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be", "tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"} else 1)' "$1"
 }
 
 DASHBOARD_BASE="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
@@ -128,6 +139,9 @@ elif host.endswith("youtube.com"):
 elif host.endswith("tiktok.com"):
     match = re.search(r"/video/(\d+)", u.path)
     video_id = f"tiktok:{match.group(1)}" if match else ""
+elif host in ("x.com", "twitter.com") or host.endswith((".x.com", ".twitter.com")):
+    match = re.search(r"/status/(\d+)", u.path)
+    video_id = f"x:{match.group(1)}" if match else ""
 print(video_id)
 ' 2>/dev/null)
 
