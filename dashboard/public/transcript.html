@@ -276,6 +276,16 @@
       color: #888;
     }
 
+    .channel-link {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .channel-link:hover {
+      color: #fff;
+      text-decoration: underline;
+    }
+
     .video-tags {
       display: flex;
       flex-wrap: wrap;
@@ -636,6 +646,14 @@
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
+
+    // Channel name links to the dashboard filtered to that channel
+    function setMetaLine(meta) {
+      const words = meta.word_count.toLocaleString() + ' words';
+      const el = document.getElementById('meta');
+      if (!meta.channel) { el.textContent = words; return; }
+      el.innerHTML = '<a class="channel-link" href="/?channel=' + encodeURIComponent(meta.channel) + '">' + escapeHtml(meta.channel) + '</a> • ' + words;
+    }
     
     async function init() {
       const params = new URLSearchParams(window.location.search);
@@ -679,7 +697,7 @@
           const titleMatch2 = markdown.match(/^#\s+(.+)$/m);
           const displayTitle2 = titleMatch2 ? titleMatch2[1] : meta.title;
           document.getElementById('title').textContent = displayTitle2;
-          document.getElementById('meta').textContent = meta.channel + ' • ' + meta.word_count.toLocaleString() + ' words';
+          setMetaLine(meta);
 
           const tagParts2 = [];
           if (meta.category) tagParts2.push('<span class="category-pill">' + escapeHtml(meta.category) + '</span>');
@@ -767,7 +785,7 @@
         }
         
         document.getElementById('title').textContent = displayTitle;
-        document.getElementById('meta').textContent = meta.channel + ' • ' + meta.word_count.toLocaleString() + ' words';
+        setMetaLine(meta);
 
         // Render category + tags
         const tagParts = [];

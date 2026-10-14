@@ -333,6 +333,15 @@
       color: var(--muted);
       margin-bottom: 12px;
     }
+
+    .card-channel-link {
+      cursor: pointer;
+    }
+
+    .card-channel-link:hover {
+      color: var(--fg, #fff);
+      text-decoration: underline;
+    }
     
     .card-meta {
       display: flex;
@@ -1099,8 +1108,18 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+      activeChannel = new URLSearchParams(window.location.search).get('channel') || null;
       loadTranscripts();
       loadCategories();
+    });
+
+    // Channel name on a card opens that channel's view instead of the video
+    document.addEventListener('click', e => {
+      const el = e.target.closest('.card-channel-link');
+      if (!el || !el.dataset.channel) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (activeChannel !== el.dataset.channel) toggleChannelFilter(el.dataset.channel);
     });
 
     async function loadTranscripts() {
@@ -1230,7 +1249,7 @@
             </div>`}
             <div class="card-body">
               <h3 class="card-title">${escapeHtml(t.title)}</h3>
-              <p class="card-channel">${escapeHtml(t.channel)}</p>
+              <p class="card-channel"><span class="card-channel-link" data-channel="${escapeHtml(t.channel || '')}" title="Show only this channel">${escapeHtml(t.channel)}</span></p>
               ${renderCardTags(t)}
               <div class="card-meta">
                 <span>${t.word_count} words</span>
@@ -1521,6 +1540,11 @@
 
     function toggleChannelFilter(name) {
       activeChannel = activeChannel === name ? null : name;
+      // Keep ?channel= in the address so a channel view can be linked and reloaded
+      const url = new URL(window.location.href);
+      if (activeChannel) url.searchParams.set('channel', activeChannel); else url.searchParams.delete('channel');
+      history.replaceState(null, '', url);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       renderChannels();
       renderTranscripts();
       // open the panel if collapsed so the user sees the active state
