@@ -218,3 +218,12 @@ test('CORS preflight permits the pause method', async () => {
   assert.equal(response.status, 200);
   assert.ok(response.headers.get('Access-Control-Allow-Methods').split(', ').includes('PATCH'));
 });
+
+test('an older channels table without an id column is kept aside, not dropped', async () => {
+  const db = makeD1();
+  db.raw.exec("CREATE TABLE channels (channel_id TEXT, title TEXT); INSERT INTO channels VALUES ('x', 'Old row')");
+  const res = await api(db);
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).data, []);
+  assert.equal(db.raw.prepare('SELECT title FROM channels_legacy').get().title, 'Old row');
+});

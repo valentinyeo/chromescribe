@@ -54,6 +54,11 @@ async function ensureChannels(db: D1Database) {
   let ready = channelsReady.get(db);
   if (!ready) {
     ready = (async () => {
+      // An older dashboard left a channels table with another layout; keep it aside, never drop it.
+      const { results: cols } = await db.prepare('PRAGMA table_info(channels)').all<{ name: string }>();
+      if (cols.length && !cols.some(c => c.name === 'id')) {
+        await db.prepare('ALTER TABLE channels RENAME TO channels_legacy').run();
+      }
       await db.prepare(`CREATE TABLE IF NOT EXISTS channels (
         id TEXT PRIMARY KEY, platform TEXT NOT NULL CHECK (platform IN ('youtube', 'tiktok')),
         handle TEXT NOT NULL, name TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0,
