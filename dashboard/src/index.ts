@@ -567,6 +567,8 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       if (platform === 'youtube') {
         try {
           const page = await fetch(`https://www.youtube.com/${id ? 'channel/' + id : encodeURIComponent(handle).replace('%40', '@')}`, {
+            // SOCS skips the EU consent page YouTube shows to datacenter requests
+            headers: { 'Accept-Language': 'en-US,en;q=0.9', Cookie: 'SOCS=CAI' },
             signal: AbortSignal.timeout(15000),
           });
           if (!page.ok) throw new Error('Channel page unavailable');
@@ -587,7 +589,14 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
             handle = parseChannelInput(pageHandle)?.handle || id;
           }
         } catch {
-          return handleError(new Error('Could not resolve this YouTube channel. Check the URL or handle and try again.'), 400);
+          // A known UC id still resolves through the public feed when the channel page is blocked
+          const feedName = id ? await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`, { signal: AbortSignal.timeout(15000) })
+            .then(r => r.ok ? r.text() : '').then(xml => xml.match(/<author>\s*<name>([^<]+)<\/name>/)?.[1] || '').catch(() => '') : '';
+          if (!feedName) return handleError(new Error('Could not resolve this YouTube channel. Check the URL or handle and try again.'), 400);
+          name = feedName.replace(/&(?:amp|quot|apos|lt|gt|#39);/g, entity => ({
+            '&amp;': '&', '&quot;': '"', '&apos;': "'", '&#39;': "'", '&lt;': '<', '&gt;': '>',
+          }[entity] || entity));
+          handle = handle || id;
         }
       }
       const inserted = await env.DB.prepare('INSERT INTO channels (id, platform, handle, name) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
