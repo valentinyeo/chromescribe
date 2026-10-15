@@ -5,7 +5,7 @@ set -euo pipefail
 
 WRANGLER="${WRANGLER:-wrangler}"
 BUCKET_NAME="chromescribe-transcripts"
-STATIC_PAGES=(index.html transcript.html settings.html stats.html)
+STATIC_PAGES=(index.html transcript.html settings.html stats.html subscriptions.html)
 
 echo "🚀 ChromeScribe Dashboard Deployment"
 echo "======================================"

@@ -16,15 +16,15 @@ DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
 export PATH="$HOME/.local/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
 export DISPLAY=:0
 
-# Telegram config (hardcoded — cron can't source .bashrc interactive-only exports)
-TG_TOKEN="${TELEGRAM_TINYDICTATION_BOT_TOKEN:-8399292716:AAHKCpQAiX5GiePED-yggWz-NgdaelJRRKQ}"
+# Telegram config (hardcoded - cron can't source .bashrc interactive-only exports)
+TG_TOKEN="${TELEGRAM_TINYDICTATION_BOT_TOKEN:-}"
 TG_CHAT="${TELEGRAM_TINYDICTATION_CHAT_ID:-2068947468}"
 
 # CF Access credentials
 CF_ACCESS_ID="${CF_ACCESS_CLIENT_ID:-REMOVED_OLD_KEY}"
 CF_ACCESS_SECRET="${CF_ACCESS_CLIENT_SECRET:-REMOVED_OLD_KEY}"
 
-# Cleanup on exit — no leftovers
+# Cleanup on exit - no leftovers
 cleanup() {
     rm -rf "$TMPDIR"
 }
@@ -49,6 +49,7 @@ api_call() {
 }
 
 send_telegram() {
+    [ -n "$TG_TOKEN" ] || return 0  # token comes from the environment only
     local msg="$1"
     local photo="${2:-}"
     if [ -n "$photo" ]; then
@@ -68,7 +69,7 @@ send_telegram() {
 
 get_todays_videos() {
     local channel_id="$1"
-    # `today` arg kept for backward compat but ignored — we now use a 36h window
+    # `today` arg kept for backward compat but ignored - we now use a 36h window
     # so videos published shortly before midnight UTC aren't permanently skipped
     # (the .processed_videos file dedupes anything we've already handled).
     python3 -c "
@@ -135,7 +136,7 @@ PYEOF
 }
 
 # Title + thumbnail for a TikTok video via public oEmbed. Prints "title\tthumb".
-# TikTok blocks datacenter IPs — this only works from residential networks.
+# TikTok blocks datacenter IPs - this only works from residential networks.
 tiktok_meta() {
     curl -s --max-time 20 "https://www.tiktok.com/oembed?url=$1" | python3 -c "
 import sys, json
@@ -192,14 +193,14 @@ process_video() {
     log "  Audio downloaded: $(du -h "$audio_file" | cut -f1)"
 
     # Step 2: Transcribe audio
-    # CF AI Whisper has ~30s worker timeout — can only handle ~2 min of audio per request.
+    # CF AI Whisper has ~30s worker timeout - can only handle ~2 min of audio per request.
     # Files >500KB (roughly >3 min at any quality) get split into 1-min compressed chunks.
     local file_size
     file_size=$(stat -c%s "$audio_file")
     local transcript_id
 
     if [ "$file_size" -gt 500000 ]; then
-        # Split into 1-min chunks (compressed mono 24kbps 16kHz — ~180KB/min, fine for speech)
+        # Split into 1-min chunks (compressed mono 24kbps 16kHz - ~180KB/min, fine for speech)
         log "  Chunked transcription ($(du -h "$audio_file" | cut -f1))..."
         local chunk_dir="$TMPDIR/chunks_${video_id}"
         mkdir -p "$chunk_dir"
@@ -282,7 +283,7 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
         cs_cat=$(echo "$analyze_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('category','unclassified'))" 2>/dev/null)
         log "  Analysis complete (word_count=$sum_wc, category=$cs_cat)"
     else
-        log "  WARNING: analysis failed — raw transcript stands, use the dashboard Summarize button. Response: $analyze_result"
+        log "  WARNING: analysis failed - raw transcript stands, use the dashboard Summarize button. Response: $analyze_result"
         # The Android queue asks for a complete transcribe+summary, so it sets
         # REQUIRE_ANALYZE=1 and treats this as a failure. Ordinary cron monitor
         # runs leave it unset and keep the best-effort behavior above.
@@ -295,13 +296,13 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
     # Step 3b: Warm the read-aloud audio. Generating it on the first tap costs
     # about 90 seconds of staring at a loading button; doing it here means the
     # R2 copy is already there by the time the transcript is opened. Best
-    # effort — a failure here must not fail the run, and the endpoint
+    # effort - a failure here must not fail the run, and the endpoint
     # regenerates on demand.
     log "  Warming read-aloud audio..."
     if api_call GET "/api/speak/$transcript_id" --max-time 300 --fail -o /dev/null; then
         log "  Read-aloud audio cached"
     else
-        log "  WARNING: read-aloud warm-up failed — it will generate on first play"
+        log "  WARNING: read-aloud warm-up failed - it will generate on first play"
     fi
 
     # Step 4: Send Telegram notification with ChromeScribe URL + thumbnail
@@ -335,7 +336,7 @@ if [ -n "$FORCE_VIDEO" ]; then
             if process_tiktok_video "$tt_vid" "$tt_handle"; then
                 echo "tiktok:${tt_vid}" >> "$PROCESSED_FILE"
             else
-                log "  FAILED: $FORCE_VIDEO — not marking as processed"
+                log "  FAILED: $FORCE_VIDEO - not marking as processed"
                 exit 1
             fi
             exit 0
@@ -346,10 +347,38 @@ if [ -n "$FORCE_VIDEO" ]; then
     if process_video "$FORCE_VIDEO" "$FORCE_TITLE"; then
         echo "$FORCE_VIDEO" >> "$PROCESSED_FILE"
     else
-        log "  FAILED: $FORCE_VIDEO — not marking as processed"
+        log "  FAILED: $FORCE_VIDEO - not marking as processed"
         exit 1
     fi
     exit 0
+fi
+
+# The dashboard owns subscriptions; channels.txt is an offline fallback only.
+if api_call GET "/api/channels?active=1" --fail --max-time 30 | python3 -c '
+import json, re, sys
+try:
+    payload = json.load(sys.stdin)
+    rows = payload["data"]
+    if payload.get("success") is not True or not isinstance(rows, list):
+        raise ValueError("Invalid channels response")
+    lines = []
+    for row in rows:
+        platform, channel_id = row["platform"], row["id"]
+        if not ((platform == "youtube" and re.fullmatch(r"UC[A-Za-z0-9_-]{22}", channel_id)) or
+                (platform == "tiktok" and re.fullmatch(r"tiktok:@[A-Za-z0-9_.]{1,24}", channel_id))):
+            raise ValueError("Invalid channel")
+        if row.get("paused", 0):
+            continue
+        label = row["name"] if platform == "tiktok" else row["handle"]
+        label = " ".join(label.splitlines())
+        lines.append(f"{channel_id} # {label}")
+    print("\n".join(lines), end="\n" if lines else "")
+except (ValueError, KeyError, TypeError, AttributeError):
+    sys.exit(1)
+' > "$TMPDIR/channels.txt"; then
+    CHANNELS_FILE="$TMPDIR/channels.txt"
+else
+    log "WARNING: channel API unavailable or invalid; using channels.txt"
 fi
 
 log "Checking channels for new videos ($TODAY)..."
@@ -368,7 +397,7 @@ while IFS= read -r line; do
         log "Checking TikTok channel: @${handle}"
 
         # First run: seed the current backlog as processed so we don't
-        # transcribe the channel's entire history — only new videos from now on.
+        # transcribe the channel's entire history - only new videos from now on.
         # Only seed from a full listing (>= 10 ids): TikTok sometimes serves a
         # degraded page with a couple of ids, and seeding from that would later
         # treat the whole backlog as new.
@@ -377,14 +406,14 @@ while IFS= read -r line; do
             TT_LIST=$(get_tiktok_videos "$handle")
             TT_COUNT=$(echo "$TT_LIST" | grep -cE '^[0-9]{15,21}$')
             if [ "$TT_COUNT" -lt 10 ]; then
-                log "  WARNING: got only $TT_COUNT video(s) for @${handle} — waiting for a full listing before seeding (nothing processed yet)"
+                log "  WARNING: got only $TT_COUNT video(s) for @${handle} - waiting for a full listing before seeding (nothing processed yet)"
                 continue
             fi
             while IFS= read -r video_id; do
                 [ -n "$video_id" ] && echo "tiktok:${video_id}" >> "$PROCESSED_FILE"
             done <<< "$TT_LIST"
             touch "$SEED_FILE"
-            log "  Seeded @${handle} ($TT_COUNT videos) — backlog marked processed, watching for new videos"
+            log "  Seeded @${handle} ($TT_COUNT videos) - backlog marked processed, watching for new videos"
             continue
         fi
 
@@ -400,7 +429,7 @@ while IFS= read -r line; do
             fi
 
             if [ "$tt_new" -ge 5 ]; then
-                log "  Cap reached (5/run) — $video_id deferred to next run"
+                log "  Cap reached (5/run) - $video_id deferred to next run"
                 break
             fi
 
@@ -409,7 +438,7 @@ while IFS= read -r line; do
                 NEW_COUNT=$((NEW_COUNT + 1))
                 tt_new=$((tt_new + 1))
             else
-                log "  FAILED: $video_id — not marking as processed, will retry next run"
+                log "  FAILED: $video_id - not marking as processed, will retry next run"
             fi
         done < <(get_tiktok_videos "$handle")
         continue
@@ -430,7 +459,7 @@ while IFS= read -r line; do
             echo "$video_id" >> "$PROCESSED_FILE"
             NEW_COUNT=$((NEW_COUNT + 1))
         else
-            log "  FAILED: $video_id — not marking as processed, will retry next run"
+            log "  FAILED: $video_id - not marking as processed, will retry next run"
         fi
 
     done < <(get_todays_videos "$channel_id" "$TODAY")

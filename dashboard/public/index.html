@@ -6,7 +6,7 @@
   <title>ChromeScribe</title>
   <script>
     // Shared theme bootstrap. This block is identical in index.html and
-    // transcript.html on purpose — change both or neither. It runs before
+    // transcript.html on purpose - change both or neither. It runs before
     // paint so the page never flashes the wrong theme.
     (function () {
       var KEY = 'cs-theme';
@@ -146,8 +146,8 @@
     }
 
     @media (max-width: 560px) {
-      .header-inner { padding: 12px 16px; gap: 10px; }
-      .header-actions { gap: 8px; }
+      .header-inner { padding: 12px 16px; gap: 10px; flex-wrap: wrap; }
+      .header-actions { gap: 8px; flex-wrap: wrap; }
       .logo { font-size: 16px; min-width: 0; }
       .logo svg { width: 22px; height: 22px; flex: none; }
       .stats { display: none; }
@@ -809,6 +809,21 @@
       background: var(--chip-on-accent-bg);
     }
 
+    .channel-unsubscribe { cursor: pointer; font: inherit; }
+    .channel-subscribe { display: inline-flex; gap: 6px; }
+    .channel-subscribe input {
+      width: 200px;
+      min-width: 0;
+      padding: 0 8px;
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+    }
+    .channel-subscribe .btn { height: 28px; padding: 0 10px; font-size: 13px; }
+    #channelsError { width: 100%; color: var(--danger, #f87171); font-size: 13px; }
+
     /* Hide */
     .hidden { display: none !important; }
     
@@ -855,6 +870,7 @@
       <div class="header-actions">
         <span id="stats" class="stats"></span>
         <button id="themeToggle" class="btn btn-secondary" onclick="csTheme.cycle()" title="Theme" aria-label="Theme">◐</button>
+        <a href="/subscriptions.html" class="btn btn-secondary">Subscriptions</a>
         <a href="/stats.html" class="btn btn-secondary">Stats</a>
         <a href="/settings.html" class="btn btn-secondary" title="Settings" aria-label="Settings">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -880,11 +896,12 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
         </svg>
         <span class="channels-toggle-label">Monitored Channels</span>
-        <span class="channels-badge" id="channelsBadge">—</span>
+        <span class="channels-badge" id="channelsBadge">-</span>
         <svg class="channels-chevron" id="channelsChevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
         </svg>
       </button>
+      <a href="/subscriptions.html" class="btn btn-secondary">Manage all</a>
       <div class="channels-list hidden" id="channelsList"></div>
     </div>
   </div>
@@ -1496,14 +1513,47 @@
 
     // Channels panel
     async function loadChannels() {
+      const res = await fetch(`${API_BASE}/channels`);
+      const { data, error } = await res.json();
+      if (!res.ok || !Array.isArray(data)) throw new Error(error || 'Could not load channels');
+      channelsCache = data;
+      document.getElementById('channelsBadge').textContent = channelsCache.length;
+      renderChannels();
+    }
+
+    async function subscribeChannel(e) {
+      e.preventDefault();
+      const form = e.target;
+      const button = form.querySelector('button');
+      const input = form.querySelector('input');
+      button.disabled = true;
+      document.getElementById('channelsError').textContent = '';
       try {
-        const res = await fetch(`${API_BASE}/channels`);
-        const { data } = await res.json();
-        channelsCache = data || [];
-        document.getElementById('channelsBadge').textContent = channelsCache.length;
-        renderChannels();
+        const res = await fetch(`${API_BASE}/channels`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: input.value }),
+        });
+        const { error } = await res.json();
+        if (!res.ok) throw new Error(error || 'Could not subscribe');
+        await loadChannels();
       } catch (err) {
-        // silently skip if channels endpoint unavailable
+        document.getElementById('channelsError').textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function unsubscribeChannel(id) {
+      const channel = channelsCache.find(ch => ch.id === id);
+      if (!channel || !confirm(`Unsubscribe from ${channel.name}? Existing transcripts will be kept.`)) return;
+      document.getElementById('channelsError').textContent = '';
+      try {
+        const res = await fetch(`${API_BASE}/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const { error } = await res.json();
+        if (!res.ok) throw new Error(error || 'Could not unsubscribe');
+        await loadChannels();
+      } catch (err) {
+        document.getElementById('channelsError').textContent = err.message;
       }
     }
 
@@ -1524,18 +1574,25 @@
         const isActive = activeChannel === ch.name;
         return `
           <span class="channel-chip ${isActive ? 'active' : ''}">
-            <button type="button" class="channel-chip-filter" onclick="toggleChannelFilter('${escapeAttr(ch.name)}')" title="${isActive ? 'Clear filter' : 'Filter by ' + escapeAttr(ch.handle)}">
+            <button type="button" class="channel-chip-filter" data-channel-id="${escapeHtml(ch.id)}" title="${isActive ? 'Clear filter' : 'Filter by ' + escapeHtml(ch.handle)}">
               ${escapeHtml(ch.handle)}
               <span class="channel-chip-count">${count}</span>
             </button>
-            <a href="https://www.youtube.com/channel/${ch.id}" target="_blank" rel="noopener" class="channel-chip-link" title="Open on YouTube">
+            <a href="${ch.platform === 'tiktok' ? 'https://www.tiktok.com/' + encodeURIComponent(ch.handle) : 'https://www.youtube.com/channel/' + encodeURIComponent(ch.id)}" target="_blank" rel="noopener" class="channel-chip-link" title="Open on ${ch.platform === 'tiktok' ? 'TikTok' : 'YouTube'}">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
               </svg>
             </a>
+            <button type="button" class="channel-chip-link channel-unsubscribe" data-channel-id="${escapeHtml(ch.id)}" title="Unsubscribe from ${escapeHtml(ch.name).replace(/"/g, '&quot;')}" aria-label="Unsubscribe from ${escapeHtml(ch.name).replace(/"/g, '&quot;')}">×</button>
           </span>
         `;
-      }).join('');
+      }).join('') + `
+        <form class="channel-subscribe" id="channelSubscribe">
+          <input type="text" aria-label="Channel URL or handle" placeholder="Channel URL or @handle" required>
+          <button type="submit" class="btn btn-secondary">Subscribe</button>
+        </form>
+        <span id="channelsError" role="alert"></span>
+      `;
     }
 
     function toggleChannelFilter(name) {
@@ -1562,7 +1619,21 @@
       toggle.setAttribute('aria-expanded', String(!isOpen));
     }
 
-    document.addEventListener('DOMContentLoaded', loadChannels);
+    document.getElementById('channelsList').addEventListener('click', e => {
+      const button = e.target.closest('button[data-channel-id]');
+      if (!button) return;
+      const id = button.dataset.channelId;
+      if (button.classList.contains('channel-unsubscribe')) unsubscribeChannel(id);
+      else {
+        const channel = channelsCache.find(ch => ch.id === id);
+        if (channel) toggleChannelFilter(channel.name);
+      }
+    });
+    document.getElementById('channelsList').addEventListener('submit', subscribeChannel);
+    document.addEventListener('DOMContentLoaded', () => {
+      renderChannels();
+      loadChannels().catch(err => { document.getElementById('channelsError').textContent = err.message; });
+    });
   </script>
 </body>
 </html>

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subscriptions · ChromeScribe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --foreground: #fff;
+      --background: #030303;
+      --border: #27272a;
+      --muted: #71717a;
+      --text: #a1a1aa;
+      --accent: #0057ff;
+      --accent-hover: #0066ff;
+      --error: #ef4444;
+      --success: #22c55e;
+      --card: #090909;
+      --card-hover: #111111;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      -webkit-font-smoothing: antialiased;
+    }
+    body { min-height: 100vh; }
+
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      max-width: 900px; margin: 0 auto;
+      padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 600; font-size: 18px;
+      letter-spacing: -0.02em;
+      color: var(--foreground); text-decoration: none;
+    }
+    .logo svg { width: 28px; height: 28px; fill: var(--foreground); }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; height: 36px; padding: 0 14px;
+      font-size: 14px; font-weight: 500;
+      border: none; border-radius: 6px; cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none; font-family: inherit;
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn:hover { background: var(--card-hover); color: var(--foreground); }
+
+    main {
+      max-width: 900px; margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    h1 {
+      font-size: 32px; font-weight: 600;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: var(--muted); font-size: 15px;
+      margin-bottom: 48px;
+    }
+
+    .header-inner, nav { display: flex; flex-wrap: wrap; gap: 12px; }
+    .subtitle { margin-bottom: 24px; }
+    input {
+      min-width: 0; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--card); color: var(--foreground); font: inherit;
+    }
+    input:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #subscribeForm { display: flex; gap: 8px; }
+    #channelInput { flex: 1; }
+    #filter { width: 100%; margin: 8px 0 16px; }
+    label { display: block; font-size: 14px; color: var(--text); margin: 16px 0 8px; }
+    .notice { min-height: 24px; font-size: 14px; margin: 8px 0; color: var(--success); }
+    #error { color: var(--error); }
+    #count, .meta, .empty { color: var(--text); font-size: 14px; }
+    h2 { font-size: 18px; margin: 24px 0 8px; }
+    .channel-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 16px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 8px;
+    }
+    .channel-info { min-width: 0; overflow-wrap: anywhere; }
+    .channel-name { font-weight: 500; margin-bottom: 6px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 12px; }
+    .meta a { color: var(--text); }
+    .meta a:hover { color: var(--foreground); }
+    .actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .btn:disabled { opacity: 0.5; cursor: wait; }
+    .remove { color: var(--error); }
+    .empty { padding: 24px 0; }
+    @media (max-width: 600px) {
+      main { padding: 32px 16px; }
+      .header-inner { padding: 16px; }
+      .channel-row { flex-direction: column; align-items: stretch; }
+      #subscribeForm { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 24 24">
+          <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+        </svg>
+        ChromeScribe
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="/stats.html" class="btn">Stats</a>
+        <a href="/settings.html" class="btn">Settings</a>
+        <a href="/" class="btn">← Back</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <h1>Subscriptions</h1>
+    <p class="subtitle">Pause monitoring or remove a subscription. Transcripts already made are kept.</p>
+    <label for="channelInput">Add channel</label>
+    <form id="subscribeForm">
+      <input id="channelInput" type="text" placeholder="Channel URL, @handle, or UC ID" required maxlength="512">
+      <button class="btn" type="submit">Subscribe</button>
+    </form>
+    <p id="message" class="notice" role="status"></p>
+    <p id="error" class="notice" role="alert"></p>
+    <label for="filter">Filter subscriptions</label>
+    <input id="filter" type="search" placeholder="Search names, handles, or platforms">
+    <p id="count" role="status">Loading subscriptions...</p>
+    <div id="channelsList"></div>
+  </main>
+  <script>
+    const API_BASE = '/api';
+    let channels = [];
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[char]));
+    }
+
+    function sortChannels(rows) {
+      return [...rows].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    }
+
+    function channelLetter(name) {
+      const first = name.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').charAt(0).toLocaleUpperCase();
+      return /^\p{L}$/u.test(first) ? first : '#';
+    }
+
+    function channelUrl(channel) {
+      if (channel.platform === 'tiktok') return 'https://www.tiktok.com/' + encodeURIComponent(channel.handle).replace('%40', '@');
+      return 'https://www.youtube.com/' + (channel.handle.startsWith('@') ?
+        encodeURIComponent(channel.handle).replace('%40', '@') : 'channel/' + encodeURIComponent(channel.id));
+    }
+
+    function renderChannels() {
+      const query = document.getElementById('filter').value.trim().toLocaleLowerCase();
+      const visible = sortChannels(channels).filter(channel =>
+        [channel.name, channel.handle, channel.platform].some(value => value.toLocaleLowerCase().includes(query)));
+      document.getElementById('count').textContent = query ?
+        `${visible.length} of ${channels.length} subscriptions` : `${channels.length} subscriptions`;
+      const groups = new Map();
+      for (const channel of visible) {
+        const letter = channelLetter(channel.name);
+        if (!groups.has(letter)) groups.set(letter, []);
+        groups.get(letter).push(channel);
+      }
+      document.getElementById('channelsList').innerHTML = [...groups].map(([letter, rows]) => `
+        <section aria-label="${escapeHtml(letter)}">
+          <h2>${escapeHtml(letter)} <span class="meta">${rows.length}</span></h2>
+          ${rows.map(channel => `
+            <div class="channel-row">
+              <div class="channel-info">
+                <p class="channel-name">${escapeHtml(channel.name)}</p>
+                <div class="meta">
+                  <a href="${escapeHtml(channelUrl(channel))}" target="_blank" rel="noopener noreferrer">${escapeHtml(channel.handle)}</a>
+                  <span>${channel.platform === 'tiktok' ? 'TikTok' : 'YouTube'}</span>
+                  <span>${channel.paused ? 'Paused' : 'Active'}</span>
+                </div>
+              </div>
+              <div class="actions">
+                <button class="btn" data-action="pause" data-id="${escapeHtml(channel.id)}">${channel.paused ? 'Resume' : 'Pause'}</button>
+                <button class="btn remove" data-action="remove" data-id="${escapeHtml(channel.id)}">Remove</button>
+              </div>
+            </div>`).join('')}
+        </section>`).join('') || '<p class="empty">No subscriptions found.</p>';
+    }
+
+    async function channelRequest(path = '', options = {}) {
+      const response = await fetch(`${API_BASE}/channels${path}`, { ...options, credentials: 'include' });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.error || 'Subscription request failed');
+      return payload.data;
+    }
+
+    async function loadChannels() {
+      const data = await channelRequest();
+      if (!Array.isArray(data)) throw new Error('Could not load subscriptions');
+      channels = data;
+      renderChannels();
+    }
+
+    async function subscribeChannel(event) {
+      event.preventDefault();
+      const button = document.querySelector('#subscribeForm button');
+      button.disabled = true;
+      document.getElementById('error').textContent = '';
+      document.getElementById('message').textContent = '';
+      try {
+        const result = await channelRequest('', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: document.getElementById('channelInput').value.trim() }),
+        });
+        await loadChannels();
+        document.getElementById('message').textContent = result.already_exists ? 'Already subscribed' : 'Subscribed';
+        document.getElementById('channelInput').value = '';
+      } catch (err) {
+        document.getElementById('error').textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function changeChannel(event) {
+      const button = event.target.closest('button[data-action]');
+      if (!button || button.disabled) return;
+      const channel = channels.find(row => row.id === button.dataset.id);
+      if (!channel) return;
+      const remove = button.dataset.action === 'remove';
+      if (remove && !confirm(`Remove ${channel.name}? Transcripts already made are kept.`)) return;
+      button.disabled = true;
+      document.getElementById('error').textContent = '';
+      document.getElementById('message').textContent = '';
+      try {
+        await channelRequest('/' + encodeURIComponent(channel.id), remove ? { method: 'DELETE' } : {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paused: !channel.paused }),
+        });
+        await loadChannels();
+      } catch (err) {
+        document.getElementById('error').textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    document.getElementById('filter').addEventListener('input', renderChannels);
+    document.getElementById('subscribeForm').addEventListener('submit', subscribeChannel);
+    document.getElementById('channelsList').addEventListener('click', changeChannel);
+    loadChannels().catch(err => {
+      document.getElementById('error').textContent = err.message;
+      document.getElementById('count').textContent = 'Subscriptions unavailable';
+    });
+  </script>
+</body>
+</html>

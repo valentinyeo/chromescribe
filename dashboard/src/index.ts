@@ -5,9 +5,9 @@
 
 import { transcriptSourceResponse } from './source-lib.mjs';
 import { addEstimatedTimestamps } from './timestamps.mjs';
-import { Buffer } from 'node:buffer';
 import { enqueueSharedUrl, hashUrl, listPendingQueue } from './queue-lib.mjs';
 import { handleAndroidUpdates } from './android-updates.mjs';
+import { parseChannelInput } from './channels-lib.mjs';
 
 interface Env {
   DB: D1Database;
@@ -48,6 +48,41 @@ interface TextGenerationResponse {
   }>;
 }
 
+const channelsReady = new WeakMap<D1Database, Promise<void>>();
+
+async function ensureChannels(db: D1Database) {
+  let ready = channelsReady.get(db);
+  if (!ready) {
+    ready = (async () => {
+      await db.prepare(`CREATE TABLE IF NOT EXISTS channels (
+        id TEXT PRIMARY KEY, platform TEXT NOT NULL CHECK (platform IN ('youtube', 'tiktok')),
+        handle TEXT NOT NULL, name TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      try {
+        await db.prepare('ALTER TABLE channels ADD COLUMN paused INTEGER NOT NULL DEFAULT 0').run();
+      } catch (err) {
+        if (!(err instanceof Error) || !/duplicate column name:\s*paused\b/i.test(err.message)) throw err;
+      }
+    })().catch(err => {
+      channelsReady.delete(db);
+      throw err;
+    });
+    channelsReady.set(db, ready);
+  }
+  await ready;
+}
+
+function audioBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  // Bound spread arguments so large audio uploads do not overflow the stack.
+  for (let offset = 0; offset < bytes.length; offset += 32768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+  }
+  return btoa(binary);
+}
+
 const ANALYSIS_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const AI_GATEWAY_ID = 'default';
 
@@ -65,7 +100,7 @@ const textFromModelResponse = (result: TextGenerationResponse): string =>
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -90,7 +125,7 @@ const parseVideoUrl = (url: string): ParsedVideo | null => {
   const xMatch = url.match(/(?:\/\/|\.)(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/);
   if (xMatch) return { platform: 'x', id: xMatch[1], prefixedId: `x:${xMatch[1]}` };
 
-  // Article — any other http(s) URL
+  // Article - any other http(s) URL
   if (/^https?:\/\//i.test(url)) {
     const id = hashUrl(url);
     return { platform: 'article', id, prefixedId: `article:${id}` };
@@ -162,7 +197,7 @@ function formatSRTTime(seconds: number): string {
 
 // Phase 2: parse stored markdown, regenerate TL;DR + Summary + Talking Points via Workers AI,
 // return the rebuilt markdown. Handles both raw-only and already-structured input
-// (so re-summarize works). Throws on any failure — caller must not write on throw.
+// (so re-summarize works). Throws on any failure - caller must not write on throw.
 async function summarizeContent(content: string, ai: Ai, metadata: { video_id: string; duration: number }): Promise<string> {
   // header = everything before the first "## " heading (title + Source/Date/Type + ---)
   const firstSection = content.search(/^##\s/m);
@@ -199,14 +234,14 @@ ${timestampRules}
 
 ## TL;DR
 
-Take the FULL content below and run the i-have-adhd skill on it — the result of running the skill IS this section:
+Take the FULL content below and run the i-have-adhd skill on it - the result of running the skill IS this section:
 
 - First line: the single most important point or verdict, one plain sentence (not a bullet). Start with the claim itself. NEVER open with "The speaker", "The author", "The video", "This article", or anyone's name + "argues/explains/says".
   Bad: "The speaker argues that sleeping less than 6 hours hurts memory more than most people think."
   Good: "Under 6 hours of sleep cuts next-day recall by about 40%, and weekend catch-up sleep does not undo it."
 - Then 3-5 bullets, each "- **Short label**: one sentence explaining the point." State what the content says as facts and findings. Do NOT rewrite them as instructions ("Use...", "Leverage...") unless the content is a tutorial or how-to.
 - If the creator gives an opinion or verdict (good/bad, worth it or not, who it is for), include it.
-- Specific numbers, names, and time references ("15 minutes", "3x the cost") — never vague ones ("a bit", "some work").
+- Specific numbers, names, and time references ("15 minutes", "3x the cost") - never vague ones ("a bit", "some work").
 - Matter-of-fact. No hedging that adds no information, no idioms, no alarm.
 - Only for tutorials or advice: end with one concrete thing the reader can do next. Never end with "watch the video", "read the full article", or similar.
 - No preamble ("This video discusses..."), no recap, no closers ("Hope this helps"). Start with the answer, end when the answer is done.
@@ -291,7 +326,7 @@ async function classifyContent(
   ai: Ai,
   forbiddenCategory = '',
 ): Promise<{ category: string; tags: string[] }> {
-  // Classification only needs a sample — the first ~12k chars cover the header
+  // Classification only needs a sample - the first ~12k chars cover the header
   // plus TL;DR/article (structured) or the transcript start (raw-only).
   const sample = content.slice(0, 12000);
 
@@ -303,7 +338,7 @@ async function classifyContent(
 Category rules:
 - PREFER reusing an existing category from this list if one fits: ${existingCats}
 - Only invent a new one if none fit. Keep it short (1-3 words), Title Case (e.g. "AI Tools", "Claude Code", "Programming").
-- Broad enough to group multiple videos — not specific to one video.
+- Broad enough to group multiple videos - not specific to one video.
 ${forbiddenCategory ? `- FORBIDDEN category: "${forbiddenCategory}". Choose a narrower category instead.` : ''}
 
 Tag rules:
@@ -504,31 +539,81 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       }
     }
 
-    // GET /api/channels - List monitored YouTube channels
-    // `name` is the canonical channel name as stored in transcripts.channel
-    // (frontend prefix-matches against this so historical name variants still hit)
-    if (request.method === 'GET' && path === 'channels') {
-      const channels = [
-        { id: 'UCctL30i8tVgSS9A37Q532eg', handle: '@Incomestreamsurfers', name: 'Income stream surfers' },
-        { id: 'UCPjNBjflYl0-HQtUvOx0Ibw', handle: '@GregIsenberg', name: 'Greg Isenberg' },
-        { id: 'UC2ojq-nuP8ceeHqiroeKhBA', handle: '@nateherk', name: 'Nate Herk | AI Automation' },
-        { id: 'UC6t1O76G0jYXOAoYCm153dA', handle: '@LennysPodcast', name: "Lenny's Podcast" },
-        { id: 'UC2WmuBuFq6gL08QYG-JjXKw', handle: '@intheworldofai', name: 'WorldofAI' },
-        { id: 'UCoy6cTJ7Tg0dqS-DI-_REsA', handle: '@Chase-H-AI', name: 'Chase AI' },
-        { id: 'UC0m81bQuthaQZmFbXEY9QSw', handle: '@AICodeKing', name: 'AICodeKing' },
-        { id: 'UCUyeluBRhGPCW4rPe_UvBZQ', handle: '@ThePrimeTimeagen', name: 'The PrimeTime' },
-        { id: 'UCbDmEdLs-SB3FjrDFQJ4TDg', handle: '@reysu', name: 'Reysu' },
-        { id: 'UCmL7cQmNgV-3FxaB3Ueoixg', handle: '@claudelog', name: 'Claude Code Updates' },
-        { id: 'UCswG6FSbgZjbWtdf_hMLaow', handle: '@mattpocockuk', name: 'Matt Pocock' },
-        { id: 'UCLKPca3kwwd-B59HNr-_lvA', handle: '@aiDotEngineer', name: 'AI Engineer' },
-        { id: 'UCAohrrjG-3gEp5QF1WlM9_w', handle: '@SiimLand', name: 'Siim Land' },
-        { id: 'UCNleq2p_chOqORPKQkMurOQ', handle: '@thejimmyreilly', name: 'Jimmy Reilly' },
-        { id: 'UCsBjURrPoezykLs9EqgamOA', handle: '@Fireship', name: 'Fireship' },
-        { id: 'UCAwT-7B6StW_xzXPku6v7MQ', handle: '@atmoio', name: 'Mo Bitar' },
-        { id: 'UC_x36zCEGilGpB1m-V4gmjg', handle: '@indydevdan', name: 'IndyDevDan' },
-        { id: 'UCkVfrGwV-iG9bSsgCbrNPxQ', handle: '@betterstack', name: 'Better Stack' },
-      ];
-      return jsonResponse(channels);
+    // Monitored subscriptions are shared by the dashboard and monitor.sh.
+    if (path === 'channels' && ['GET', 'POST'].includes(request.method)) {
+      await ensureChannels(env.DB);
+      if (request.method === 'GET') {
+        const { results } = await env.DB.prepare(`SELECT id, handle, name, platform, paused FROM channels${url.searchParams.get('active') === '1' ? ' WHERE paused = 0' : ''} ORDER BY created_at, name`).all();
+        return jsonResponse(results);
+      }
+
+      let body: any;
+      try { body = await request.json(); } catch {
+        return handleError(new Error('Invalid JSON body'), 400);
+      }
+      const parsed = parseChannelInput(body?.input);
+      if (!parsed) return handleError(new Error('Enter a YouTube channel URL, @handle, UC channel ID, or TikTok profile'), 400);
+      let { id, handle, platform } = parsed;
+      if (id) {
+        const existing = await env.DB.prepare('SELECT id, handle, name, platform, paused FROM channels WHERE id = ?').bind(id).first();
+        if (existing) return jsonResponse({ ...existing, already_exists: true });
+      }
+      let name = handle?.slice(1) || id;
+      if (platform === 'youtube') {
+        try {
+          const page = await fetch(`https://www.youtube.com/${id ? 'channel/' + id : encodeURIComponent(handle).replace('%40', '@')}`, {
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!page.ok) throw new Error('Channel page unavailable');
+          const html = await page.text();
+          const resolvedId = html.match(/"externalId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"/)?.[1] ||
+            html.match(/"channelId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"/)?.[1];
+          if (!resolvedId || (id && resolvedId !== id)) throw new Error('Channel ID not found');
+          id = resolvedId;
+          const ogTag = html.match(/<meta\b(?=[^>]*\bproperty\s*=\s*["']og:title["'])[^>]*>/i)?.[0];
+          const ogTitle = ogTag?.match(/\bcontent\s*=\s*(["'])(.*?)\1/i)?.[2];
+          const jsonTitle = html.match(/"channelMetadataRenderer"\s*:\s*\{\s*"title"\s*:\s*("(?:[^"\\]|\\.)*")/)?.[1] ||
+            html.match(/"title"\s*:\s*("(?:[^"\\]|\\.)*")/)?.[1];
+          name = ogTitle ? ogTitle.replace(/&(?:amp|quot|apos|lt|gt|#39);/g, entity => ({
+            '&amp;': '&', '&quot;': '"', '&apos;': "'", '&#39;': "'", '&lt;': '<', '&gt;': '>',
+          }[entity] || entity)) : jsonTitle ? JSON.parse(jsonTitle) : name;
+          if (!handle) {
+            const pageHandle = html.match(/"vanityChannelUrl"\s*:\s*"https:\/\/(?:www\.)?youtube\.com\/(@[^"/]+)"/)?.[1];
+            handle = parseChannelInput(pageHandle)?.handle || id;
+          }
+        } catch {
+          return handleError(new Error('Could not resolve this YouTube channel. Check the URL or handle and try again.'), 400);
+        }
+      }
+      const inserted = await env.DB.prepare('INSERT INTO channels (id, platform, handle, name) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
+        .bind(id, platform, handle, name).run();
+      const row = await env.DB.prepare('SELECT id, handle, name, platform, paused FROM channels WHERE id = ?').bind(id).first();
+      return jsonResponse({ ...row, already_exists: inserted.meta.changes === 0 });
+    }
+
+    if (['DELETE', 'PATCH'].includes(request.method) && path.startsWith('channels/')) {
+      let id: string;
+      try { id = decodeURIComponent(path.slice('channels/'.length)); } catch {
+        return handleError(new Error('Invalid channel ID'), 400);
+      }
+      if (parseChannelInput(id)?.id !== id) return handleError(new Error('Invalid channel ID'), 400);
+      await ensureChannels(env.DB);
+      if (request.method === 'PATCH') {
+        let body: any;
+        try { body = await request.json(); } catch {
+          return handleError(new Error('Invalid JSON body'), 400);
+        }
+        if (!body || Array.isArray(body) || typeof body.paused !== 'boolean' || Object.keys(body).length !== 1) {
+          return handleError(new Error('Expected {paused: true|false}'), 400);
+        }
+        const result = await env.DB.prepare('UPDATE channels SET paused = ? WHERE id = ?').bind(body.paused ? 1 : 0, id).run();
+        if (!result.meta.changes) return handleError(new Error('Channel not found'), 404);
+        const row = await env.DB.prepare('SELECT id, handle, name, platform, paused FROM channels WHERE id = ?').bind(id).first();
+        return jsonResponse(row);
+      }
+      const result = await env.DB.prepare('DELETE FROM channels WHERE id = ?').bind(id).run();
+      if (!result.meta.changes) return handleError(new Error('Channel not found'), 404);
+      return jsonResponse({ deleted: true });
     }
 
     // GET /api/categories - List distinct categories with counts
@@ -684,7 +769,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       }
       const audioBuffer = await audioField.arrayBuffer();
       try {
-        const audioB64 = Buffer.from(audioBuffer).toString('base64');
+        const audioB64 = audioBase64(audioBuffer);
         const result = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
           audio: audioB64,
         }, gatewayOptions('transcription') as any) as WhisperResponse;
@@ -721,7 +806,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
 
         const videoId = parsed.prefixedId;
 
-        // Check for duplicate — return existing transcript info
+        // Check for duplicate - return existing transcript info
         const existing = await env.DB
           .prepare('SELECT id, title FROM transcripts WHERE video_id = ?')
           .bind(videoId)
@@ -762,7 +847,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
               // Title comes from yt-dlp via process.sh; noembed has no X video metadata
             } else
             if (parsed.platform === 'article') {
-              // Article — channel = domain, title from markdown
+              // Article - channel = domain, title from markdown
               try {
                 videoChannel = new URL(videoUrl).hostname.replace(/^www\./, '');
               } catch {}
@@ -899,7 +984,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           audioBuffer = await (audioData as File).arrayBuffer();
         }
 
-        // Check duplicate — return existing transcript info
+        // Check duplicate - return existing transcript info
         console.log('Checking duplicate for videoId:', videoId);
         if (videoId && !videoId.startsWith('audio-')) {
           const existing = await env.DB
@@ -923,7 +1008,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         console.log(`Transcribing audio with Cloudflare AI, buffer size: ${audioBuffer.byteLength}`);
         let transcript: WhisperResponse;
         try {
-          const audioB64 = Buffer.from(audioBuffer).toString('base64');
+          const audioB64 = audioBase64(audioBuffer);
           transcript = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
             audio: audioB64,
           }, gatewayOptions('transcription') as any) as WhisperResponse;
@@ -1249,7 +1334,7 @@ ${srtContent || transcript.text}
         try {
           newMarkdown = await summarizeContent(rawMarkdown, env.AI, existing);
         } catch (e: any) {
-          // Leave R2 untouched on failure — no half-overwrite
+          // Leave R2 untouched on failure - no half-overwrite
           return handleError(new Error(`Summarization failed: ${e.message}`), 502);
         }
 
@@ -1290,7 +1375,7 @@ ${srtContent || transcript.text}
         }
         const rawMarkdown = await content.text();
 
-        // Existing categories — encourage reuse over inventing near-duplicates
+        // Existing categories - encourage reuse over inventing near-duplicates
         const { results: catRows } = await env.DB
           .prepare("SELECT DISTINCT category FROM transcripts WHERE category IS NOT NULL AND category != ''")
           .all<{ category: string }>();
@@ -1446,6 +1531,15 @@ export default {
 
     if (url.pathname === '/stats.html') {
       const object = await env.TRANSCRIPTS.get('stats.html');
+      if (object) {
+        return new Response(object.body, {
+          headers: HTML_HEADERS,
+        });
+      }
+    }
+
+    if (url.pathname === '/subscriptions.html') {
+      const object = await env.TRANSCRIPTS.get('subscriptions.html');
       if (object) {
         return new Response(object.body, {
           headers: HTML_HEADERS,

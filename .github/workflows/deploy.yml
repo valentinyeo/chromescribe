@@ -38,6 +38,7 @@ jobs:
           wrangler r2 object put chromescribe-transcripts/transcript.html --file=./public/transcript.html --remote
           wrangler r2 object put chromescribe-transcripts/settings.html --file=./public/settings.html --remote
           wrangler r2 object put chromescribe-transcripts/stats.html --file=./public/stats.html --remote
+          wrangler r2 object put chromescribe-transcripts/subscriptions.html --file=./public/subscriptions.html --remote
 
       - name: Deploy Worker
         if: steps.worker-changes.outputs.deploy == 'true'
