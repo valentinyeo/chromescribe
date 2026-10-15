@@ -96,6 +96,8 @@
     }
     .channel-info { min-width: 0; overflow-wrap: anywhere; }
     .channel-name { font-weight: 500; margin-bottom: 6px; }
+    .channel-name a { color: var(--foreground); text-decoration: none; }
+    .channel-name a:hover { text-decoration: underline; }
     .meta { display: flex; flex-wrap: wrap; gap: 12px; }
     .meta a { color: var(--text); }
     .meta a:hover { color: var(--foreground); }
@@ -187,9 +189,10 @@
           ${rows.map(channel => `
             <div class="channel-row">
               <div class="channel-info">
-                <p class="channel-name">${escapeHtml(channel.name)}</p>
+                <p class="channel-name"><a href="/?channel=${encodeURIComponent(channel.name)}">${escapeHtml(channel.name)}</a></p>
                 <div class="meta">
                   <a href="${escapeHtml(channelUrl(channel))}" target="_blank" rel="noopener noreferrer">${escapeHtml(channel.handle)}</a>
+                  <a href="/?channel=${encodeURIComponent(channel.name)}">${channel.transcripts ?? 0} transcripts</a>
                   <span>${channel.platform === 'tiktok' ? 'TikTok' : 'YouTube'}</span>
                   <span>${channel.paused ? 'Paused' : 'Active'}</span>
                 </div>

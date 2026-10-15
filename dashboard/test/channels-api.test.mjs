@@ -60,7 +60,7 @@ test('lazy table starts empty, has paused default, never seeds and initializes o
 test('existing production table gains paused without adding or replacing subscriptions', async () => {
   const db = makeD1({ legacy: true });
   const rows = (await (await api(db)).json()).data;
-  assert.deepEqual(rows, [{ id: 'tiktok:@old', handle: '@old', name: 'Old', platform: 'tiktok', paused: 0 }]);
+  assert.deepEqual(rows, [{ id: 'tiktok:@old', handle: '@old', name: 'Old', platform: 'tiktok', paused: 0, transcripts: 0 }]);
   await api(db);
   assert.equal(db.queries.filter(sql => sql.startsWith('ALTER TABLE')).length, 1);
 });
@@ -226,4 +226,166 @@ test('an older channels table without an id column is kept aside, not dropped', 
   assert.equal(res.status, 200);
   assert.deepEqual((await res.json()).data, []);
   assert.equal(db.raw.prepare('SELECT title FROM channels_legacy').get().title, 'Old row');
+});
+
+test('GET channel counts match transcript channel names exactly, including zero and paused rows', async () => {
+  const db = makeD1();
+  await api(db);
+  db.raw.exec(`INSERT INTO channels(id, platform, handle, name, paused) VALUES
+    ('${newId}', 'youtube', '@old', 'Old channel', 1),
+    ('UCbbbbbbbbbbbbbbbbbbbbbb', 'youtube', '@none', 'No transcripts', 0),
+    ('tiktok:@mine', 'tiktok', '@mine', 'Mine', 0);
+    INSERT INTO transcripts VALUES ('two', 'Old channel'), ('three', 'Mine'),
+      ('four', 'Old channel extra'), ('five', 'old channel')`);
+  const rows = (await (await api(db)).json()).data;
+  assert.equal(rows.find(row => row.id === newId).transcripts, 2);
+  assert.equal(rows.find(row => row.handle === '@none').transcripts, 0);
+  assert.equal(rows.find(row => row.handle === '@mine').transcripts, 1);
+  const active = (await (await api(db, 'channels?active=1')).json()).data;
+  assert.equal(active.length, 2);
+  assert.ok(active.every(row => row.paused === 0 && Number.isInteger(row.transcripts)));
+});
+
+test('http and https vanity URLs resolve @handles and prefer real titles over IDs and handles', async t => {
+  for (const protocol of ['http', 'https']) {
+    t.mock.method(globalThis, 'fetch', async () => new Response(`
+      <meta property="og:title" content="${newId}">
+      <title>Jake &amp; Friends &#39;News&#39; - YouTube</title>
+      {"externalId":"${newId}","channelMetadataRenderer":{"description":"First","title":"@jaketrinder"},
+       "vanityChannelUrl":"${protocol}://www.youtube.com/@jaketrinder"}`));
+    const response = await api(makeD1(), 'channels', 'POST', newId);
+    assert.equal(response.status, 200);
+    const { data } = await response.json();
+    assert.equal(data.handle, '@jaketrinder');
+    assert.equal(data.name, "Jake & Friends 'News'");
+    t.mock.restoreAll();
+  }
+});
+
+test('missing real page titles use the feed author even when the page resolves successfully', async t => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    calls.push(url);
+    return new Response(url.includes('/feeds/') ? '<feed><author><name>Jake &amp; Co</name></author></feed>' :
+      `{"externalId":"${newId}","vanityChannelUrl":"http://www.youtube.com/@jaketrinder"}`);
+  });
+  const response = await api(makeD1(), 'channels', 'POST', newId);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.name, 'Jake & Co');
+  assert.equal(calls.length, 2);
+});
+
+test('blocked channel pages fall back to the decoded feed author', async t => {
+  t.mock.method(globalThis, 'fetch', async url => new Response(url.includes('/feeds/') ?
+    '<author><name>Jake &#x26; Co</name></author>' : '', { status: url.includes('/feeds/') ? 200 : 403 }));
+  const response = await api(makeD1(), 'channels', 'POST', newId);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.name, 'Jake & Co');
+});
+
+async function seedRefresh(db, handle = newId, name = newId) {
+  await api(db);
+  db.raw.prepare('INSERT INTO channels(id, platform, handle, name, paused) VALUES (?, ?, ?, ?, ?)')
+    .run(newId, 'youtube', handle, name, 1);
+}
+
+test('refresh repairs existing YouTube names and http handles without changing IDs, pause or transcripts', async t => {
+  const db = makeD1();
+  await seedRefresh(db);
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(url, `https://www.youtube.com/channel/${newId}`);
+    return new Response(`<meta property="og:title" content="Jake Trinder">{"externalId":"${newId}",
+      "vanityChannelUrl":"http://www.youtube.com/@jaketrinder"}`);
+  });
+  const response = await api(db, `channels/${newId}/refresh`, 'POST');
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data, {
+    id: newId, name: 'Jake Trinder', handle: '@jaketrinder', platform: 'youtube', paused: 1,
+  });
+  const row = db.raw.prepare('SELECT * FROM channels WHERE id = ?').get(newId);
+  assert.equal(row.handle, '@jaketrinder');
+  assert.equal(row.name, 'Jake Trinder');
+  assert.deepEqual({ ...db.raw.prepare('SELECT * FROM transcripts').get() }, { id: 'old', channel: 'Old channel' });
+});
+
+test('refresh never degrades a real name or @handle with placeholder metadata', async t => {
+  const db = makeD1();
+  await seedRefresh(db, '@jaketrinder', 'Jake Trinder');
+  for (const name of [newId, '@jaketrinder', 'jaketrinder', '']) {
+    t.mock.method(globalThis, 'fetch', async url => new Response(url.includes('/feeds/') ? '' :
+      `{"externalId":"${newId}","channelMetadataRenderer":{"title":"${name}"}}`));
+    const response = await api(db, `channels/${newId}/refresh`, 'POST');
+    assert.equal(response.status, 200);
+    const { data } = await response.json();
+    assert.equal(data.name, 'Jake Trinder');
+    assert.equal(data.handle, '@jaketrinder');
+    t.mock.restoreAll();
+  }
+});
+
+test('refresh validates IDs, reports unknown channels and resolution failures, and leaves TikTok untouched', async t => {
+  const db = makeD1();
+  for (const id of ['%ZZ', 'junk', 'tiktok%3A%40bad%2Fname']) {
+    assert.equal((await api(db, `channels/${id}/refresh`, 'POST')).status, 400);
+  }
+  assert.equal((await api(db, `channels/${newId}/refresh`, 'POST')).status, 404);
+  await seedRefresh(db, '@jaketrinder', 'Jake Trinder');
+  await api(db, 'channels', 'POST', 'tiktok:@mine');
+  t.mock.method(globalThis, 'fetch', async () => { throw new Error('Offline'); });
+  const unchanged = (await (await api(db, 'channels/tiktok%3A%40mine/refresh', 'POST')).json()).data;
+  assert.equal(unchanged.name, 'mine');
+  assert.equal(unchanged.handle, '@mine');
+  assert.equal(fetch.mock.callCount(), 0, 'TikTok refresh makes no network requests');
+  assert.equal((await api(db, `channels/${newId}/refresh`, 'POST')).status, 400);
+  assert.equal(db.raw.prepare('SELECT name FROM channels WHERE id = ?').get(newId).name, 'Jake Trinder');
+});
+
+test('display-name capitalization is preserved when it resembles the handle', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response(`
+    <meta property="og:title" content="JakeTrinder">
+    {"externalId":"${newId}","vanityChannelUrl":"http://www.youtube.com/@jaketrinder"}`));
+  const response = await api(makeD1(), 'channels', 'POST', newId);
+  assert.equal((await response.json()).data.name, 'JakeTrinder');
+});
+
+test('refresh with a blocked page can improve the name through RSS without losing a real handle', async t => {
+  const db = makeD1();
+  await seedRefresh(db, '@jaketrinder');
+  t.mock.method(globalThis, 'fetch', async url => new Response(url.includes('/feeds/') ?
+    '<author><name>Jake Trinder</name></author>' : '', { status: url.includes('/feeds/') ? 200 : 403 }));
+  const response = await api(db, `channels/${newId}/refresh`, 'POST');
+  assert.equal(response.status, 200);
+  const { data } = await response.json();
+  assert.equal(data.name, 'Jake Trinder');
+  assert.equal(data.handle, '@jaketrinder');
+});
+
+test('a slower refresh with missing metadata cannot overwrite a concurrent successful repair', async t => {
+  const db = makeD1();
+  await seedRefresh(db);
+  let release, signalStarted;
+  const waiting = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { signalStarted = resolve; });
+  let pages = 0;
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.includes('/feeds/')) {
+      signalStarted();
+      await waiting;
+      return new Response('');
+    }
+    pages++;
+    return new Response(pages === 1 ? `{"externalId":"${newId}"}` :
+      `<meta property="og:title" content="Jake Trinder">{"externalId":"${newId}","vanityChannelUrl":"http://www.youtube.com/@jaketrinder"}`);
+  });
+  const slower = api(db, `channels/${newId}/refresh`, 'POST');
+  await started;
+  const faster = await api(db, `channels/${newId}/refresh`, 'POST');
+  assert.equal(faster.status, 200);
+  release();
+  const response = await slower;
+  assert.equal(response.status, 200);
+  const { data } = await response.json();
+  assert.equal(data.name, 'Jake Trinder');
+  assert.equal(data.handle, '@jaketrinder');
+  assert.equal(db.raw.prepare('SELECT handle FROM channels WHERE id = ?').get(newId).handle, '@jaketrinder');
 });

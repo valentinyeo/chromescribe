@@ -6,8 +6,8 @@ import worker from '../src/index.ts';
 
 const html = readFileSync(new URL('../public/subscriptions.html', import.meta.url), 'utf8');
 const code = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const youtube = { id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'alpha', handle: '@alpha', platform: 'youtube', paused: 0 };
-const tiktok = { id: 'tiktok:@beta', name: 'Beta', handle: '@beta', platform: 'tiktok', paused: 1 };
+const youtube = { id: 'UCaaaaaaaaaaaaaaaaaaaaaa', name: 'alpha', handle: '@alpha', platform: 'youtube', paused: 0, transcripts: 7 };
+const tiktok = { id: 'tiktok:@beta', name: 'Beta', handle: '@beta', platform: 'tiktok', paused: 1, transcripts: 0 };
 
 async function setup(initial = [tiktok, youtube]) {
   const elements = Object.fromEntries(['filter', 'count', 'channelsList', 'error', 'message', 'channelInput', 'subscribeForm'].map(id => [id, {
@@ -98,6 +98,19 @@ test('renders platform links, active/paused statuses and safe names, handles, UR
   assert.match(rendered, /@&quot;&lt;bad&gt;/);
   assert.doesNotMatch(rendered, /<img/);
   assert.equal(context.escapeHtml('&<>"\''), '&amp;&lt;&gt;&quot;&#39;');
+});
+
+test('display names and transcript counts link to the channel view, handles stay secondary', async () => {
+  const name = 'Jake & Friends "News"';
+  const { elements, calls } = await setup([{ ...youtube, name, transcripts: 12 }, tiktok]);
+  const rendered = elements.channelsList.innerHTML;
+  const link = '/?channel=' + encodeURIComponent(name);
+  assert.ok(rendered.includes(`<p class="channel-name"><a href="${link}">Jake &amp; Friends &quot;News&quot;</a></p>`));
+  assert.ok(rendered.includes(`<a href="${link}">12 transcripts</a>`));
+  assert.match(rendered, /href="\/\?channel=Beta">0 transcripts<\/a>/);
+  assert.match(rendered, /href="https:\/\/www.youtube.com\/@alpha"[^>]*>@alpha<\/a>/);
+  assert.ok(rendered.indexOf('class="channel-name"') < rendered.indexOf('>@alpha<'));
+  assert.ok(calls.every(call => !call.url.includes('/transcripts')), 'counts come from channels, not a second API request');
 });
 
 test('filter searches names, handles and platform with visible and total counts and an empty state', async () => {

@@ -43,8 +43,17 @@ async function setup(t) {
       data = { id: 'UC' + 'c'.repeat(22), handle: input, name: 'New channel', platform: 'youtube', paused: 0 };
       channels.push(data);
     } else if (url.pathname.startsWith('/api/channels/')) {
-      const id = decodeURIComponent(url.pathname.split('/').at(-1));
+      const refresh = url.pathname.endsWith('/refresh');
+      const id = decodeURIComponent(url.pathname.split('/').at(refresh ? -2 : -1));
       const channel = channels.find(row => row.id === id);
+      if (refresh) {
+        if (channel.refreshError) { res.writeHead(400); res.end(JSON.stringify({ success: false, error: 'Resolution failed' })); return; }
+        channel.name = 'Resolved ' + id;
+        channel.handle = '@resolved';
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, data: channel }));
+        return;
+      }
       if (req.method === 'PATCH') { channel.paused = Number(JSON.parse(body).paused); data = channel; }
       else { channels.splice(channels.indexOf(channel), 1); data = { deleted: true }; }
     } else if (url.pathname === '/api/transcripts') {
@@ -312,4 +321,35 @@ test('overlong reports are shortened before installation and publish validation'
   assert.equal(result.code, 0, result.stderr);
   assert.ok((await log()).some(entry => entry.output.endsWith('/report-shortened.out')));
   assert.match(await readFile(result.stdout.trim(), 'utf8'), /1 min read/);
+});
+
+test('channels --refresh repairs only broken YouTube rows and prints old -> new metadata', async t => {
+  const { call, channels, requests } = await setup(t);
+  const missingHandle = { id: 'UC' + 'c'.repeat(22), name: 'Known name', handle: 'UC' + 'c'.repeat(22), platform: 'youtube' };
+  const missingName = { id: 'UC' + 'd'.repeat(22), name: 'UC' + 'd'.repeat(22), handle: '@known', platform: 'youtube' };
+  channels.push(missingHandle, missingName, { id: 'tiktok:@user', name: 'UC' + 'e'.repeat(22), handle: 'broken', platform: 'tiktok' });
+  const result = await call('channels', '--refresh');
+  assert.equal(result.code, 0, result.stderr);
+  const writes = requests.filter(request => request.method !== 'GET');
+  assert.deepEqual(writes.map(request => request.url).sort(), [missingHandle, missingName].map(row => '/api/channels/' + row.id + '/refresh').sort());
+  assert.ok(writes.every(request => request.method === 'POST'));
+  assert.ok(result.stdout.includes(`Known name (${missingHandle.id}) -> Resolved ${missingHandle.id} (@resolved)`));
+  assert.ok(result.stdout.includes(`${missingName.id} (@known) -> Resolved ${missingName.id} (@resolved)`));
+  assert.equal(result.stdout.trim().split('\n').length, 2);
+  const again = await call('channels', '--refresh');
+  assert.equal(again.code, 0, again.stderr);
+  assert.equal(again.stdout, '');
+  assert.equal(requests.filter(request => request.method !== 'GET').length, 2);
+});
+
+test('channels --refresh continues past failed rows and returns a failing exit code', async t => {
+  const { call, channels, requests } = await setup(t);
+  channels[0].handle = channels[0].id;
+  channels[1].handle = channels[1].id;
+  channels[1].refreshError = true;
+  const result = await call('channels', '--refresh');
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /could not refresh/);
+  assert.ok(result.stdout.includes('Zulu (' + channels[0].id + ') -> Resolved'));
+  assert.equal(requests.filter(request => request.method === 'POST').length, 2);
 });

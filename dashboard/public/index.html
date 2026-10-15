@@ -652,178 +652,6 @@
     
 
     
-    /* Channels Panel */
-    .channels-panel {
-      border-bottom: 1px solid var(--border);
-      background: var(--background);
-    }
-
-    .channels-panel-inner {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
-
-    .channels-toggle {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 0;
-      background: none;
-      border: none;
-      color: var(--muted);
-      font-size: 13px;
-      font-family: inherit;
-      cursor: pointer;
-      user-select: none;
-      width: 100%;
-      text-align: left;
-      transition: color 0.15s ease;
-    }
-
-    .channels-toggle:hover {
-      color: var(--text);
-    }
-
-    .channels-toggle-label {
-      font-weight: 500;
-    }
-
-    .channels-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 5px;
-      font-size: 11px;
-      font-weight: 600;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 9px;
-      color: var(--text);
-      font-family: 'SF Mono', 'Monaco', monospace;
-    }
-
-    .channels-chevron {
-      margin-left: auto;
-      width: 14px;
-      height: 14px;
-      transition: transform 0.2s ease;
-      flex-shrink: 0;
-    }
-
-    .channels-chevron.open {
-      transform: rotate(180deg);
-    }
-
-    .channels-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding-bottom: 12px;
-    }
-
-    .channels-list.hidden {
-      display: none !important;
-    }
-
-    .channel-chip {
-      display: inline-flex;
-      align-items: stretch;
-      height: 28px;
-      font-size: 13px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      overflow: hidden;
-      transition: border-color 0.15s ease;
-    }
-
-    .channel-chip:hover {
-      border-color: var(--muted);
-    }
-
-    .channel-chip-filter {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 0 10px;
-      color: var(--text);
-      background: transparent;
-      border: 0;
-      cursor: pointer;
-      font: inherit;
-      transition: background 0.15s ease, color 0.15s ease;
-    }
-
-    .channel-chip-filter:hover {
-      background: var(--card-hover);
-      color: var(--foreground);
-    }
-
-    .channel-chip.active {
-      border-color: var(--accent, #0070f3);
-    }
-
-    .channel-chip.active .channel-chip-filter {
-      background: var(--accent, #0070f3);
-      color: #fff;
-    }
-
-    .channel-chip-link {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      color: var(--text);
-      background: transparent;
-      border: 0;
-      border-left: 1px solid var(--border);
-      text-decoration: none;
-      transition: background 0.15s ease, color 0.15s ease;
-    }
-
-    .channel-chip-link:hover {
-      background: var(--card-hover);
-      color: var(--foreground);
-    }
-
-    .channel-chip-link svg {
-      width: 12px;
-      height: 12px;
-      opacity: 0.6;
-      flex-shrink: 0;
-    }
-
-    .channel-chip-count {
-      font-size: 11px;
-      color: var(--muted);
-      background: var(--chip-bg);
-      padding: 0 6px;
-      border-radius: 3px;
-    }
-
-    .channel-chip.active .channel-chip-count {
-      color: var(--chip-on-accent-fg);
-      background: var(--chip-on-accent-bg);
-    }
-
-    .channel-unsubscribe { cursor: pointer; font: inherit; }
-    .channel-subscribe { display: inline-flex; gap: 6px; }
-    .channel-subscribe input {
-      width: 200px;
-      min-width: 0;
-      padding: 0 8px;
-      background: var(--card);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font: inherit;
-    }
-    .channel-subscribe .btn { height: 28px; padding: 0 10px; font-size: 13px; }
-    #channelsError { width: 100%; color: var(--danger, #f87171); font-size: 13px; }
-
     /* Hide */
     .hidden { display: none !important; }
     
@@ -888,24 +716,6 @@
       </div>
     </div>
   </header>
-
-  <!-- Monitored Channels -->
-  <div class="channels-panel">
-    <div class="channels-panel-inner">
-      <button class="channels-toggle" onclick="toggleChannels()" id="channelsToggle" aria-expanded="false">
-        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-        </svg>
-        <span class="channels-toggle-label">Monitored Channels</span>
-        <span class="channels-badge" id="channelsBadge">-</span>
-        <svg class="channels-chevron" id="channelsChevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-        </svg>
-      </button>
-      <a href="/subscriptions.html" class="btn btn-secondary">Manage all</a>
-      <div class="channels-list hidden" id="channelsList"></div>
-    </div>
-  </div>
 
   <!-- Category filters -->
   <div id="categoryFilters" class="category-filters">
@@ -1035,7 +845,6 @@
       btn.setAttribute('aria-label', csTheme.label());
     };
     csThemeRender();
-    let channelsCache = [];
     let searchQuery = '';
 
     function saveScrollPosition() {
@@ -1146,7 +955,6 @@
         const { data } = await res.json();
         transcripts = data || [];
         renderTranscripts();
-        renderChannels();
         restoreScrollPosition();
         loadCategories(); // refresh chips so the SEO cluster count reflects loaded transcripts
       } catch (err) {
@@ -1512,90 +1320,6 @@
       else if (k === '$') { window.location.href = '/settings.html'; }
     });
 
-    // Channels panel
-    async function loadChannels() {
-      const res = await fetch(`${API_BASE}/channels`);
-      const { data, error } = await res.json();
-      if (!res.ok || !Array.isArray(data)) throw new Error(error || 'Could not load channels');
-      channelsCache = data;
-      document.getElementById('channelsBadge').textContent = channelsCache.length;
-      renderChannels();
-    }
-
-    async function subscribeChannel(e) {
-      e.preventDefault();
-      const form = e.target;
-      const button = form.querySelector('button');
-      const input = form.querySelector('input');
-      button.disabled = true;
-      document.getElementById('channelsError').textContent = '';
-      try {
-        const res = await fetch(`${API_BASE}/channels`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: input.value }),
-        });
-        const { error } = await res.json();
-        if (!res.ok) throw new Error(error || 'Could not subscribe');
-        await loadChannels();
-      } catch (err) {
-        document.getElementById('channelsError').textContent = err.message;
-      } finally {
-        button.disabled = false;
-      }
-    }
-
-    async function unsubscribeChannel(id) {
-      const channel = channelsCache.find(ch => ch.id === id);
-      if (!channel || !confirm(`Unsubscribe from ${channel.name}? Existing transcripts will be kept.`)) return;
-      document.getElementById('channelsError').textContent = '';
-      try {
-        const res = await fetch(`${API_BASE}/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
-        const { error } = await res.json();
-        if (!res.ok) throw new Error(error || 'Could not unsubscribe');
-        await loadChannels();
-      } catch (err) {
-        document.getElementById('channelsError').textContent = err.message;
-      }
-    }
-
-    function transcriptsByChannelName(name) {
-      if (!name) return transcripts;
-      const n = name.toLowerCase();
-      return transcripts.filter(t => {
-        const c = (t.channel || '').toLowerCase();
-        return c === n || c.startsWith(n);
-      });
-    }
-
-    function renderChannels() {
-      const list = document.getElementById('channelsList');
-      if (!list) return;
-      list.innerHTML = channelsCache.map(ch => {
-        const count = transcriptsByChannelName(ch.name).length;
-        const isActive = activeChannel === ch.name;
-        return `
-          <span class="channel-chip ${isActive ? 'active' : ''}">
-            <button type="button" class="channel-chip-filter" data-channel-id="${escapeHtml(ch.id)}" title="${isActive ? 'Clear filter' : 'Filter by ' + escapeHtml(ch.handle)}">
-              ${escapeHtml(ch.handle)}
-              <span class="channel-chip-count">${count}</span>
-            </button>
-            <a href="${ch.platform === 'tiktok' ? 'https://www.tiktok.com/' + encodeURIComponent(ch.handle) : 'https://www.youtube.com/channel/' + encodeURIComponent(ch.id)}" target="_blank" rel="noopener" class="channel-chip-link" title="Open on ${ch.platform === 'tiktok' ? 'TikTok' : 'YouTube'}">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-              </svg>
-            </a>
-            <button type="button" class="channel-chip-link channel-unsubscribe" data-channel-id="${escapeHtml(ch.id)}" title="Unsubscribe from ${escapeHtml(ch.name).replace(/"/g, '&quot;')}" aria-label="Unsubscribe from ${escapeHtml(ch.name).replace(/"/g, '&quot;')}">×</button>
-          </span>
-        `;
-      }).join('') + `
-        <form class="channel-subscribe" id="channelSubscribe">
-          <input type="text" aria-label="Channel URL or handle" placeholder="Channel URL or @handle" required>
-          <button type="submit" class="btn btn-secondary">Subscribe</button>
-        </form>
-        <span id="channelsError" role="alert"></span>
-      `;
-    }
-
     function toggleChannelFilter(name) {
       activeChannel = activeChannel === name ? null : name;
       // Keep ?channel= in the address so a channel view can be linked and reloaded
@@ -1603,38 +1327,8 @@
       if (activeChannel) url.searchParams.set('channel', activeChannel); else url.searchParams.delete('channel');
       history.replaceState(null, '', url);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      renderChannels();
       renderTranscripts();
-      // open the panel if collapsed so the user sees the active state
-      const list = document.getElementById('channelsList');
-      if (activeChannel && list && list.classList.contains('hidden')) toggleChannels();
     }
-
-    function toggleChannels() {
-      const list = document.getElementById('channelsList');
-      const chevron = document.getElementById('channelsChevron');
-      const toggle = document.getElementById('channelsToggle');
-      const isOpen = !list.classList.contains('hidden');
-      list.classList.toggle('hidden', isOpen);
-      chevron.classList.toggle('open', !isOpen);
-      toggle.setAttribute('aria-expanded', String(!isOpen));
-    }
-
-    document.getElementById('channelsList').addEventListener('click', e => {
-      const button = e.target.closest('button[data-channel-id]');
-      if (!button) return;
-      const id = button.dataset.channelId;
-      if (button.classList.contains('channel-unsubscribe')) unsubscribeChannel(id);
-      else {
-        const channel = channelsCache.find(ch => ch.id === id);
-        if (channel) toggleChannelFilter(channel.name);
-      }
-    });
-    document.getElementById('channelsList').addEventListener('submit', subscribeChannel);
-    document.addEventListener('DOMContentLoaded', () => {
-      renderChannels();
-      loadChannels().catch(err => { document.getElementById('channelsError').textContent = err.message; });
-    });
   </script>
 </body>
 </html>

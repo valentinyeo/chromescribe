@@ -20,7 +20,7 @@ Usage:
   chromescribe url <source-url> [--json]     Find transcript by source URL
   chromescribe view <id>                     Print dashboard URL for browser
 
-  chromescribe channels [--json]             List subscriptions by name, including paused
+  chromescribe channels [--json | --refresh] List subscriptions or repair YouTube names
   chromescribe subscribe <url|@handle|UC id> Subscribe to a channel
   chromescribe unsubscribe <channel>        Remove a subscription, keep transcripts
   chromescribe pause <channel>              Pause monitoring
@@ -232,10 +232,23 @@ resolve_channel() {
 }
 
 cmd_channels() {
-  [ $# -eq 0 ] || { [ $# -eq 1 ] && [ "$1" = --json ]; } || die "usage: channels [--json]"
-  local data
+  [ $# -eq 0 ] || { [ $# -eq 1 ] && { [ "$1" = --json ] || [ "$1" = --refresh ]; }; } || die "usage: channels [--json | --refresh]"
+  local data row id refreshed failed=0
   data=$(api_get /api/channels | unwrap | jq 'sort_by(.name | ascii_downcase)')
-  if [ "${1:-}" = --json ]; then
+  if [ "${1:-}" = --refresh ]; then
+    while IFS= read -r row; do
+      id=$(echo "$row" | jq -r '.id | @uri')
+      if refreshed=$(api_write POST "/api/channels/$id/refresh"); then
+        printf '%s -> %s\n' "$(echo "$row" | jq -r '[.name, .handle] | join(" (") + ")"')" \
+          "$(echo "$refreshed" | jq -r '[.name, .handle] | join(" (") + ")"')"
+      else
+        echo "error: could not refresh $(echo "$row" | jq -r '.id')" >&2
+        failed=1
+      fi
+    done < <(echo "$data" | jq -c '.[] | select(.platform == "youtube") |
+      select((.handle | startswith("@") | not) or (.name | test("^UC[A-Za-z0-9_-]{22}$")))')
+    return "$failed"
+  elif [ "${1:-}" = --json ]; then
     echo "$data"
   else
     echo "$data" | jq -r '.[] | [.name, .handle, .id, (if .paused == 1 or .paused == true then "paused" else "active" end)] | @tsv'

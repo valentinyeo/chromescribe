@@ -78,6 +78,60 @@ async function ensureChannels(db: D1Database) {
   await ready;
 }
 
+function decodeChannelName(value: string): string {
+  return value.replace(/&(?:amp|quot|apos|lt|gt|#39|#\d+|#x[0-9a-f]+);/gi, entity => {
+    if (entity.startsWith('&#')) {
+      const code = entity[2].toLowerCase() === 'x' ? parseInt(entity.slice(3), 16) : parseInt(entity.slice(2), 10);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+    }
+    return ({ '&amp;': '&', '&quot;': '"', '&apos;': "'", '&lt;': '<', '&gt;': '>' }[entity.toLowerCase()] || entity);
+  }).trim();
+}
+
+function isChannelName(name: string, handle: string | null): boolean {
+  return !!name && !/^UC[A-Za-z0-9_-]{22}$/.test(name) && !name.startsWith('@') &&
+    name !== (handle || '').replace(/^@/, '');
+}
+
+async function resolveYoutubeChannel(input: { id: string | null; handle: string | null }) {
+  let { id, handle } = input;
+  let name = '';
+  let pageResolved = false;
+  try {
+    const page = await fetch(`https://www.youtube.com/${id ? 'channel/' + id : encodeURIComponent(handle!).replace('%40', '@')}`, {
+      // SOCS skips the EU consent page YouTube shows to datacenter requests.
+      headers: { 'Accept-Language': 'en-US,en;q=0.9', Cookie: 'SOCS=CAI' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!page.ok) throw new Error('Channel page unavailable');
+    const html = await page.text();
+    const resolvedId = html.match(/"externalId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"/)?.[1] ||
+      html.match(/"channelId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"/)?.[1];
+    if (!resolvedId || (id && resolvedId !== id)) throw new Error('Channel ID not found');
+    id = resolvedId;
+    pageResolved = true;
+    const pageHandle = html.match(/"vanityChannelUrl"\s*:\s*"https?:\/\/(?:www\.)?youtube\.com\/(@[^"/]+)"/)?.[1];
+    handle = parseChannelInput(pageHandle)?.handle || handle;
+    const ogTag = html.match(/<meta\b(?=[^>]*\bproperty\s*=\s*["']og:title["'])[^>]*>/i)?.[0];
+    const ogTitle = ogTag?.match(/\bcontent\s*=\s*(["'])(.*?)\1/i)?.[2];
+    const jsonTitle = html.match(/"channelMetadataRenderer"\s*:\s*\{[^{}]*?"title"\s*:\s*("(?:[^"\\]|\\.)*")/)?.[1];
+    const pageTitle = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s*-\s*YouTube\s*$/i, '');
+    name = [ogTitle, jsonTitle ? JSON.parse(jsonTitle) : '', pageTitle].filter(Boolean)
+      .map(decodeChannelName).find(candidate => isChannelName(candidate, handle)) || '';
+  } catch {
+    // A known UC id can still resolve through the feed when the page is blocked.
+  }
+  if (!id) throw new Error('Could not resolve this YouTube channel. Check the URL or handle and try again.');
+  if (!name) {
+    const feedName = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`, { signal: AbortSignal.timeout(15000) })
+      .then(r => r.ok ? r.text() : '').then(xml => xml.match(/<author>\s*<name>([^<]+)<\/name>/)?.[1] || '').catch(() => '');
+    const decoded = decodeChannelName(feedName);
+    if (isChannelName(decoded, handle)) name = decoded;
+  }
+  if (!name && !pageResolved) throw new Error('Could not resolve this YouTube channel. Check the URL or handle and try again.');
+  return { id, handle: handle || id, name: name || handle?.slice(1) || id };
+}
+
 function audioBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -588,7 +642,9 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
     if (path === 'channels' && ['GET', 'POST'].includes(request.method)) {
       await ensureChannels(env.DB);
       if (request.method === 'GET') {
-        const { results } = await env.DB.prepare(`SELECT id, handle, name, platform, paused FROM channels${url.searchParams.get('active') === '1' ? ' WHERE paused = 0' : ''} ORDER BY created_at, name`).all();
+        const { results } = await env.DB.prepare(`SELECT channels.id, handle, name, platform, paused, COALESCE(counts.transcripts, 0) AS transcripts
+          FROM channels LEFT JOIN (SELECT channel, COUNT(*) AS transcripts FROM transcripts GROUP BY channel) counts
+          ON counts.channel = channels.name${url.searchParams.get('active') === '1' ? ' WHERE paused = 0' : ''} ORDER BY created_at, name`).all();
         return jsonResponse(results);
       }
 
@@ -606,43 +662,40 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       let name = handle?.slice(1) || id;
       if (platform === 'youtube') {
         try {
-          const page = await fetch(`https://www.youtube.com/${id ? 'channel/' + id : encodeURIComponent(handle).replace('%40', '@')}`, {
-            // SOCS skips the EU consent page YouTube shows to datacenter requests
-            headers: { 'Accept-Language': 'en-US,en;q=0.9', Cookie: 'SOCS=CAI' },
-            signal: AbortSignal.timeout(15000),
-          });
-          if (!page.ok) throw new Error('Channel page unavailable');
-          const html = await page.text();
-          const resolvedId = html.match(/"externalId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"/)?.[1] ||
-            html.match(/"channelId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"/)?.[1];
-          if (!resolvedId || (id && resolvedId !== id)) throw new Error('Channel ID not found');
-          id = resolvedId;
-          const ogTag = html.match(/<meta\b(?=[^>]*\bproperty\s*=\s*["']og:title["'])[^>]*>/i)?.[0];
-          const ogTitle = ogTag?.match(/\bcontent\s*=\s*(["'])(.*?)\1/i)?.[2];
-          const jsonTitle = html.match(/"channelMetadataRenderer"\s*:\s*\{\s*"title"\s*:\s*("(?:[^"\\]|\\.)*")/)?.[1] ||
-            html.match(/"title"\s*:\s*("(?:[^"\\]|\\.)*")/)?.[1];
-          name = ogTitle ? ogTitle.replace(/&(?:amp|quot|apos|lt|gt|#39);/g, entity => ({
-            '&amp;': '&', '&quot;': '"', '&apos;': "'", '&#39;': "'", '&lt;': '<', '&gt;': '>',
-          }[entity] || entity)) : jsonTitle ? JSON.parse(jsonTitle) : name;
-          if (!handle) {
-            const pageHandle = html.match(/"vanityChannelUrl"\s*:\s*"https:\/\/(?:www\.)?youtube\.com\/(@[^"/]+)"/)?.[1];
-            handle = parseChannelInput(pageHandle)?.handle || id;
-          }
-        } catch {
-          // A known UC id still resolves through the public feed when the channel page is blocked
-          const feedName = id ? await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`, { signal: AbortSignal.timeout(15000) })
-            .then(r => r.ok ? r.text() : '').then(xml => xml.match(/<author>\s*<name>([^<]+)<\/name>/)?.[1] || '').catch(() => '') : '';
-          if (!feedName) return handleError(new Error('Could not resolve this YouTube channel. Check the URL or handle and try again.'), 400);
-          name = feedName.replace(/&(?:amp|quot|apos|lt|gt|#39);/g, entity => ({
-            '&amp;': '&', '&quot;': '"', '&apos;': "'", '&#39;': "'", '&lt;': '<', '&gt;': '>',
-          }[entity] || entity));
-          handle = handle || id;
+          ({ id, handle, name } = await resolveYoutubeChannel({ id, handle }));
+        } catch (err) {
+          return handleError(err, 400);
         }
       }
       const inserted = await env.DB.prepare('INSERT INTO channels (id, platform, handle, name) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
         .bind(id, platform, handle, name).run();
       const row = await env.DB.prepare('SELECT id, handle, name, platform, paused FROM channels WHERE id = ?').bind(id).first();
       return jsonResponse({ ...row, already_exists: inserted.meta.changes === 0 });
+    }
+
+    if (request.method === 'POST' && path.startsWith('channels/') && path.endsWith('/refresh')) {
+      let id: string;
+      try { id = decodeURIComponent(path.slice('channels/'.length, -'/refresh'.length)); } catch {
+        return handleError(new Error('Invalid channel ID'), 400);
+      }
+      if (parseChannelInput(id)?.id !== id) return handleError(new Error('Invalid channel ID'), 400);
+      await ensureChannels(env.DB);
+      const row = await env.DB.prepare('SELECT id, handle, name, platform, paused FROM channels WHERE id = ?')
+        .bind(id).first<{ id: string; handle: string; name: string; platform: string; paused: number }>();
+      if (!row) return handleError(new Error('Channel not found'), 404);
+      if (row.platform === 'tiktok') return jsonResponse(row);
+      let resolved;
+      try {
+        resolved = await resolveYoutubeChannel({ id, handle: row.handle.startsWith('@') ? row.handle : null });
+      } catch (err) {
+        return handleError(err, 400);
+      }
+      const handle = resolved.handle.startsWith('@') ? resolved.handle : null;
+      const name = isChannelName(resolved.name, handle || row.handle) ? resolved.name : null;
+      await env.DB.prepare('UPDATE channels SET handle = COALESCE(?, handle), name = COALESCE(?, name) WHERE id = ?')
+        .bind(handle, name, id).run();
+      const updated = await env.DB.prepare('SELECT id, handle, name, platform, paused FROM channels WHERE id = ?').bind(id).first();
+      return jsonResponse(updated);
     }
 
     if (['DELETE', 'PATCH'].includes(request.method) && path.startsWith('channels/')) {
