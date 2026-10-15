@@ -233,12 +233,15 @@ resolve_channel() {
 
 cmd_channels() {
   [ $# -eq 0 ] || { [ $# -eq 1 ] && { [ "$1" = --json ] || [ "$1" = --refresh ]; }; } || die "usage: channels [--json | --refresh]"
-  local data row id refreshed failed=0
+  local data row id hint refreshed failed=0
   data=$(api_get /api/channels | unwrap | jq 'sort_by(.name | ascii_downcase)')
   if [ "${1:-}" = --refresh ]; then
     while IFS= read -r row; do
       id=$(echo "$row" | jq -r '.id | @uri')
-      if refreshed=$(api_write POST "/api/channels/$id/refresh"); then
+      # Look the handle up from here too: YouTube often blocks the Worker's own lookup
+      hint=$(curl -s --max-time 15 -H 'Accept-Language: en' -b 'SOCS=CAI' "https://www.youtube.com/channel/$id" |
+        grep -oE '"vanityChannelUrl":"https?://(www\.)?youtube\.com/@[^"/]+' | head -1 | sed 's|.*/||') || hint=
+      if refreshed=$(api_write POST "/api/channels/$id/refresh" "$(jq -nc --arg h "$hint" 'if $h == "" then {} else {handle: $h} end')"); then
         printf '%s -> %s\n' "$(echo "$row" | jq -r '[.name, .handle] | join(" (") + ")"')" \
           "$(echo "$refreshed" | jq -r '[.name, .handle] | join(" (") + ")"')"
       else

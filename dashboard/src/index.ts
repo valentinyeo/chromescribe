@@ -684,13 +684,18 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         .bind(id).first<{ id: string; handle: string; name: string; platform: string; paused: number }>();
       if (!row) return handleError(new Error('Channel not found'), 404);
       if (row.platform === 'tiktok') return jsonResponse(row);
+      // Optional {handle} found by the caller, for when YouTube blocks the Worker's own lookup
+      const body: any = await request.json().catch(() => null);
+      const hint = typeof body?.handle === 'string' ? parseChannelInput(body.handle) : null;
+      const hintHandle = hint?.platform === 'youtube' && !hint.id ? hint.handle : null;
       let resolved;
       try {
         resolved = await resolveYoutubeChannel({ id, handle: row.handle.startsWith('@') ? row.handle : null });
       } catch (err) {
-        return handleError(err, 400);
+        if (!hintHandle) return handleError(err, 400);
+        resolved = { handle: hintHandle, name: row.name };
       }
-      const handle = resolved.handle.startsWith('@') ? resolved.handle : null;
+      const handle = resolved.handle.startsWith('@') ? resolved.handle : hintHandle;
       const name = isChannelName(resolved.name, handle || row.handle) ? resolved.name : null;
       await env.DB.prepare('UPDATE channels SET handle = COALESCE(?, handle), name = COALESCE(?, name) WHERE id = ?')
         .bind(handle, name, id).run();
