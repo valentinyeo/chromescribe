@@ -4,6 +4,14 @@ Load this directory as an unpacked extension in Chrome or Edge. After updating
 the files, reload ChromeScribe on the browser's extensions page, then refresh
 any open YouTube tabs.
 
+## Channel subscriptions
+
+Version 1.5.0 adds channels directly through the dashboard API instead of opening
+a local terminal. On YouTube channel and watch pages, click **Watch channel**.
+The button shows **Subscribed**, **Already subscribed**, or the returned error.
+Channels already in the monitored library appear as **Subscribed**.
+Sign in to the dashboard through Cloudflare Access before subscribing.
+
 ## TikTok transcription
 
 Open a TikTok video and click the ChromeScribe extension icon. The extension

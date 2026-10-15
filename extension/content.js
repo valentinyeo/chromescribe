@@ -281,17 +281,17 @@ function refreshActionButton(button) {
   button.classList.toggle("is-pending", pending);
   button.dataset.chromescribeStatus = complete ? "complete" : pending ? "pending" : "new";
 
-  const completeLabel = action === "transcribe" ? "Already transcribed" : "Already watching channel";
+  const completeLabel = action === "transcribe" ? "Already transcribed" : button.dataset.subscriptionLabel || "Subscribed";
   const pendingLabel = "Queued in ChromeScribe";
-  const label = complete ? completeLabel : pending ? pendingLabel : button.dataset.defaultLabel;
+  const label = complete ? completeLabel : pending ? pendingLabel : button.dataset.subscriptionError || button.dataset.defaultLabel;
   button.title = label;
   button.setAttribute("aria-label", label);
 
   if (!isIcon) {
     button.textContent = complete
-      ? (action === "transcribe" ? "✓ Transcribed" : "✓ Watching channel")
-      : pending ? "⏳ Queued" : button.dataset.defaultLabel;
-    button.style.color = complete ? "#34d058" : pending ? "#f2b84b" : "#fff";
+      ? (action === "transcribe" ? "✓ Transcribed" : completeLabel)
+      : pending ? "⏳ Queued" : label;
+    button.style.color = complete ? "#34d058" : pending ? "#f2b84b" : button.dataset.subscriptionError ? "#f85149" : "#fff";
   }
 }
 
@@ -316,9 +316,18 @@ function requestLibraryStatus() {
 }
 
 function findInsertionAnchor() {
+  if (isChannelPage()) {
+    return document.querySelector("yt-page-header-view-model") ||
+      document.querySelector("yt-page-header-renderer") ||
+      document.querySelector("#channel-header-container") ||
+      document.querySelector("ytd-c4-tabbed-header-renderer") ||
+      document.querySelector("ytd-browse #header");
+  }
   return document.querySelector("ytd-watch-metadata #actions") ||
     document.querySelector("#top-level-buttons-computed") ||
-    document.querySelector("#owner");
+    document.querySelector("ytd-watch-metadata #owner") ||
+    document.querySelector("ytd-watch-metadata") ||
+    document.querySelector("ytd-video-primary-info-renderer");
 }
 
 function firstHref(selector) {
@@ -327,37 +336,21 @@ function firstHref(selector) {
 
 function getChannelInfo() {
   const canonicalHref = firstHref('link[rel="canonical"]');
-  const candidates = [
-    firstHref('span[itemprop="author"] link[itemprop="url"]'),
-    canonicalHref,
-  ];
-
-  document.querySelectorAll('ytd-video-owner-renderer a[href*="/channel/UC"]').forEach((a) => {
-    candidates.push(a.getAttribute("href") || "");
-  });
-  document.querySelectorAll('a[href*="/channel/UC"]').forEach((a) => {
-    candidates.push(a.getAttribute("href") || "");
-  });
-
-  let channelId = "";
-  for (const href of candidates) {
-    const match = href.match(/UC[A-Za-z0-9_-]{22}/);
-    if (match) {
-      channelId = match[0];
-      break;
-    }
-  }
-
-  const handleHref = firstHref('a[href^="/@"]');
-  const pageHandle = location.pathname.match(/^\/(\@[A-Za-z0-9._-]+)/)?.[1] || "";
-  const handle = pageHandle || (handleHref ? handleHref.split("/").find((part) => part.startsWith("@")) || "" : "");
-  const channelName = (
-    document.querySelector("ytd-video-owner-renderer ytd-channel-name a") ||
-    document.querySelector("#channel-name a") ||
-    document.querySelector("yt-page-header-view-model h1, #channel-header-container h1")
+  const ownerHref = firstHref('ytd-video-owner-renderer a[href^="/@"], ytd-video-owner-renderer a[href*="/channel/UC"]');
+  const href = isChannelPage() ? location.pathname : ownerHref;
+  const channelId = (
+    href.match(/\/channel\/(UC[A-Za-z0-9_-]{22})/)?.[1] ||
+    (isChannelPage() ? canonicalHref.match(/\/channel\/(UC[A-Za-z0-9_-]{22})/)?.[1] : "") ||
+    (isWatchPage() ? firstHref('span[itemprop="author"] link[itemprop="url"]').match(/\/channel\/(UC[A-Za-z0-9_-]{22})/)?.[1] : "") ||
+    ""
+  );
+  const handle = href.match(/\/(@[^/?#]+)/)?.[1] || "";
+  const channelName = (isChannelPage()
+    ? document.querySelector("yt-page-header-view-model h1, yt-page-header-renderer h1, #channel-header-container h1, ytd-c4-tabbed-header-renderer #channel-name")
+    : document.querySelector("ytd-video-owner-renderer ytd-channel-name a")
   )?.textContent?.trim() || "";
 
-  return { channelId, handle, channelName, href: canonicalHref || handleHref || location.pathname };
+  return { channelId, handle, channelName, href };
 }
 
 function getCardVideo(card) {
@@ -438,6 +431,54 @@ async function resolveChannelId(info) {
   }
 }
 
+async function subscribeChannel(button, info) {
+  if (button.disabled) return;
+  if (isKnownChannel(info)) {
+    showToast("Already subscribed");
+    return;
+  }
+
+  button.disabled = true;
+  delete button.dataset.subscriptionError;
+  refreshActionButton(button);
+  const channelId = info.channelId || (info.handle ? "" : await resolveChannelId(info));
+  if (!channelId && !info.handle) {
+    button.disabled = false;
+    button.dataset.subscriptionError = "Couldn't find this channel";
+    refreshActionButton(button);
+    showToast(button.dataset.subscriptionError);
+    return;
+  }
+
+  chrome.runtime.sendMessage({
+    action: "addChannel",
+    channelId,
+    handle: info.handle,
+    channelName: info.channelName,
+  }, (response) => {
+    const error = chrome.runtime.lastError?.message || (!response?.success && (response?.error || "Could not subscribe"));
+    button.disabled = false;
+    if (error) {
+      button.dataset.subscriptionError = error;
+      refreshActionButton(button);
+      showToast(error);
+      return;
+    }
+
+    if (channelId) {
+      button.dataset.channelId = channelId;
+      chromescribeLibrary.channelIds.add(channelId);
+    }
+    if (info.handle) {
+      button.dataset.channelHandle = normalizeHandle(info.handle);
+      chromescribeLibrary.handles.add(normalizeHandle(info.handle));
+    }
+    button.dataset.subscriptionLabel = response.alreadyExists ? "Already subscribed" : "Subscribed";
+    refreshAllActionButtons();
+    showToast(button.dataset.subscriptionLabel);
+  });
+}
+
 function createCardActions(card, video) {
   const actions = document.createElement("div");
   actions.className = CHROMESCRIBE_CARD_ACTIONS;
@@ -451,32 +492,8 @@ function createCardActions(card, video) {
 
   const initialChannelInfo = getCardChannelInfo(card);
   if (initialChannelInfo.channelId || initialChannelInfo.href) {
-    const channelButton = makeIconButton("Watch channel with ChromeScribe", WATCH_CHANNEL_ICON, async (button) => {
-      const currentInfo = getCardChannelInfo(card);
-      if (isKnownChannel(currentInfo)) {
-        showToast("ChromeScribe: already watching this channel");
-        return;
-      }
-
-      button.disabled = true;
-      const channelId = await resolveChannelId(currentInfo);
-      button.disabled = false;
-
-      if (!channelId) {
-        showToast("ChromeScribe: couldn't find this channel's id");
-        return;
-      }
-
-      chrome.runtime.sendMessage({
-        action: "addChannel",
-        channelId,
-        handle: currentInfo.handle,
-        channelName: currentInfo.channelName,
-      });
-      chromescribeLibrary.channelIds.add(channelId);
-      if (currentInfo.handle) chromescribeLibrary.handles.add(normalizeHandle(currentInfo.handle));
-      refreshAllActionButtons();
-      showToast(`Watching ${currentInfo.handle || currentInfo.channelName || channelId}`);
+    const channelButton = makeIconButton("Watch channel with ChromeScribe", WATCH_CHANNEL_ICON, (button) => {
+      subscribeChannel(button, getCardChannelInfo(card));
     });
     configureActionButton(channelButton, "watchChannel", initialChannelInfo);
     actions.appendChild(channelButton);
@@ -530,26 +547,8 @@ function createButtonRow() {
   }
 
   const channelInfo = getChannelInfo();
-  const channelButton = makeButton("➕ Watch channel", async () => {
-    const channelInfo = getChannelInfo();
-    if (isKnownChannel(channelInfo)) {
-      showToast("ChromeScribe: already watching this channel");
-      return;
-    }
-    channelButton.disabled = true;
-    const channelId = await resolveChannelId(channelInfo);
-    channelButton.disabled = false;
-    if (!channelId) {
-      showToast("ChromeScribe: couldn't find channel id on this page");
-      return;
-    }
-
-    const { handle, channelName } = channelInfo;
-    chrome.runtime.sendMessage({ action: "addChannel", channelId, handle, channelName });
-    chromescribeLibrary.channelIds.add(channelId);
-    if (handle) chromescribeLibrary.handles.add(normalizeHandle(handle));
-    refreshAllActionButtons();
-    showToast(`Watching ${handle || channelId}`);
+  const channelButton = makeButton("➕ Watch channel", () => {
+    subscribeChannel(channelButton, getChannelInfo());
   });
   configureActionButton(channelButton, "watchChannel", channelInfo);
   row.appendChild(channelButton);

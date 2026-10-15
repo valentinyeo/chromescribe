@@ -212,12 +212,32 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return;
   }
 
-  if (msg.action === "addChannel" && msg.channelId) {
-    const label = msg.handle || msg.channelId;
-    const args = `"${msg.channelId}" "${msg.handle || ''}" "${msg.channelName || ''}"`;
-    rememberWatchedChannel({ id: msg.channelId, handle: msg.handle || "", name: msg.channelName || "" })
-      .catch((error) => console.error("Failed to remember watched channel:", error));
-    openTerminal(`cd /d "${PROJECT_DIR}" && .\\add_channel.bat ${args}`, `CS: +channel ${label}`);
+  if (msg.action === "addChannel") {
+    (async () => {
+      const response = await fetch(`${DASHBOARD_BASE}/api/channels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ input: msg.channelId || msg.handle }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || `ChromeScribe API returned ${response.status}`);
+      const channel = payload.data;
+      if (!channel?.id) throw new Error("ChromeScribe API returned no channel");
+      await rememberWatchedChannel({
+        id: channel.id,
+        handle: channel.handle || msg.handle || "",
+        name: channel.name || msg.channelName || "",
+      });
+      return {
+        success: true,
+        alreadyExists: Boolean(payload.already_exists || channel.already_exists),
+        name: channel.name || msg.channelName || "",
+      };
+    })()
+      .then(sendResponse)
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
   }
 
   if (msg.action === "process" && msg.tab) {
