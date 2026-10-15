@@ -6,7 +6,7 @@
   <title>Transcript - ChromeScribe</title>
   <script>
     // Shared theme bootstrap. This block is identical in index.html and
-    // transcript.html on purpose — change both or neither. It runs before
+    // transcript.html on purpose , change both or neither. It runs before
     // paint so the page never flashes the wrong theme.
     (function () {
       var KEY = 'cs-theme';
@@ -253,7 +253,7 @@
       display: block;
     }
 
-    /* Article mode — our summary centered, original linked out (most sites block iframes) */
+    /* Article mode , our summary centered, original linked out (most sites block iframes) */
     .article-reader { flex: 1; overflow-y: auto; background: #181818; display: none; justify-content: center; }
     .article-reader .transcript-content { flex: none; overflow: visible; max-width: 760px; width: 100%; padding: 32px 24px; font-size: 16px; line-height: 1.7; }
     .open-original { display: inline-block; margin-top: 8px; padding: 6px 14px; background: #3ea6ff; color: #000; border-radius: 6px; font-weight: 500; text-decoration: none; font-size: 14px; }
@@ -421,7 +421,7 @@
     }
     .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-    /* Mobile bottom nav bar — hidden on desktop */
+    /* Mobile bottom nav bar , hidden on desktop */
     .nav-bar { display: none; }
     .nav-fab {
       flex: 1;
@@ -492,7 +492,7 @@
     }
     [data-theme="light"] .nav-fab:hover:not(:disabled) { background: #e0e0e0; }
     [data-theme="light"] .nav-counter { color: #555; }
-    /* Video player area stays dark — videos read better against black */
+    /* Video player area stays dark , videos read better against black */
     [data-theme="light"] .video-side,
     [data-theme="light"] .video-wrapper { background: #000; }
 
@@ -560,6 +560,8 @@
           ChromeScribe
         </a>
         <div class="header-btns">
+          <a href="/subscriptions.html" class="btn">Subscriptions</a>
+          <a href="/reports.html" class="btn">Reports</a>
           <button class="btn nav-btn desktop-only nav-prev" onclick="goPrev()" title="Previous (←)" disabled>←</button>
           <button class="btn nav-btn desktop-only nav-next" onclick="goNext()" title="Next (→)" disabled>→</button>
           <button class="btn" id="themeToggle" onclick="csTheme.cycle()" title="Theme" aria-label="Theme">◐</button>
@@ -1108,7 +1110,7 @@
       const prompt = `I'd like to chat about the following transcript: "${title}".\n\nPlease read it, then I'll ask questions.\n\n---\n\n${markdown}`;
       try {
         await navigator.clipboard.writeText(prompt);
-        flashBtn(btn, '✅ Copied — opening Claude');
+        flashBtn(btn, '✅ Copied , opening Claude');
         window.open('https://claude.ai/new', '_blank', 'noopener');
       } catch {
         flashBtn(btn, '❌ Copy failed');
@@ -1194,7 +1196,7 @@
         if (content && !content.querySelector('.summarize-banner')) {
           const banner = document.createElement('div');
           banner.className = 'summarize-banner';
-          banner.textContent = 'Not summarized yet — only the raw transcript is shown. Click ✨ Summarize to generate the TL;DR and article.';
+          banner.textContent = 'Not summarized yet , only the raw transcript is shown. Click ✨ Summarize to generate the TL;DR and article.';
           content.prepend(banner);
         }
       }

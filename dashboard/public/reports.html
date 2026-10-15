@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports · ChromeScribe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --foreground: #fff;
+      --background: #030303;
+      --border: #27272a;
+      --muted: #71717a;
+      --text: #a1a1aa;
+      --accent: #0057ff;
+      --accent-hover: #0066ff;
+      --error: #ef4444;
+      --success: #22c55e;
+      --card: #090909;
+      --card-hover: #111111;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      -webkit-font-smoothing: antialiased;
+    }
+    body { min-height: 100vh; }
+
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      max-width: 900px; margin: 0 auto;
+      padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 600; font-size: 18px;
+      letter-spacing: -0.02em;
+      color: var(--foreground); text-decoration: none;
+    }
+    .logo svg { width: 28px; height: 28px; fill: var(--foreground); }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; height: 36px; padding: 0 14px;
+      font-size: 14px; font-weight: 500;
+      border: none; border-radius: 6px; cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none; font-family: inherit;
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn:hover { background: var(--card-hover); color: var(--foreground); }
+
+    main {
+      max-width: 900px; margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    h1 {
+      font-size: 32px; font-weight: 600;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: var(--muted); font-size: 15px;
+      margin-bottom: 24px;
+    }
+
+    .header-inner, nav { display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .notice { min-height: 24px; font-size: 14px; margin: 8px 0; color: var(--success); }
+    #error { color: var(--error); }
+    #count, .meta, .empty { color: var(--text); font-size: 14px; }
+    .channel-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 16px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 8px;
+    }
+    .channel-info { min-width: 0; overflow-wrap: anywhere; }
+    .channel-name { font-weight: 500; margin-bottom: 6px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 12px; }
+    .channel-name a { color: var(--foreground); text-decoration: none; }
+    .channel-name a:hover { text-decoration: underline; }
+    .empty { padding: 24px 0; }
+    @media (max-width: 600px) {
+      main { padding: 32px 16px; }
+      .header-inner { padding: 16px; }
+      .channel-row { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 24 24">
+          <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+        </svg>
+        ChromeScribe
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="/subscriptions.html" class="btn">Subscriptions</a>
+        <a href="/stats.html" class="btn">Stats</a>
+        <a href="/settings.html" class="btn">Settings</a>
+        <a href="/" class="btn">← Back</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <h1>Reports</h1>
+    <p class="subtitle">Topics viewed through a channel's collective knowledge.</p>
+    <p id="error" class="notice" role="alert"></p>
+    <p id="count" role="status">Loading reports...</p>
+    <div id="reportsList"></div>
+  </main>
+  <script>
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[char]));
+    }
+    async function loadReports() {
+      const response = await fetch('/api/reports', { credentials: 'include' });
+      const payload = await response.json();
+      if (!response.ok || !payload.success || !Array.isArray(payload.data)) throw new Error(payload.error || 'Could not load reports');
+      document.getElementById('count').textContent = `${payload.data.length} reports`;
+      document.getElementById('reportsList').innerHTML = payload.data.map(report => `
+        <div class="channel-row">
+          <div class="channel-info">
+            <p class="channel-name"><a href="/reports/${encodeURIComponent(report.id)}">${escapeHtml(report.title)}</a></p>
+            <div class="meta"><span>${escapeHtml(report.channel)}</span><span>${escapeHtml(report.topic)}</span>
+              <time>${escapeHtml(report.created_at)}</time></div>
+          </div>
+        </div>`).join('') || '<p class="empty">No reports yet. Use chromescribe lens to create one.</p>';
+    }
+    loadReports().catch(err => {
+      document.getElementById('error').textContent = err.message;
+      document.getElementById('count').textContent = 'Reports unavailable';
+    });
+  </script>
+</body>
+</html>

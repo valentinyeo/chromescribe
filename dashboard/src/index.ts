@@ -433,6 +433,46 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
   const path = url.pathname.replace('/api/', '');
 
   try {
+    if ((path === 'reports' && ['GET', 'POST'].includes(request.method)) ||
+        (request.method === 'DELETE' && path.startsWith('reports/'))) {
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS reports (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, channel TEXT NOT NULL, topic TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      if (request.method === 'GET') {
+        const { results } = await env.DB.prepare('SELECT * FROM reports ORDER BY created_at DESC, rowid DESC').all();
+        return jsonResponse(results);
+      }
+      if (request.method === 'DELETE') {
+        const id = path.slice('reports/'.length);
+        if (!/^[a-f0-9]{12}$/.test(id)) return handleError(new Error('Invalid report ID'), 400);
+        const row = await env.DB.prepare('SELECT id FROM reports WHERE id = ?').bind(id).first();
+        if (!row) return handleError(new Error('Report not found'), 404);
+        await env.TRANSCRIPTS.delete(`reports/${id}.html`);
+        await env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(id).run();
+        return jsonResponse({ deleted: true });
+      }
+      let body: any;
+      try { body = await request.json(); } catch { return handleError(new Error('Invalid JSON body'), 400); }
+      if (!body || ['title', 'channel', 'topic', 'html'].some(key =>
+        typeof body[key] !== 'string' || !body[key].trim())) {
+        return handleError(new Error('title, channel, topic and html must be non-empty strings'), 400);
+      }
+      if (new TextEncoder().encode(body.html).byteLength > 2 * 1024 * 1024) {
+        return handleError(new Error('HTML exceeds 2 MB'), 400);
+      }
+      const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+      await env.TRANSCRIPTS.put(`reports/${id}.html`, body.html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+      try {
+        await env.DB.prepare('INSERT INTO reports (id, title, channel, topic) VALUES (?, ?, ?, ?)')
+          .bind(id, body.title, body.channel, body.topic).run();
+      } catch (err) {
+        await env.TRANSCRIPTS.delete(`reports/${id}.html`);
+        throw err;
+      }
+      return jsonResponse({ id, url: `https://chromescribe.yeoux.net/reports/${id}` });
+    }
+
     // GET /api/debug - Debug endpoint
     if (request.method === 'GET' && path === 'debug') {
       return jsonResponse({
@@ -832,7 +872,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
             video_id: videoId,
             title: existing.title,
             already_exists: true,
-            view_url: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${existing.id}`,
+            view_url: `https://chromescribe.yeoux.net/transcript.html?id=${existing.id}`,
             message: `Already transcribed: "${existing.title}". Delete it first to retranscribe.`,
           }, 200);
         }
@@ -915,7 +955,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
             id: transcriptId,
             video_id: videoId,
             title: videoTitle,
-            view_url: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${transcriptId}`,
+            view_url: `https://chromescribe.yeoux.net/transcript.html?id=${transcriptId}`,
           }, 201);
         }
 
@@ -1011,7 +1051,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
               video_id: videoId,
               title: existing.title,
               already_exists: true,
-              view_url: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${existing.id}`,
+              view_url: `https://chromescribe.yeoux.net/transcript.html?id=${existing.id}`,
               message: `Already transcribed: "${existing.title}". Delete it first to retranscribe.`,
             }, 200);
           }
@@ -1173,7 +1213,7 @@ ${srtContent || transcript.text}
           category,
           tags,
           enrichment_errors: enrichmentErrors,
-          view_url: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=${transcriptId}`,
+          view_url: `https://chromescribe.yeoux.net/transcript.html?id=${transcriptId}`,
         }, 201);
       }
 
@@ -1507,8 +1547,21 @@ export default {
       return handleApi(request, env);
     }
 
+    if (/^\/reports\/[a-f0-9]{12}$/.test(url.pathname)) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
+      const object = await env.TRANSCRIPTS.get(`${url.pathname.slice(1)}.html`);
+      if (!object) return new Response('Report not found', { status: 404 });
+      // The report template has inline CSS but no scripts. Sandbox untrusted generated HTML.
+      return new Response(request.method === 'HEAD' ? null : object.body, { headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Security-Policy': "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-popups allow-popups-to-escape-sandbox;",
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+      } });
+    }
+
     // CSP header to allow API calls even when embedded in YouTube iframe
-    const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https: data:; connect-src 'self' https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev https://*.youtube.com https://img.youtube.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;";
+    const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https: data:; connect-src 'self' https://chromescribe.yeoux.net https://*.youtube.com https://img.youtube.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;";
 
     const HTML_HEADERS = {
       'Content-Type': 'text/html; charset=utf-8',
@@ -1559,6 +1612,11 @@ export default {
           headers: HTML_HEADERS,
         });
       }
+    }
+
+    if (url.pathname === '/reports.html') {
+      const object = await env.TRANSCRIPTS.get('reports.html');
+      if (object) return new Response(object.body, { headers: HTML_HEADERS });
     }
 
     // Serve debug page

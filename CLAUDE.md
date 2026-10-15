@@ -32,13 +32,54 @@ Claude Code runs `transcribe <url>` → .srt file
 ```
 
 ### Dashboard Worker (`dashboard/src/index.ts`)
-- **API endpoints**: `GET /api/transcripts`, `GET /api/transcripts/:id`, `GET /api/transcript/:id/content`, `POST /api/transcribe`, `PUT /api/transcripts/:id`, `DELETE /api/transcripts/:id`, `GET /api/search?q=`, channel subscriptions: `GET /api/channels` (includes integer `paused`; `?active=1` returns only active subscriptions), `POST /api/channels {input}`, `PATCH /api/channels/:id {paused: true|false}`, `DELETE /api/channels/:id`, plus the Android share queue: `POST /api/queue`, `GET /api/queue`, `PUT /api/queue/:id`
+- **API endpoints**: `GET /api/transcripts`, `GET /api/transcripts/:id`, `GET /api/transcript/:id/content`, `POST /api/transcribe`, `PUT /api/transcripts/:id`, `DELETE /api/transcripts/:id`, `GET /api/search?q=`, channel subscriptions: `GET /api/channels` (includes integer `paused`; `?active=1` returns only active subscriptions), `POST /api/channels {input}`, `PATCH /api/channels/:id {paused: true|false}`, `DELETE /api/channels/:id`, reports: `POST /api/reports {title, channel, topic, html}`, `GET /api/reports`, `DELETE /api/reports/:id`, and `GET /reports/:id` (sandboxed HTML, no scripts), plus the Android share queue: `POST /api/queue`, `GET /api/queue`, `PUT /api/queue/:id`
 - **POST /api/transcribe** has two modes: JSON body with URL+markdown (from Claude), or multipart form with audio file (uses CF AI Whisper)
 - Video ID parsing: YouTube (`youtube.com/watch`, `youtu.be/`, `/shorts/`) and TikTok (`tiktok.com/@user/video/id` → `tiktok:id`)
-- Static HTML served from R2 bucket (index.html, transcript.html, settings.html, stats.html, subscriptions.html)
+- Static HTML served from R2 bucket (index.html, transcript.html, settings.html, stats.html, subscriptions.html, reports.html)
 - D1 database schema in `dashboard/schema.sql`; the Worker lazily creates an empty `channels` table and safely adds `paused INTEGER NOT NULL DEFAULT 0` to existing tables once per database binding per isolate. There are no seeded subscriptions; populate via `POST /api/channels` after deployment. Pausing skips monitoring without removing the subscription or existing transcripts.
 
 ## Commands
+
+### CLI and channel lenses
+
+`cli/chromescribe` is the Bash CLI, installed via `~/.local/bin/chromescribe` symlink.
+It defaults to https://chromescribe.yeoux.net; `CHROMESCRIBE_API` overrides API calls,
+not public links. Keep Access credentials in `CF_ACCESS_CLIENT_ID` and
+`CF_ACCESS_CLIENT_SECRET`, never in files. Dependencies: curl, jq, column, Python 3;
+learning additionally uses yt-dlp (RSS fallback), git, and hax with Codex access.
+
+- Existing commands: `list [-n N] [--channel <name>] [--json]`, `search`, `get`, `cat`, `url`, `view`.
+- Subscriptions: `channels [--json]`, `subscribe <url|@handle|UC id>`,
+  `unsubscribe <channel>`, `pause <channel>`, `resume <channel>`.
+  Selectors accept exact names/handles case-insensitively, UC IDs, and channel URLs;
+  ambiguous selectors fail instead of choosing silently.
+- `learn <channel> [--max N] [--no-queue]`: subscribe if needed, enumerate the newest
+  30 uploads with yt-dlp or the latest 15 via RSS, check `video_id`, queue missing
+  videos with `{url}`, then distill every current transcript for the channel.
+  `--no-queue` never enqueues. Run learn again after the server queue drains.
+- `cli/lenses.py` handles file-backed Codex map/reduce with complete transcript
+  chunks, per-video notes, and incremental merging. Only transcript IDs absent
+  from VIDEOS.md are fetched again. Completed notes carry source checksums so a
+  failed merge can resume without repeating unchanged distillation. Empty or
+  failed synthesis is not installed.
+- Lenses live in the separate git repository `~/projects/channel-lenses`, under
+  `lenses/<lowercase-handle>/`: VIDEOS.md, KNOWLEDGE.md, SKILL.md, and notes/.
+  The CLI initializes that repository but never commits or pushes. Skills are
+  symlinked as `~/.claude/skills/lens-<handle>`; a blocked symlink prints an exact
+  `ln` command. `CHROMESCRIBE_LENSES` overrides the lens repository for tests.
+- `lens <channel> "<topic>" [--no-publish]`: requires a built lens, ranks relevant
+  citations/titles, reuses per-video evidence notes (maps source detail if missing),
+  checks wording against source transcripts, follows the local
+  report-page skill/template, and creates one cited HTML page. It publishes via
+  `/api/reports` and prints https://chromescribe.yeoux.net/reports/<id>.
+  `--no-publish` saves under the lens repository's reports/ and prints the path.
+- Reports are listed at `/reports.html`. The Worker lazily creates D1's reports
+  table and stores HTML in R2's `reports/<id>.html`. HTML is limited to 2 MB UTF-8.
+  Its CSP allows template CSS/fonts but no scripts, frames, API connections, or forms.
+
+Checks: `node --test cli/test/*.test.mjs` and
+`cd dashboard && node --test test/*.test.mjs`.
+Do not deploy as part of local verification unless explicitly authorized.
 
 ### Deploy Dashboard (REQUIRED after any `dashboard/public/` changes)
 ```bash
@@ -74,7 +115,7 @@ Push to `master` triggers `.github/workflows/deploy.yml` which uploads static fi
 - **Cloudflare account**: Yeo UX (`7865043d9ae730882b77f3d5d670c158`)
 - **D1 database**: `chromescribe-db` (`08532531-b2b5-4922-9e88-7cfdd074928a`)
 - **R2 bucket**: `chromescribe-transcripts` - stores both SRT files and the static HTML dashboard
-- **Worker URL**: `https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/`
+- **Worker URL / public site**: `https://chromescribe.yeoux.net`. Never show or link the workers.dev host to the user.
 - **AI processing**: transcription uses Cloudflare Workers AI Whisper (`@cf/openai/whisper-large-v3-turbo`); summary/classification uses `@cf/google/gemma-4-26b-a4b-it`. All inference is routed through Cloudflare AI Gateway (`default`) and tagged with `project=chromescribe`. No active pipeline requires MiniMax or OpenRouter.
 - **TikTok URLs** are downloaded via `yt-dlp -x --audio-format mp3`, then the local audio is uploaded to the dashboard's `/api/transcribe` (multipart) or chunked through `/api/whisper`. The dashboard's `parseVideoUrl` accepts `tiktok.com/@user/video/id` and stores it as `tiktok:<id>`.
 - **Dashboard is behind Cloudflare Zero Trust** - API calls require `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers (service token creds in `process.sh`, `monitor.sh`, `update_transcript.py`, and `upload_article.py`)

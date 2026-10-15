@@ -1,25 +1,44 @@
 #!/usr/bin/env bash
-# chromescribe — CLI for the ChromeScribe transcript knowledge base.
-# Wraps https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/*
+# chromescribe - CLI for the ChromeScribe transcript knowledge base.
+# Wraps https://chromescribe.yeoux.net/api/*
 
 set -euo pipefail
 
-API="${CHROMESCRIBE_API:-https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev}"
+API="${CHROMESCRIBE_API:-https://chromescribe.yeoux.net}"
+API="${API%/}"
+CLI_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 
 usage() {
   cat <<EOF
-chromescribe — query your transcript knowledge base
+chromescribe - query your transcript knowledge base
 
 Usage:
-  chromescribe list [-n N] [--json]          List transcripts (newest first)
+  chromescribe list [-n N] [--channel <name>] [--json]          List transcripts (newest first)
   chromescribe search <query> [--json]       Search titles/channels/video_id
   chromescribe get <id> [--json]             Show metadata for one transcript
   chromescribe cat <id>                      Print the full markdown to stdout
   chromescribe url <source-url> [--json]     Find transcript by source URL
   chromescribe view <id>                     Print dashboard URL for browser
 
+  chromescribe channels [--json]             List subscriptions by name, including paused
+  chromescribe subscribe <url|@handle|UC id> Subscribe to a channel
+  chromescribe unsubscribe <channel>        Remove a subscription, keep transcripts
+  chromescribe pause <channel>              Pause monitoring
+  chromescribe resume <channel>             Resume monitoring
+  chromescribe learn <channel> [--max N] [--no-queue]
+                                            Subscribe, queue up to 30 newest uploads,
+                                            distill all current channel transcripts
+  chromescribe lens <channel> "<topic>" [--no-publish]
+                                            Generate a cited report, publish to the site
+                                            or print a local HTML path
+
+Channel selectors: exact name, @handle, UC ID, or channel URL (case-insensitive).
+Learning uses yt-dlp with RSS fallback, hax Codex, and Python 3. Lenses live in
+~/projects/channel-lenses/lenses/<handle>, installed as Claude skills.
+Run learn again after the queue drains to incorporate new transcripts.
+
 Env:
-  CHROMESCRIBE_API           Override API base (default: worker URL)
+  CHROMESCRIBE_API           Override API base (default: https://chromescribe.yeoux.net)
   CF_ACCESS_CLIENT_ID        Cloudflare Access service token ID (required: API is gated)
   CF_ACCESS_CLIENT_SECRET    Cloudflare Access service token secret
 
@@ -28,6 +47,8 @@ Examples:
   chromescribe search "karpathy"
   chromescribe cat 42 | glow -
   chromescribe cat 42 > notes.md
+  chromescribe learn "Jake Trinder" --no-queue
+  chromescribe lens "Jake Trinder" "how to get clients from YouTube" --no-publish
 EOF
 }
 
@@ -82,17 +103,22 @@ render_table() {
 }
 
 cmd_list() {
-  local limit=50 json=0
+  local limit=50 json=0 channel=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      -n) limit="$2"; shift 2;;
+      -n) [ $# -ge 2 ] || die "-n requires a number"; limit="$2"; [[ "$limit" =~ ^[1-9][0-9]*$ ]] || die "invalid limit: $limit"; shift 2;;
+      --channel) [ $# -ge 2 ] || die "--channel requires a channel"; channel="$2"; shift 2;;
       --json) json=1; shift;;
       -h|--help) usage; exit 0;;
       *) die "unknown arg: $1";;
     esac
   done
   local data
-  data=$(api_get /api/transcripts | unwrap | jq ".[:$limit]")
+  local name=""
+  if [ -n "$channel" ]; then
+    name=$(resolve_channel "$channel" | jq -r .name)
+  fi
+  data=$(api_get /api/transcripts | unwrap | jq --arg name "$name" --argjson limit "$limit"     '[.[] | select($name == "" or ((.channel // "" | ascii_downcase) == ($name | ascii_downcase)))] | .[:$limit]')
   if [ "$json" = "1" ]; then
     echo "$data"
   else
@@ -144,7 +170,7 @@ cmd_get() {
       "Duration: \(.duration) sec",
       "Words:    \(.word_count)",
       "Created:  \(.created_at)",
-      "View:     https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=\(.id)"
+      "View:     https://chromescribe.yeoux.net/transcript.html?id=\(.id)"
     '
   fi
 }
@@ -188,7 +214,54 @@ cmd_url() {
 cmd_view() {
   local id="${1:-}"
   [ -n "$id" ] || die "view requires an id"
-  echo "https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/transcript.html?id=$id"
+  echo "https://chromescribe.yeoux.net/transcript.html?id=$id"
+}
+
+api_write() {
+  local method="$1" path="$2" body="${3:-}"
+  if [ -n "$body" ]; then
+    api_curl -X "$method" -H 'Content-Type: application/json' --data "$body" "$API$path" | unwrap
+  else
+    api_curl -X "$method" "$API$path" | unwrap
+  fi
+}
+
+resolve_channel() {
+  need python3
+  api_get /api/channels | unwrap | python3 "$CLI_DIR/lenses.py" resolve "$1"
+}
+
+cmd_channels() {
+  [ $# -eq 0 ] || { [ $# -eq 1 ] && [ "$1" = --json ]; } || die "usage: channels [--json]"
+  local data
+  data=$(api_get /api/channels | unwrap | jq 'sort_by(.name | ascii_downcase)')
+  if [ "${1:-}" = --json ]; then
+    echo "$data"
+  else
+    echo "$data" | jq -r '.[] | [.name, .handle, .id, (if .paused == 1 or .paused == true then "paused" else "active" end)] | @tsv'
+  fi
+}
+
+cmd_subscribe() {
+  [ $# -eq 1 ] || die "usage: subscribe <url|@handle|UC id>"
+  api_write POST /api/channels "$(jq -nc --arg input "$1" '{input:$input}')"
+}
+
+cmd_channel_change() {
+  local action="$1"; shift
+  [ $# -eq 1 ] || die "usage: $action <channel>"
+  local id
+  id=$(resolve_channel "$1" | jq -r '.id | @uri')
+  case "$action" in
+    unsubscribe) api_write DELETE "/api/channels/$id";;
+    pause) api_write PATCH "/api/channels/$id" '{"paused":true}';;
+    resume) api_write PATCH "/api/channels/$id" '{"paused":false}';;
+  esac
+}
+
+cmd_lenses() {
+  need python3
+  python3 "$CLI_DIR/lenses.py" "$@"
 }
 
 main() {
@@ -196,6 +269,10 @@ main() {
   [ -n "$cmd" ] || { usage; exit 1; }
   shift
   case "$cmd" in
+    channels) cmd_channels "$@";;
+    subscribe) cmd_subscribe "$@";;
+    unsubscribe|pause|resume) cmd_channel_change "$cmd" "$@";;
+    learn|lens) cmd_lenses "$cmd" "$@";;
     list)   cmd_list   "$@";;
     search) cmd_search "$@";;
     get)    cmd_get    "$@";;
