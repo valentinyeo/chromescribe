@@ -17,7 +17,6 @@ export function parseChannelInput(input) {
   let url;
   try { url = new URL(value); } catch { return null; }
   if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
-  // Reject paths that URL would silently normalize, such as /junk/../@handle.
   if (/\/(?:\.|%2e){1,2}(?:\/|$)/i.test(value)) return null;
   let path;
   try { path = decodeURIComponent(url.pathname); } catch { return null; }

@@ -9,16 +9,11 @@ import android.widget.ListView
 import android.widget.Toast
 import org.json.JSONArray
 
-/** Transcript list. Always renders from disk, then refreshes in the background. */
 class MainActivity : Activity() {
 
     private lateinit var listView: ListView
     private var items = JSONArray()
 
-    // Where the list was. Two things reset it otherwise: the background sync
-    // swapping the adapter a second after launch, and Android reclaiming this
-    // activity while the WebView in ReadActivity is up. Stored in prefs rather
-    // than instance state so it also survives the activity being killed.
     private var scrollPos = 0
     private var scrollTop = 0
 
@@ -65,7 +60,6 @@ class MainActivity : Activity() {
                 runOnUiThread { render(list) }
             } catch (e: Exception) {
                 runOnUiThread {
-                    // Offline is the normal case here, not an error worth shouting about.
                     if (items.length() == 0) toast("Offline and nothing cached yet")
                 }
             }

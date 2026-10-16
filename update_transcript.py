@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
-"""Update an existing transcript on the ChromeScribe dashboard.
-
-Usage:
-    python update_transcript.py <transcript_id> <markdown_file>
-    python update_transcript.py <transcript_id> <markdown_file> <title>
-"""
 import json, sys, urllib.request
 from cf_access import load
 
-# Fix Windows console encoding for emoji/unicode
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET = load()

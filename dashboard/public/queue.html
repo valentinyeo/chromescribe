@@ -146,7 +146,6 @@
 
     function dateValue(value) {
       if (!value) return NaN;
-      // D1 timestamps without an offset are UTC, not browser-local time.
       return Date.parse(/Z$|[+-]\d\d:\d\d$/.test(value) ? value : value.replace(' ', 'T') + 'Z');
     }
 

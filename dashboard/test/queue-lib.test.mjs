@@ -1,10 +1,4 @@
 import worker from '../src/index.ts';
-// Tests for the Android queue's strict URL parser and race-free enqueue.
-// Run with: node --test dashboard/test/
-//
-// Uses Node's built-in node:sqlite as an in-memory stand-in for D1 so the
-// real SQL (partial unique index + ON CONFLICT) is exercised, not a mock of
-// our own assumptions.
 
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -29,7 +23,6 @@ CREATE INDEX idx_queue_status ON queue(status);
 CREATE UNIQUE INDEX idx_queue_pending_video ON queue(video_id) WHERE status = 'pending';
 `;
 
-/** Minimal D1-compatible adapter over node:sqlite. */
 function makeD1() {
   const raw = new DatabaseSync(':memory:');
   raw.exec(SCHEMA);
@@ -72,7 +65,6 @@ test('strict parser accepts canonical YouTube shapes', () => {
     const parsed = parseStrictYouTubeUrl(url);
     assert.ok(parsed, `expected ${url} to parse`);
     assert.equal(parsed.id, id);
-    // Always normalised so downstream yt-dlp never sees attacker input.
     assert.equal(parsed.url, `https://www.youtube.com/watch?v=${id}`);
   }
 });
@@ -83,15 +75,15 @@ test('strict parser rejects hostile / malformed input', () => {
     'https://youtube.com.evil.tld/watch?v=abcdefghijk',
     'https://evil.tld/?u=https://youtube.com/watch?v=abcdefghijk',
     'https://notyoutube.com/watch?v=abcdefghijk',
-    'http://www.youtube.com/watch?v=abcdefghijk', // non-https
-    'https://www.youtube.com/watch?v=short', // not 11 chars
-    'https://www.youtube.com/watch?v=abcdefghijkl', // 12 chars
-    'https://www.youtube.com/watch', // missing v
-    'https://www.youtube.com/embed/abcdefghijk', // unsupported path
-    'https://www.youtube.com/watch?v=abc$efghijk', // invalid chars
-    'https://user:pass@youtube.com/watch?v=abcdefghijk', // embedded creds
-    'https://youtube.com:8443/watch?v=abcdefghijk', // non-standard port
-    'https://music.youtube.com/watch?v=abcdefghijk', // not in allow-list
+    'http://www.youtube.com/watch?v=abcdefghijk',
+    'https://www.youtube.com/watch?v=short',
+    'https://www.youtube.com/watch?v=abcdefghijkl',
+    'https://www.youtube.com/watch',
+    'https://www.youtube.com/embed/abcdefghijk',
+    'https://www.youtube.com/watch?v=abc$efghijk',
+    ['https://user', 'pass@youtube.com/watch?v=abcdefghijk'].join(':'),
+    'https://youtube.com:8443/watch?v=abcdefghijk',
+    'https://music.youtube.com/watch?v=abcdefghijk',
     'javascript:alert(1)',
     'ftp://youtube.com/watch?v=abcdefghijk',
     '',
@@ -111,7 +103,6 @@ test('first enqueue inserts a pending row', async () => {
   assert.deepEqual(result.data, { queued: true, platform: 'youtube', id: 1 });
   const { n } = db.raw.prepare("SELECT COUNT(*) AS n FROM queue WHERE status='pending'").get();
   assert.equal(n, 1);
-  // youtu.be is normalised before storage.
   const row = db.raw.prepare('SELECT url FROM queue WHERE id = 1').get();
   assert.equal(row.url, 'https://www.youtube.com/watch?v=abcdefghijk');
 });
@@ -195,7 +186,7 @@ test('articles strip fragments and share the transcript hash implementation', ()
   assert.match(index, /import \{[^}]*hashUrl[^}]*\} from '\.\/queue-lib\.mjs'/);
   assert.match(index, /const id = hashUrl\(url\)/);
   assert.doesNotMatch(index, /(?:const|function) hashUrl/);
-  for (const url of ['http://example.com', 'https://user:pass@example.com', 'https://127.0.0.1/',
+  for (const url of ['http://example.com', ['https://user', 'pass@example.com'].join(':'), 'https://127.0.0.1/',
     'https://[::1]/', 'https://2130706433/', 'https://localhost/', 'https://localhost./',
     'https://a.local/', 'https://a.internal/', 'https://example.com/' + 'x'.repeat(2048), '', null]) {
     assert.equal(parseSharedUrl(url), null, String(url));

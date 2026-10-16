@@ -13,13 +13,6 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-/**
- * Dashboard API + the on-disk mirror that makes summaries readable offline.
- *
- * Cloudflare Access accepts the service-token headers without a redirect and
- * hands back a CF_Authorization cookie. The jar keeps it so later requests
- * reuse the token instead of minting a fresh JWT on every call.
- */
 object Api {
     private val cookies = mutableListOf<Cookie>()
 
@@ -52,13 +45,11 @@ object Api {
     fun postJson(path: String, json: String): String =
         exec(builder(path).post(json.toRequestBody("application/json".toMediaType())).build())
 
-    /** Queue a URL shared from another app. Returns the API's data object. */
     fun queue(url: String): JSONObject {
         val body = postJson("/api/queue", JSONObject().put("url", url).toString())
         return JSONObject(body).getJSONObject("data")
     }
 
-    // --- offline mirror -------------------------------------------------
 
     private fun indexFile(ctx: Context) = File(ctx.filesDir, "index.json")
     fun contentFile(ctx: Context, id: String) = File(ctx.filesDir, "$id.md")
@@ -66,11 +57,6 @@ object Api {
     fun cachedIndex(ctx: Context): JSONArray =
         indexFile(ctx).takeIf { it.exists() }?.let { JSONArray(it.readText()) } ?: JSONArray()
 
-    /**
-     * Refresh the list, then download the markdown we don't have yet — newest
-     * first, capped, so a first run doesn't pull the whole archive over mobile
-     * data. Each subsequent open only fetches what arrived since.
-     */
     fun sync(ctx: Context, limit: Int = 40): JSONArray {
         val list = JSONArray(JSONObject(get("/api/transcripts")).getJSONArray("data").toString())
         indexFile(ctx).writeText(list.toString())
@@ -86,7 +72,6 @@ object Api {
                 file.writeText(get("/api/transcript/$id/content"))
                 fetched++
             } catch (e: Exception) {
-                // One bad transcript shouldn't abort the whole sync.
             }
         }
         return list

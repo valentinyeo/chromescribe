@@ -7,7 +7,6 @@ if (fileInput && fileInput.files[0]) {
   formData.append('audio', fileInput.files[0]);
 }
 
-// Test via fetch API
 fetch('https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcribe', {
   method: 'POST',
   body: formData

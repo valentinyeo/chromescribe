@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""Upload an extracted article to the ChromeScribe dashboard.
-
-Usage:
-    python upload_article.py <url> <article_md_file> [title]
-
-Reads the trafilatura-extracted markdown and POSTs it to the dashboard API
-wrapped in the standard ChromeScribe markdown envelope.
-"""
 import json, re, sys, urllib.request
 from datetime import date
 from cf_access import load
@@ -28,11 +20,6 @@ with open(md_file, 'r', encoding='utf-8') as f:
 
 title = cli_title
 
-# Jina Reader format:
-#   Title: <title>
-#   URL Source: <url>
-#   Markdown Content:
-#   <markdown body>
 jina_title = re.match(r'^\s*Title:\s*(.+?)\s*\n', raw)
 if jina_title:
     if not title:
@@ -41,7 +28,6 @@ if jina_title:
     if mc:
         raw = raw[mc.end():]
 
-# trafilatura-style YAML frontmatter fallback
 fm_match = re.match(r'^---\n(.*?)\n---\n', raw, re.DOTALL)
 if fm_match:
     fm = fm_match.group(1)
@@ -55,7 +41,6 @@ if not title:
     h = re.search(r'^#\s+(.+)$', raw, re.MULTILINE)
     title = h.group(1).strip() if h else url
 
-# Drop duplicate leading H1 that matches the title (common with Jina output)
 raw = re.sub(r'^\s*#\s+' + re.escape(title) + r'\s*\n+', '', raw)
 
 article_text = raw.strip()

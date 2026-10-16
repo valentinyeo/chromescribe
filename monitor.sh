@@ -1,8 +1,4 @@
 #!/bin/bash
-# ChromeScribe Channel Monitor
-# Checks subscribed YouTube channels for today's new videos,
-# transcribes them via pi agent, uploads to dashboard, notifies via Telegram.
-# Usage: ./monitor.sh [--force VIDEO_ID [TITLE]]
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
 
@@ -14,15 +10,12 @@ PROCESSED_FILE="$SCRIPT_DIR/.processed_videos"
 TMPDIR="$(mktemp -d /tmp/chromescribe.XXXXXX)"
 DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
 
-# Ensure deno is in PATH for yt-dlp
 export PATH="$HOME/.local/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
 export DISPLAY=:0
 
-# Telegram config (hardcoded - cron can't source .bashrc interactive-only exports)
 TG_TOKEN="${TELEGRAM_TINYDICTATION_BOT_TOKEN:-}"
 TG_CHAT="${TELEGRAM_TINYDICTATION_CHAT_ID:-2068947468}"
 
-# Cleanup on exit - no leftovers
 cleanup() {
     rm -rf "$TMPDIR"
 }
@@ -32,7 +25,6 @@ log() {
     echo "[$(date '+%H:%M:%S')] $*"
 }
 
-# All dashboard API calls use curl (Python urllib breaks on CF Access redirects)
 api_call() {
     local method="$1" path="$2"
     shift 2
@@ -47,11 +39,10 @@ api_call() {
 }
 
 send_telegram() {
-    [ -n "$TG_TOKEN" ] || return 0  # token comes from the environment only
+    [ -n "$TG_TOKEN" ] || return 0
     local msg="$1"
     local photo="${2:-}"
     if [ -n "$photo" ]; then
-        # Send with thumbnail photo
         curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendPhoto" \
             -d chat_id="$TG_CHAT" \
             -d parse_mode="HTML" \
@@ -67,9 +58,6 @@ send_telegram() {
 
 get_todays_videos() {
     local channel_id="$1"
-    # `today` arg kept for backward compat but ignored - we now use a 36h window
-    # so videos published shortly before midnight UTC aren't permanently skipped
-    # (the .processed_videos file dedupes anything we've already handled).
     python3 -c "
 import urllib.request, re, sys
 from datetime import datetime, timedelta, timezone
@@ -95,10 +83,6 @@ for e in entries:
 "
 }
 
-# TikTok has no RSS. yt-dlp's profile extractor is frequently broken by TikTok
-# API changes, so fall back to scraping the SSR payload of the profile page.
-# Both paths return video IDs only (newest first); titles/thumbnails come from
-# TikTok's oEmbed API at processing time.
 get_tiktok_videos() {
     local handle="$1"
     local ids
@@ -108,7 +92,6 @@ get_tiktok_videos() {
         echo "$ids"
         return 0
     fi
-    # stderr: this function's stdout is the video-ID list
     echo "  yt-dlp listing failed, scraping profile page..." >&2
     python3 - "$handle" <<'PYEOF'
 import re, sys, urllib.request
@@ -133,8 +116,6 @@ print("\n".join(out))
 PYEOF
 }
 
-# Title + thumbnail for a TikTok video via public oEmbed. Prints "title\tthumb".
-# TikTok blocks datacenter IPs - this only works from residential networks.
 tiktok_meta() {
     curl -s --max-time 20 "https://www.tiktok.com/oembed?url=$1" | python3 -c "
 import sys, json
@@ -168,10 +149,8 @@ process_video() {
 
     log "Processing: $title ($url)"
 
-    # Step 1: Download audio
     local audio_file="$TMPDIR/${video_id}.mp3"
     log "  Downloading audio..."
-    # Chrome cookies are only needed for YouTube (age-gated/consent); TikTok is public
     local yt_extra=()
     case "$url" in
         *tiktok.com*) ;;
@@ -190,15 +169,11 @@ process_video() {
     fi
     log "  Audio downloaded: $(du -h "$audio_file" | cut -f1)"
 
-    # Step 2: Transcribe audio
-    # CF AI Whisper has ~30s worker timeout - can only handle ~2 min of audio per request.
-    # Files >500KB (roughly >3 min at any quality) get split into 1-min compressed chunks.
     local file_size
     file_size=$(stat -c%s "$audio_file")
     local transcript_id
 
     if [ "$file_size" -gt 500000 ]; then
-        # Split into 1-min chunks (compressed mono 24kbps 16kHz - ~180KB/min, fine for speech)
         log "  Chunked transcription ($(du -h "$audio_file" | cut -f1))..."
         local chunk_dir="$TMPDIR/chunks_${video_id}"
         mkdir -p "$chunk_dir"
@@ -230,7 +205,6 @@ process_video() {
         fi
         log "  Transcribed $chunk_count chunks"
 
-        # Upload combined transcript as markdown via JSON mode
         local combined_file="$TMPDIR/combined_${video_id}.txt"
         echo "$combined_text" > "$combined_file"
         local title_file="$TMPDIR/title_${video_id}.txt"
@@ -252,7 +226,6 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
             return 1
         fi
     else
-        # Small file: direct upload
         log "  Uploading audio for transcription..."
         local upload_result
         upload_result=$(api_call POST /api/transcribe \
@@ -269,9 +242,6 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
     fi
     log "  Transcribed and uploaded as #$transcript_id"
 
-    # Step 3: Summarize and classify through Cloudflare Workers AI + AI Gateway.
-    # Non-fatal on failure: the raw transcript is already uploaded and the
-    # dashboard "Summarize" button is the recovery path, so we don't block.
     log "  Analyzing with Cloudflare Workers AI..."
     local analyze_result
     analyze_result=$(api_call POST "/api/transcripts/$transcript_id/analyze" --max-time 240)
@@ -282,20 +252,12 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
         log "  Analysis complete (word_count=$sum_wc, category=$cs_cat)"
     else
         log "  WARNING: analysis failed - raw transcript stands, use the dashboard Summarize button. Response: $analyze_result"
-        # The Android queue asks for a complete transcribe+summary, so it sets
-        # REQUIRE_ANALYZE=1 and treats this as a failure. Ordinary cron monitor
-        # runs leave it unset and keep the best-effort behavior above.
         if [ "${REQUIRE_ANALYZE:-0}" = "1" ]; then
             log "  ERROR: analysis required (REQUIRE_ANALYZE=1) but failed"
             return 1
         fi
     fi
 
-    # Step 3b: Warm the read-aloud audio. Generating it on the first tap costs
-    # about 90 seconds of staring at a loading button; doing it here means the
-    # R2 copy is already there by the time the transcript is opened. Best
-    # effort - a failure here must not fail the run, and the endpoint
-    # regenerates on demand.
     log "  Warming read-aloud audio..."
     if api_call GET "/api/speak/$transcript_id" --max-time 300 --fail -o /dev/null; then
         log "  Read-aloud audio cached"
@@ -303,7 +265,6 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
         log "  WARNING: read-aloud warm-up failed - it will generate on first play"
     fi
 
-    # Step 4: Send Telegram notification with ChromeScribe URL + thumbnail
     local cs_url="https://chromescribe.yeoux.net/transcript.html?id=$transcript_id"
     send_telegram "$(printf '📝 <b>New transcript</b>\n<b>%s</b>\n<a href="%s">View in ChromeScribe</a>' "$title" "$cs_url")" "$thumb_url"
 
@@ -311,7 +272,6 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
     log "  Done: $title"
 }
 
-# --- Main ---
 
 TODAY=$(date +%Y-%m-%d)
 FORCE_VIDEO=""
@@ -323,7 +283,6 @@ if [ "${1:-}" = "--force" ] && [ -n "${2:-}" ]; then
     log "Force mode: processing video $FORCE_VIDEO"
 fi
 
-# Ensure processed file exists
 touch "$PROCESSED_FILE"
 
 if [ -n "$FORCE_VIDEO" ]; then
@@ -351,7 +310,6 @@ if [ -n "$FORCE_VIDEO" ]; then
     exit 0
 fi
 
-# The dashboard owns subscriptions; channels.txt is an offline fallback only.
 if api_call GET "/api/channels?active=1" --fail --max-time 30 | python3 -c '
 import json, re, sys
 try:
@@ -383,7 +341,6 @@ log "Checking channels for new videos ($TODAY)..."
 
 NEW_COUNT=0
 while IFS= read -r line; do
-    # Skip comments and empty lines
     line=$(echo "$line" | sed 's/#.*//' | xargs)
     [ -z "$line" ] && continue
 
@@ -394,11 +351,6 @@ while IFS= read -r line; do
         handle="${handle#@}"
         log "Checking TikTok channel: @${handle}"
 
-        # First run: seed the current backlog as processed so we don't
-        # transcribe the channel's entire history - only new videos from now on.
-        # Only seed from a full listing (>= 10 ids): TikTok sometimes serves a
-        # degraded page with a couple of ids, and seeding from that would later
-        # treat the whole backlog as new.
         SEED_FILE="$SCRIPT_DIR/.seeded_tiktok_${handle}"
         if [ ! -f "$SEED_FILE" ]; then
             TT_LIST=$(get_tiktok_videos "$handle")
@@ -415,8 +367,6 @@ while IFS= read -r line; do
             continue
         fi
 
-        # Cap per run: a listing hiccup (e.g. a degraded page surfacing old
-        # pinned videos as "new") must not trigger a transcription flood
         tt_new=0
         while IFS= read -r video_id; do
             [ -z "$video_id" ] && continue
@@ -447,7 +397,6 @@ while IFS= read -r line; do
     while IFS=$'\t' read -r video_id title; do
         [ -z "$video_id" ] && continue
 
-        # Skip already processed
         if grep -qF "$video_id" "$PROCESSED_FILE"; then
             log "  Already processed: $video_id ($title)"
             continue

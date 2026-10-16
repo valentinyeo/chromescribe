@@ -154,8 +154,6 @@ function makeIconButton(label, svgMarkup, onClick) {
   button.setAttribute("aria-label", label);
   button.innerHTML = svgMarkup;
 
-  // YouTube makes the whole card clickable, so keep these actions from
-  // activating the underlying video link.
   for (const eventName of ["pointerdown", "mousedown"]) {
     button.addEventListener(eventName, (event) => event.stopPropagation());
   }

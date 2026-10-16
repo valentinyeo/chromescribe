@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# chromescribe - CLI for the ChromeScribe transcript knowledge base.
-# Wraps https://chromescribe.yeoux.net/api/*
 
 set -euo pipefail
 
@@ -58,13 +56,10 @@ need() { command -v "$1" >/dev/null 2>&1 || die "missing dep: $1"; }
 need curl
 need jq
 
-# Cloudflare Zero Trust: the dashboard requires a service token.
-# Expose via env so other projects can set their own creds.
 CF_ID="${CF_ACCESS_CLIENT_ID:-}"
 CF_SECRET="${CF_ACCESS_CLIENT_SECRET:-}"
 
 api_curl() {
-  # Usage: api_curl <extra-curl-args...> -- <path>
   local args=("-fsSL")
   if [ -n "$CF_ID" ] && [ -n "$CF_SECRET" ]; then
     args+=(-H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET")
@@ -76,18 +71,15 @@ api_get() {
   api_curl "$API$1" || die "API request failed: $1 (check CF_ACCESS_CLIENT_ID/SECRET if behind Zero Trust)"
 }
 
-# Extract .data from the wrapped JSON response. Fails loudly if success=false.
 unwrap() {
   jq -e 'if .success == false then error("API error: " + (.error // "unknown")) else .data end'
 }
 
 fmt_row() {
-  # Input: one transcript JSON object per line. Output: tab-separated table row.
   jq -r '[.id, (.created_at // "")[0:10], (.channel // "")[0:20], (.duration_formatted // ""), (.word_count|tostring), .title] | @tsv'
 }
 
 render_table() {
-  # Reads JSON array from stdin, prints aligned table.
   local data
   data=$(cat)
   if [ "$(echo "$data" | jq 'length')" = "0" ]; then
@@ -178,7 +170,6 @@ cmd_get() {
 cmd_cat() {
   local id="${1:-}"
   [ -n "$id" ] || die "cat requires an id"
-  # /api/transcript/:id/content returns raw text/plain markdown, no wrapping.
   api_curl "$API/api/transcript/$id/content" || die "failed to fetch content for id=$id"
 }
 
@@ -192,11 +183,9 @@ cmd_url() {
     esac
   done
   [ -n "$src" ] || die "url requires a source URL"
-  # Extract video_id from URL, then match in full list.
   local vid
   vid=$(echo "$src" | grep -oE '(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[a-zA-Z0-9_-]{11}' | grep -oE '[a-zA-Z0-9_-]{11}$' || true)
   if [ -z "$vid" ]; then
-    # Try TikTok
     local tt
     tt=$(echo "$src" | grep -oE 'tiktok\.com/@[^/]+/video/[0-9]+' | grep -oE '[0-9]+$' || true)
     [ -n "$tt" ] || die "could not parse video id from URL"
@@ -238,7 +227,6 @@ cmd_channels() {
   if [ "${1:-}" = --refresh ]; then
     while IFS= read -r row; do
       id=$(echo "$row" | jq -r '.id | @uri')
-      # Look the handle up from here too: YouTube often blocks the Worker's own lookup
       hint=$(curl -s --max-time 15 -H 'Accept-Language: en' -b 'SOCS=CAI' "https://www.youtube.com/channel/$id" |
         grep -oE '"vanityChannelUrl":"https?://(www\.)?youtube\.com/@[^"/]+' | head -1 | sed 's|.*/||') || hint=
       if refreshed=$(api_write POST "/api/channels/$id/refresh" "$(jq -nc --arg h "$hint" 'if $h == "" then {} else {handle: $h} end')"); then

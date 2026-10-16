@@ -1,9 +1,4 @@
 #!/bin/bash
-# ChromeScribe processor
-# Handles both video (YouTube/TikTok) and article URLs.
-# Phase 1: extract raw content + upload (reliable, no AI)
-# Phase 2: Cloudflare Workers AI summarizes + classifies (best-effort)
-# Usage: ./process.sh <url>
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
 
@@ -109,20 +104,14 @@ except: print('unknown error')
 }
 
 if is_video "$URL"; then
-    # ---------- VIDEO FLOW (Cloudflare Workers AI Whisper) ----------
     echo ">>> Phase 1: Downloading audio + transcribing via Cloudflare..."
 
     TS=$(date +%s)
     TMPDIR="$(mktemp -d "/tmp/chromescribe.${TS}.XXXX")"
     trap 'rm -rf "$TMPDIR"' EXIT
 
-    # Curl on Windows is a native binary that can't read MSYS-style /tmp paths.
-    # Convert paths via cygpath when available; fall back to the raw path on Linux.
     winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
 
-    # Avoid downloading or transcribing media that is already in ChromeScribe.
-    # The API query is also filtered locally so this remains compatible with an
-    # older deployed Worker that still returns the full transcript list.
     VIDEO_ID=$(URL="$URL" "$PYTHON" -c '
 import os, re
 from urllib.parse import urlparse, parse_qs
@@ -168,9 +157,6 @@ except Exception:
         fi
     fi
 
-    # yt-dlp downloads in the original format; ffmpeg converts to mp3.
-    # `-S vcodec:h264` prefers h264 over h265/bytevc1 (TikTok defaults to h265,
-    # which Windows ffmpeg builds often can't decode).
     DOWNLOAD_TEMPLATE="$TMPDIR/raw.%(ext)s"
     TITLE_FILE="$TMPDIR/title.txt"
     CANONICAL_URL_FILE="$TMPDIR/url.txt"
@@ -300,7 +286,6 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}, ensure_as
     echo "=== Done ==="
     exit 0
 else
-    # ---------- ARTICLE FLOW ----------
     ARTICLE_FILE="article_$(date +%s).md"
     trap 'rm -f "$ARTICLE_FILE"' EXIT
     STATUS_ID=$("$PYTHON" fxtwitter_article.py --status-id "$URL")

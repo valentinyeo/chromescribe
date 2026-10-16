@@ -21,11 +21,12 @@ ChromeScribe turns YouTube videos, TikToks and web articles into transcripts wit
 ## Test
 
 ```bash
+node tools/strip-comments.mjs --check .
 node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
 ```
 
-No package.json and no build step. Every PR runs both in CI. Do not deploy as part of local verification unless explicitly authorized.
+No package.json and no build step. Every PR runs these in CI. No code comments: CI fails on any; `node tools/strip-comments.mjs .` removes them. Do not deploy as part of local verification unless explicitly authorized.
 
 ## Ship
 

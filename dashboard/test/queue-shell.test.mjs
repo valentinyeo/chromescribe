@@ -1,9 +1,3 @@
-// End-to-end tests for queue.sh with a mocked curl and monitor.sh.
-// Proves the drainer never reports success when the API, downloader, or
-// mark-done call fails, and that malformed-but-valid-JSON queue payloads abort
-// instead of being silently treated as an empty queue.
-//
-// Run with: node --test dashboard/test/
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -371,7 +365,6 @@ test('failed processing claim skips downloader and never sends a terminal status
 });
 
 test('failure payload retains last meaningful ERROR, strips ANSI and secrets, and uses valid bounded JSON', () => {
-  // Split so secret scanners don't read the fake login as a real one
   const fakeLoginUrl = 'https://user' + ':' + 'pass@host/path?token=secret';
   const r = runQueue({ failVideo: 'abcdefghijk', failureOutput: `\x1b[31mERROR: yt-dlp test-secret test-id ${fakeLoginUrl} "bad"\x1b[0m\ncleanup finished\n\n` });
   try {

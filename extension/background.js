@@ -1,4 +1,4 @@
-importScripts('tiktok-saves.js'); // TikTok Favourites -> ChromeScribe queue
+importScripts('tiktok-saves.js');
 const PROJECT_DIR = "C:/Users/valen/Documents/GitHub/chromescribe";
 const TERMINAL_BASE = "http://localhost:7681/";
 const DASHBOARD_BASE = "https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev";
@@ -40,16 +40,13 @@ function isValidUrl(url) {
 function deriveTitle(url) {
   try {
     const u = new URL(url);
-    // YouTube: show video ID
     if (u.hostname.includes("youtube.com") || u.hostname === "youtu.be") {
       const id = u.searchParams.get("v") || u.pathname.split("/").pop();
       return `CS: youtube/${id}`;
     }
-    // TikTok: show path
     if (u.hostname.includes("tiktok.com")) {
       return `CS: tiktok${u.pathname.slice(0, 30)}`;
     }
-    // Articles: show domain
     return `CS: ${u.hostname.replace("www.", "")}`;
   } catch {
     return "ChromeScribe";
@@ -58,7 +55,6 @@ function deriveTitle(url) {
 
 function cleanPageTitle(title) {
   if (!title) return null;
-  // Strip common suffixes: " - YouTube", " | Site Name", etc.
   return title.replace(/\s*[-|]\s*YouTube\s*$/i, "").trim() || null;
 }
 
@@ -192,12 +188,10 @@ async function rememberWatchedChannel(channel) {
   libraryStatusCachedAt = 0;
 }
 
-// Icon click — open terminal directly
 chrome.action.onClicked.addListener((tab) => {
   processOrOpen(tab);
 });
 
-// Popup button clicks (for fallback)
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.action === "getLibraryStatus") {
     getLibraryStatus()
@@ -248,7 +242,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 });
 
-// Context menu
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "send-to-pi",

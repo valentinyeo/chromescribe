@@ -1,4 +1,3 @@
-// Estimate speech timing without changing the stored transcript or its whitespace.
 export function addEstimatedTimestamps(text, duration, videoId) {
   if (videoId.startsWith('article:') || !Number.isFinite(duration) || duration <= 0) return text;
   const words = [...text.matchAll(/\S+/g)];

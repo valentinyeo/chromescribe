@@ -5,10 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 
-/**
- * Share target. The YouTube app sends "Title https://youtu.be/xxxx" as one
- * blob of text, so pull the URL out rather than trusting the whole string.
- */
 class ShareActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {

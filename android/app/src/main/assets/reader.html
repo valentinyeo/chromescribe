@@ -28,7 +28,6 @@
 <script>
   const markdown = __MARKDOWN__;
 
-  // Same renderer as the dashboard's transcript.html — keep the two in step.
   function parseMarkdown(text) {
     const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`\[\]]+)/g;
     text = text.replace(urlRegex, '<a href="$1">$1</a>');

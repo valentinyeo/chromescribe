@@ -1,4 +1,3 @@
-// Get the URL from the extension and load it in the iframe
 chrome.runtime.sendMessage({ action: "getTerminalUrl" }, (response) => {
   if (response && response.url) {
     document.getElementById("loading").style.display = "none";

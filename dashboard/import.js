@@ -1,6 +1,3 @@
-/**
- * Import existing markdown files to ChromeScribe Dashboard
- */
 
 const fs = require('fs');
 const path = require('path');
@@ -63,7 +60,6 @@ async function importFile(filePath) {
     return { file: filename, status: 'skipped', reason: 'no URL' };
   }
   
-  // Extract video ID from URL
   let videoId = null;
   const ytMatch = url.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/);
   if (ytMatch) {
@@ -73,7 +69,6 @@ async function importFile(filePath) {
     if (ttMatch) videoId = `tiktok:${ttMatch[1]}`;
   }
 
-  // Try to extract channel from content (look for "by ChannelName" or similar patterns)
   let channel = url.includes('tiktok.com') ? 'TikTok' : 'YouTube';
   const channelMatch = content.match(/\*\*Channel:\*\*\s*(.+)/i);
   if (channelMatch) channel = channelMatch[1].trim();
@@ -108,7 +103,6 @@ async function main() {
   console.log('🚀 ChromeScribe Dashboard Importer\n');
   console.log('=' .repeat(50));
   
-  // Get all markdown files
   const files = fs.readdirSync(OUTPUT_DIR)
     .filter(f => f.endsWith('.md'))
     .map(f => path.join(OUTPUT_DIR, f))
@@ -122,7 +116,6 @@ async function main() {
     const result = await importFile(file);
     results.push(result);
     console.log('');
-    // Small delay between requests to be nice to the API
     await new Promise(r => setTimeout(r, 500));
   }
   
@@ -133,7 +126,6 @@ async function main() {
   console.log(`   Skipped: ${results.filter(r => r.status === 'skipped').length}`);
   console.log(`   Failed: ${results.filter(r => r.status === 'error' || r.status === 'failed').length}`);
   
-  // Save results
   const summaryPath = path.join(__dirname, 'import-results.json');
   fs.writeFileSync(summaryPath, JSON.stringify(results, null, 2));
   console.log(`\n💾 Results saved to: ${summaryPath}`);

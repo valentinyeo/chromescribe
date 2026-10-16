@@ -23,18 +23,15 @@
       result.innerHTML = '<p>Testing...</p>';
       
       try {
-        // Test 1: Get transcript metadata
         const metaRes = await fetch(`${API}/transcripts/7`);
         const meta = await metaRes.json();
         result.innerHTML += `<p class="${meta.success ? 'success' : 'error'}">Meta API: ${meta.success ? 'OK' : 'FAIL'}</p>`;
         result.innerHTML += `<p>Title: ${meta.data?.title || 'N/A'}</p>`;
         
-        // Test 2: Get transcript content
         const contentRes = await fetch(`${API}/transcript/7/content`);
         const content = await contentRes.text();
         result.innerHTML += `<p class="${content ? 'success' : 'error'}">Content API: ${content ? 'OK (' + content.length + ' chars)' : 'FAIL'}</p>`;
         
-        // Show first 200 chars
         result.innerHTML += `<h3>Content Preview:</h3><pre>${content.substring(0, 500)}</pre>`;
         
       } catch (err) {
@@ -42,7 +39,6 @@
       }
     }
     
-    // Auto-test on load
     testAPI();
   </script>
 </body>

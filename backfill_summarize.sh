@@ -1,7 +1,4 @@
 #!/bin/bash
-# One-off backfill: run Phase 2 (server-side summarize) on every raw-only transcript.
-# Re-runnable — already-structured transcripts can be passed too (they just get re-summarized).
-# Usage: ./backfill_summarize.sh "id1 id2 id3 ..."
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
 

@@ -1,8 +1,3 @@
-// Polls the logged-in user's TikTok Favourites and enqueues new videos in
-// ChromeScribe (/api/queue). The first successful run only records what is
-// already saved, so old favourites are never imported.
-// Service token lives in gitignored config.js (self.CS_ACCESS = { id, secret }).
-// A missing config must not take down the rest of the extension.
 try { importScripts('config.js'); } catch (e) { console.warn('[tiktok-saves] config.js missing'); }
 
 const SEC_UID = 'MS4wLjABAAAAO8vjkqSS1JkvuHoW-QqfEGHehWGnNUw7e__oQOp6csS2ko6HkiSgZOLvWDR6GPph';
@@ -46,9 +41,8 @@ async function check() {
   const fresh = items.filter((i) => !known.has(i.id));
   const queued = [];
   const failed = [];
-  // Oldest first so the dashboard order matches save order.
   for (const item of fresh.reverse()) {
-    if (item.imagePost) { known.add(item.id); continue; } // photo slideshows have no audio to transcribe
+    if (item.imagePost) { known.add(item.id); continue; }
     const url = 'https://www.tiktok.com/@' + item.author.uniqueId + '/video/' + item.id;
     try {
       const res = await fetch(QUEUE_URL, {
@@ -65,7 +59,7 @@ async function check() {
       known.add(item.id);
       queued.push(url);
     } catch (e) {
-      failed.push(url + ': ' + e.message); // not marked seen, retried next run
+      failed.push(url + ': ' + e.message);
     }
   }
   await chrome.storage.local.set({ seen: [...known].slice(-MAX_SEEN) });

@@ -1,7 +1,4 @@
 #!/bin/bash
-# Regenerate TL;DR + "The Article" for transcripts missing them.
-# All AI inference runs remotely through Cloudflare Workers AI + AI Gateway.
-# Usage: ./backfill_summaries.sh [id1 id2 ...] (defaults to auto-discovered list)
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
 

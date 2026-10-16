@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 const source = readFileSync(new URL('../../monitor.sh', import.meta.url), 'utf8');
 const apiCall = source.slice(source.indexOf('api_call() {'), source.indexOf('\nsend_telegram()'));
-const channelBlock = source.slice(source.indexOf('# The dashboard owns subscriptions;'), source.indexOf('log "Checking channels for new videos'));
+const channelBlock = source.slice(source.indexOf('if api_call GET "/api/channels?active=1"'), source.indexOf('log "Checking channels for new videos'));
 const id = 'UC9-XlrmeMEAdIha_XBuHp1w';
 
 function run(payload, exit = 0) {
@@ -48,7 +48,7 @@ test('monitor maps API rows to channel lines and uses existing Access headers', 
     assert.ok(result.args.split('\n').includes(arg), arg);
   }
   assert.match(source, /done < "\$CHANNELS_FILE"/);
-  assert.ok(source.indexOf('if [ -n "$FORCE_VIDEO" ]; then') < source.indexOf('# The dashboard owns subscriptions;'));
+  assert.ok(source.indexOf('if [ -n "$FORCE_VIDEO" ]; then') < source.indexOf('if api_call GET "/api/channels?active=1"'));
 });
 
 test('monitor falls back for transport/HTTP errors, bad JSON, and malformed rows', () => {

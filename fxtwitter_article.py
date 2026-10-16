@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Extract X post IDs and render FXTwitter articles/posts for upload_article.py."""
 import json
 import re
 import sys

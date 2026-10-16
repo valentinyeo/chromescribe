@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Transcript - ChromeScribe</title>
   <script>
-    // Shared theme bootstrap. This block is identical in index.html and
-    // transcript.html on purpose , change both or neither. It runs before
-    // paint so the page never flashes the wrong theme.
     (function () {
       var KEY = 'cs-theme';
       var ORDER = ['system', 'dark', 'light'];
@@ -34,7 +31,6 @@
         },
         cycle: function () { window.csTheme.set(ORDER[(ORDER.indexOf(choice()) + 1) % ORDER.length]); }
       };
-      // Following the device means following it as it changes, not just at load.
       mq.addEventListener('change', function () { if (choice() === 'system') paint('system'); });
       paint(choice());
     })();
@@ -253,7 +249,6 @@
       display: block;
     }
 
-    /* Article mode , our summary centered, original linked out (most sites block iframes) */
     .article-reader { flex: 1; overflow-y: auto; background: #181818; display: none; justify-content: center; }
     .article-reader .transcript-content { flex: none; overflow: visible; max-width: 760px; width: 100%; padding: 32px 24px; font-size: 16px; line-height: 1.7; }
     .open-original { display: inline-block; margin-top: 8px; padding: 6px 14px; background: #3ea6ff; color: #000; border-radius: 6px; font-weight: 500; text-decoration: none; font-size: 14px; }
@@ -421,7 +416,6 @@
     }
     .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-    /* Mobile bottom nav bar , hidden on desktop */
     .nav-bar { display: none; }
     .nav-fab {
       flex: 1;
@@ -453,7 +447,6 @@
       font-variant-numeric: tabular-nums;
     }
 
-    /* ---------- Light theme (manual toggle or auto via prefers-color-scheme) ---------- */
     [data-theme="light"] html,
     [data-theme="light"] body { background: #ffffff; color: #111; }
     [data-theme="light"] .header,
@@ -492,21 +485,17 @@
     }
     [data-theme="light"] .nav-fab:hover:not(:disabled) { background: #e0e0e0; }
     [data-theme="light"] .nav-counter { color: #555; }
-    /* Video player area stays dark , videos read better against black */
     [data-theme="light"] .video-side,
     [data-theme="light"] .video-wrapper { background: #000; }
 
     @media (max-width: 768px) {
       .container { flex-direction: column; height: auto; min-height: 100vh; }
-      /* Unwrap video-side so the sticky player below is bounded by the whole
-         page rather than by its own column, which is only a few hundred px tall. */
       .video-side { display: contents; }
       .video-wrapper {
         flex: none;
         width: 100%;
         aspect-ratio: 16 / 9;
         min-height: 0;
-        /* Keep the video on screen while the transcript scrolls under it. */
         position: sticky;
         top: 0;
         z-index: 40;
@@ -518,7 +507,6 @@
       .btn { font-size: 12px; padding: 6px 4px; text-align: center; }
       .desktop-only { display: none !important; }
 
-      /* Sticky bottom nav (thumb zone) */
       .nav-bar {
         position: fixed;
         left: 0;
@@ -535,10 +523,8 @@
         -webkit-backdrop-filter: blur(8px);
         border-top: 1px solid #333;
       }
-      /* Reserve space so content isn't hidden by the fixed bar */
       body { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
     }
-    /* Ctrl+K command menu */
     #cmdk { border: 1px solid #333; border-radius: 10px; padding: 0; width: min(520px, calc(100vw - 32px)); background: #1a1a1a; color: #eee; margin: 12vh auto auto; }
     #cmdk::backdrop { background: rgba(0,0,0,0.5); }
     #cmdkInput { width: 100%; box-sizing: border-box; padding: 14px 16px; font-size: 15px; background: transparent; color: inherit; border: none; border-bottom: 1px solid #333; outline: none; }
@@ -631,8 +617,6 @@
     let readAloudAudio = null;
     window.addEventListener('pagehide', stopReadAloud);
 
-    // Sync the toggle icon with the theme that was applied in <head>
-    // Keeps the theme button in step with the stored choice.
     window.csThemeRender = function () {
       const btn = document.getElementById('themeToggle');
       if (!btn) return;
@@ -641,7 +625,6 @@
       btn.setAttribute('aria-label', csTheme.label());
     };
     csThemeRender();
-    // Kept as a name because the Ctrl+K menu binds to it.
     function toggleTheme() {
       csTheme.cycle();
     }
@@ -650,7 +633,6 @@
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    // Channel name links to the dashboard filtered to that channel
     function setMetaLine(meta) {
       const words = meta.word_count.toLocaleString() + ' words';
       const el = document.getElementById('meta');
@@ -668,24 +650,20 @@
       }
       
       try {
-        // Get metadata
         const metaRes = await fetch(API + '/transcripts/' + id);
         if (!metaRes.ok) throw new Error('Not found');
         const meta = (await metaRes.json()).data;
         
-        // Get content
         const contentRes = await fetch(API + '/transcript/' + id + '/content');
         if (!contentRes.ok) throw new Error('Content not found');
         markdown = await contentRes.text();
         
         const isArticle = meta.video_id.startsWith('article:');
 
-        // Render video embed (lazy-load)
         let videoSrc = null;
         let thumbUrl = meta.thumbnail_url || null;
 
         if (isArticle) {
-          // Article mode: summary centered full-width, original linked out
           const summaryMd = markdown.replace(/\n##\s+Full Article[\s\S]*$/i, '').trim();
           const sourceMatch = markdown.match(/\*\*Source:\*\*\s*(https?:\/\/[^\s]+)/);
           const sourceUrl = sourceMatch ? sourceMatch[1] : '';
@@ -726,7 +704,6 @@
           return;
         }
 
-        // YouTube (plain ID or with prefixes)
         if (/^[a-zA-Z0-9_-]{11}$/.test(meta.video_id)) {
           videoSrc = 'https://www.youtube.com/embed/' + meta.video_id + '?autoplay=1&enablejsapi=1';
           thumbUrl = 'https://img.youtube.com/vi/' + meta.video_id + '/maxresdefault.jpg';
@@ -734,10 +711,8 @@
           const tiktokId = meta.video_id.replace('tiktok:', '');
           videoSrc = 'https://www.tiktok.com/player/v1/' + tiktokId + '?autoplay=1';
         } else if (meta.video_id.startsWith('x:')) {
-          // X's own post embed plays the video inline (no seek API, so timestamps don't jump)
           videoSrc = 'https://platform.twitter.com/embed/Tweet.html?dnt=true&theme=dark&id=' + meta.video_id.replace('x:', '');
         } else {
-          // Try to extract from source URL in content
           const ytMatch = markdown.match(/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/);
           const ttMatch = meta.video_id.match(/([0-9]{19,20})/);
           if (ytMatch) {
@@ -748,28 +723,23 @@
           }
         }
         
-        // Store for loadVideo function
         window.videoSrc = videoSrc;
         
-        // Extract title
         let displayTitle = meta.title;
         const titleMatch = markdown.match(/^#\s+(.+)$/m);
         if (titleMatch && !meta.title.includes(' ')) {
           displayTitle = titleMatch[1];
         }
         
-        // Extract source URL from markdown content
         const sourceMatch = markdown.match(/\*\*Source:\*\*\s*(https?:\/\/[^\s]+)/);
         const sourceUrl = sourceMatch ? sourceMatch[1] : '';
 
-        // Determine platform
         const isTikTok = meta.video_id.startsWith('tiktok:') || sourceUrl.includes('tiktok.com');
         const isYouTube = /^[a-zA-Z0-9_-]{11}$/.test(meta.video_id) || sourceUrl.includes('youtube.com');
         const isX = meta.video_id.startsWith('x:');
         const platform = isX ? 'X' : isTikTok ? 'TikTok' : isYouTube ? 'YouTube' : 'Video';
         
         if (thumbUrl) {
-          // YouTube with thumbnail - show thumbnail
           const thumb = document.getElementById('videoThumb');
           thumb.src = thumbUrl;
           thumb.style.display = 'block';
@@ -777,10 +747,8 @@
             showPlaceholder(platform, displayTitle);
           };
         } else if (videoSrc) {
-          // TikTok or unknown - show styled placeholder with title
           showPlaceholder(platform, displayTitle);
         } else {
-          // No video available
           document.getElementById('videoWrapper').onclick = null;
           document.getElementById('videoThumb').style.display = 'none';
           document.getElementById('thumbPlayBtn').style.display = 'none';
@@ -790,7 +758,6 @@
         document.getElementById('title').textContent = displayTitle;
         setMetaLine(meta);
 
-        // Render category + tags
         const tagParts = [];
         if (meta.category) tagParts.push('<span class="category-pill">' + escapeHtml(meta.category) + '</span>');
         if (meta.tags) {
@@ -827,7 +794,6 @@
       const nexts = document.querySelectorAll('.nav-next');
       const counter = document.getElementById('navCounter');
       const noList = !navList || navIndex < 0;
-      // newest-first list: prev = newer (index-1), next = older (index+1)
       const prevDisabled = noList || navIndex <= 0;
       const nextDisabled = noList || navIndex >= navList.length - 1;
       prevs.forEach(b => b.disabled = prevDisabled);
@@ -870,8 +836,6 @@
       if (m) window.open(m[1], '_blank', 'noopener');
     }
 
-    // Player state via postMessage: YouTube iframe API (enablejsapi=1) and
-    // TikTok's embed player v1 (the old /embed/ page returns 500 in browsers).
     let videoPlaying = false;
     let pendingSeek = 0;
     function tiktokCommand(type, value) {
@@ -892,7 +856,7 @@
         if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
         if (!d || !d['x-tiktok-player']) return;
         if (d.type === 'onPlayerReady') {
-          tiktokCommand('unMute'); // autoplay starts muted; the user already clicked play
+          tiktokCommand('unMute');
           if (pendingSeek) { tiktokCommand('seekTo', pendingSeek); pendingSeek = 0; }
         }
         if (d.type === 'onStateChange') videoPlaying = d.value === 1;
@@ -954,7 +918,6 @@
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); cmdk.open ? cmdk.close() : openCmdk(); return; }
       if (cmdk.open || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target.matches('input, textarea, [contenteditable]')) return;
-      // Keys follow Hypertask's conventions (? list, Esc back, # delete, J/K next/prev, $ settings)
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if (k === 'ArrowLeft' || k === 'k') { e.preventDefault(); goPrev(); }
       else if (k === 'ArrowRight' || k === 'j') { e.preventDefault(); goNext(); }
@@ -973,12 +936,11 @@
           return '<a class="ts" data-t="' + t + '" href="#t=' + t + '">' + marker + '</a>';
         });
       }
-      // Convert plain URLs to clickable links first
       const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`\[\]]+)/g;
       text = text.replace(urlRegex, '<a href="$1" target="_blank">$1</a>');
       
       return text
-        .replace(/^# .+$/gm, '') // Remove main title
+        .replace(/^# .+$/gm, '')
         .replace(/^## (.+)$/gm, '<h2>$1</h2>')
         .replace(/^### (.+)$/gm, '<h3>$1</h3>')
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -1155,7 +1117,6 @@
       btn.textContent = '⏳ Retranscribing...';
       
       try {
-        // Get original URL from markdown
         const sourceMatch = markdown.match(/\*\*Source:\*\*\s*(https?:\/\/[^\s]+)/);
         const sourceUrl = sourceMatch ? sourceMatch[1] : null;
         
@@ -1166,7 +1127,6 @@
           return;
         }
         
-        // Open terminal with retranscribe command
         const projectDir = 'C:/Users/valen/Documents/GitHub/chromescribe';
         const cmd = `bash process.sh "${sourceUrl}"`;
         const terminalUrl = `http://localhost:7681/?cwd=${encodeURIComponent(projectDir)}&cmd=${encodeURIComponent(cmd)}&title=Retranscribe`;
@@ -1186,8 +1146,6 @@
       }
     }
 
-    // Reflect whether this transcript has been summarized: relabel the button and,
-    // if it's still raw, show a banner explaining why there's no TL;DR / article.
     function applySummarizeState() {
       const isRaw = !/^##\s+TL;DR/m.test(markdown);
       const btn = document.querySelector('.btn-summarize');

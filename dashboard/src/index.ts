@@ -1,7 +1,3 @@
-/**
- * ChromeScribe Dashboard - Cloudflare Worker
- * YouTube Transcription with Cloudflare AI
- */
 
 import { transcriptSourceResponse } from './source-lib.mjs';
 import { addEstimatedTimestamps } from './timestamps.mjs';
@@ -54,7 +50,6 @@ async function ensureChannels(db: D1Database) {
   let ready = channelsReady.get(db);
   if (!ready) {
     ready = (async () => {
-      // An older dashboard left a channels table with another layout; keep it aside, never drop it.
       const { results: cols } = await db.prepare('PRAGMA table_info(channels)').all<{ name: string }>();
       if (cols.length && !cols.some(c => c.name === 'id')) {
         await db.prepare('ALTER TABLE channels RENAME TO channels_legacy').run();
@@ -99,7 +94,6 @@ async function resolveYoutubeChannel(input: { id: string | null; handle: string 
   let pageResolved = false;
   try {
     const page = await fetch(`https://www.youtube.com/${id ? 'channel/' + id : encodeURIComponent(handle!).replace('%40', '@')}`, {
-      // SOCS skips the EU consent page YouTube shows to datacenter requests.
       headers: { 'Accept-Language': 'en-US,en;q=0.9', Cookie: 'SOCS=CAI' },
       signal: AbortSignal.timeout(15000),
     });
@@ -119,7 +113,6 @@ async function resolveYoutubeChannel(input: { id: string | null; handle: string 
     name = [ogTitle, jsonTitle ? JSON.parse(jsonTitle) : '', pageTitle].filter(Boolean)
       .map(decodeChannelName).find(candidate => isChannelName(candidate, handle)) || '';
   } catch {
-    // A known UC id can still resolve through the feed when the page is blocked.
   }
   if (!id) throw new Error('Could not resolve this YouTube channel. Check the URL or handle and try again.');
   if (!name) {
@@ -135,7 +128,6 @@ async function resolveYoutubeChannel(input: { id: string | null; handle: string 
 function audioBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
-  // Bound spread arguments so large audio uploads do not overflow the stack.
   for (let offset = 0; offset < bytes.length; offset += 32768) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
   }
@@ -172,19 +164,15 @@ interface ParsedVideo {
 const parseVideoUrl = (url: string): ParsedVideo | null => {
   let host: string;
   try { host = new URL(url).hostname; } catch { return null; }
-  // YouTube
   const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
   if ((host === 'youtu.be' || /(?:^|\.)youtube\.com$/.test(host)) && ytMatch) return { platform: 'youtube', id: ytMatch[1], prefixedId: ytMatch[1] };
 
-  // TikTok
   const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
   if (/(?:^|\.)tiktok\.com$/.test(host) && ttMatch) return { platform: 'tiktok', id: ttMatch[1], prefixedId: `tiktok:${ttMatch[1]}` };
 
-  // X / Twitter video posts
   const xMatch = url.match(/(?:\/\/|\.)(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/);
   if (xMatch) return { platform: 'x', id: xMatch[1], prefixedId: `x:${xMatch[1]}` };
 
-  // Article - any other http(s) URL
   if (/^https?:\/\//i.test(url)) {
     const id = hashUrl(url);
     return { platform: 'article', id, prefixedId: `article:${id}` };
@@ -197,7 +185,6 @@ const getThumbnailUrl = (parsed: ParsedVideo, noembedThumbnail?: string): string
   if (parsed.platform === 'youtube') {
     return `https://img.youtube.com/vi/${parsed.id}/mqdefault.jpg`;
   }
-  // For TikTok, use oEmbed thumbnail or fallback to placeholder
   return noembedThumbnail || null;
 };
 
@@ -226,14 +213,8 @@ const jsonResponse = (data: any, status = 200): Response => {
   });
 };
 
-// Note: YouTube blocks Cloudflare IPs, so we use a hybrid approach:
-// 1. Extension downloads audio locally with yt-dlp
-// 2. Uploads audio to Worker
-// 3. Worker transcribes with Cloudflare AI Whisper
-// 4. Saves transcript to R2 + D1
 
 
-// Convert Whisper transcript to SRT format
 function whisperToSRT(segments: WhisperResponse['segments']): string {
   if (!segments) return '';
   
@@ -254,15 +235,10 @@ function formatSRTTime(seconds: number): string {
   return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
 }
 
-// Phase 2: parse stored markdown, regenerate TL;DR + Summary + Talking Points via Workers AI,
-// return the rebuilt markdown. Handles both raw-only and already-structured input
-// (so re-summarize works). Throws on any failure - caller must not write on throw.
 async function summarizeContent(content: string, ai: Ai, metadata: { video_id: string; duration: number }): Promise<string> {
-  // header = everything before the first "## " heading (title + Source/Date/Type + ---)
   const firstSection = content.search(/^##\s/m);
   const header = (firstSection >= 0 ? content.slice(0, firstSection) : content).trimEnd();
 
-  // Locate the transcript/article body and keep its original heading label
   const bodyHeading = content.match(/^##\s+Full (Transcript|Article)\s*$/m);
   let bodyLabel = 'Transcript';
   let transcriptBody = '';
@@ -327,8 +303,6 @@ No cap on the list; aim for one point per 30-60 seconds of content. Skip filler 
 CONTENT:
 ${modelBody}`;
 
-  // One Workers AI attempt. Gemma 4's 256K context window accommodates long
-  // transcripts without local chunking or a third-party model subscription.
   const callModel = async (): Promise<string> => {
     const result = await ai.run(ANALYSIS_MODEL as any, {
       messages: [
@@ -343,7 +317,6 @@ ${modelBody}`;
     const raw = textFromModelResponse(result);
     if (!raw || typeof raw !== 'string') throw new Error('Workers AI returned no content');
 
-    // Take everything from the first "## TL;DR" onward; drop stray preamble/fences.
     const start = raw.search(/^##[ \t]+TL;DR[ \t]*$/m);
     const headings = raw.slice(Math.max(0, start)).match(/^##[ \t]+[^\r\n]+/gm);
     if (start < 0 || headings?.map(h => h.replace(/^##[ \t]+/, '').trim()).join('|') !== 'TL;DR|Summary|Talking Points') {
@@ -352,7 +325,6 @@ ${modelBody}`;
     return raw.slice(start).replace(/\n*```\s*$/, '').trim();
   };
 
-  // Retry once for transient Workers AI inference failures.
   let summary: string;
   try {
     summary = await callModel();
@@ -377,16 +349,12 @@ ${transcriptBody}
 `;
 }
 
-// Classify stored content into a category + tags via Workers AI. Returns the
-// classification; caller writes it to D1. Throws on any failure.
 async function classifyContent(
   content: string,
   existingCats: string,
   ai: Ai,
   forbiddenCategory = '',
 ): Promise<{ category: string; tags: string[] }> {
-  // Classification only needs a sample - the first ~12k chars cover the header
-  // plus TL;DR/article (structured) or the transcript start (raw-only).
   const sample = content.slice(0, 12000);
 
   const systemPrompt = 'You are a content classifier.';
@@ -434,7 +402,6 @@ ${sample}`;
     return { category, tags };
   };
 
-  // Retry once for transient Workers AI inference failures.
   try {
     return await callModel();
   } catch {
@@ -481,7 +448,6 @@ function speechChunks(text: string): string[] {
   return chunks;
 }
 
-// API Routes
 const handleApi = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   const path = url.pathname.replace('/api/', '');
@@ -527,7 +493,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       return jsonResponse({ id, url: `https://chromescribe.yeoux.net/reports/${id}` });
     }
 
-    // GET /api/debug - Debug endpoint
     if (request.method === 'GET' && path === 'debug') {
       return jsonResponse({
         message: 'Debug endpoint working',
@@ -535,7 +500,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       });
     }
 
-    // GET /api/stats - R2/D1 storage summary
     if (request.method === 'GET' && path === 'stats') {
       let cursor: string | undefined;
       let totalBytes = 0;
@@ -579,12 +543,10 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       });
     }
 
-    // GET /api/thumb/:video_id - Cached thumbnail proxy
     if (request.method === 'GET' && path.startsWith('thumb/')) {
       const videoId = decodeURIComponent(path.replace('thumb/', ''));
       const r2Key = `thumbs/${videoId.replace(/[^a-zA-Z0-9_:-]/g, '_')}.jpg`;
 
-      // Check R2 cache first
       const cached = await env.TRANSCRIPTS.get(r2Key);
       if (cached) {
         return new Response(cached.body, {
@@ -597,10 +559,8 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         });
       }
 
-      // Resolve source URL
       let sourceUrl: string | null = null;
       if (videoId.startsWith('tiktok:')) {
-        // Look up thumbnail_url from DB for TikTok
         const row = await env.DB
           .prepare('SELECT thumbnail_url FROM transcripts WHERE video_id = ?')
           .bind(videoId)
@@ -614,7 +574,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         return new Response('Not found', { status: 404, headers: CORS_HEADERS });
       }
 
-      // Fetch, cache in R2, serve
       try {
         const imgRes = await fetch(sourceUrl);
         if (!imgRes.ok) throw new Error('Fetch failed');
@@ -638,7 +597,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       }
     }
 
-    // Monitored subscriptions are shared by the dashboard and monitor.sh.
     if (path === 'channels' && ['GET', 'POST'].includes(request.method)) {
       await ensureChannels(env.DB);
       if (request.method === 'GET') {
@@ -684,7 +642,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         .bind(id).first<{ id: string; handle: string; name: string; platform: string; paused: number }>();
       if (!row) return handleError(new Error('Channel not found'), 404);
       if (row.platform === 'tiktok') return jsonResponse(row);
-      // Optional {handle} found by the caller, for when YouTube blocks the Worker's own lookup
       const body: any = await request.json().catch(() => null);
       const hint = typeof body?.handle === 'string' ? parseChannelInput(body.handle) : null;
       const hintHandle = hint?.platform === 'youtube' && !hint.id ? hint.handle : null;
@@ -728,7 +685,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       return jsonResponse({ deleted: true });
     }
 
-    // GET /api/categories - List distinct categories with counts
     if (request.method === 'GET' && path === 'categories') {
       const { results } = await env.DB
         .prepare("SELECT category, COUNT(*) as count FROM transcripts WHERE category IS NOT NULL AND category != '' GROUP BY category ORDER BY count DESC")
@@ -736,7 +692,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       return jsonResponse(results);
     }
 
-    // GET /api/transcripts - List all transcripts
     if (request.method === 'GET' && (path === 'transcripts' || path === '')) {
       const requestedVideoId = url.searchParams.get('video_id');
       const statement = requestedVideoId
@@ -758,7 +713,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       return transcriptSourceResponse(env, path.split('/')[1]);
     }
 
-    // GET /api/transcripts/:id - Get single transcript
     if (request.method === 'GET' && path.startsWith('transcripts/')) {
       const parts = path.split('/');
       if (parts.length === 2) {
@@ -775,7 +729,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       }
     }
 
-    // GET /api/transcript/:id/content - Get transcript content
     if (request.method === 'GET' && path.startsWith('transcript/') && path.endsWith('/content')) {
       const parts = path.split('/');
       const id = parts[1];
@@ -798,7 +751,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       });
     }
 
-    // GET /api/speak/:id - Cached Deepgram summary audio
     if (request.method === 'GET' && /^speak\/[^/]+$/.test(path)) {
       const id = path.split('/')[1];
       const result = await env.DB
@@ -855,7 +807,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         'Cache-Control': 'public, max-age=31536000, immutable',
         ...CORS_HEADERS,
       };
-      // Native audio controls request byte ranges when seeking.
       const range = request.headers.get('Range')?.match(/^bytes=(\d*)-(\d*)$/);
       if (range && (range[1] || range[2])) {
         const start = range[1] ? Number(range[1]) : Math.max(0, audio.length - Number(range[2]));
@@ -871,8 +822,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       return new Response(audio, { headers });
     }
 
-    // POST /api/whisper - Raw transcription only, returns text (no DB storage)
-    // Used by monitor.sh for chunked transcription of large files
     if (request.method === 'POST' && path === 'whisper') {
       const formData = await request.formData();
       const audioField = formData.get('audio') as File;
@@ -891,13 +840,9 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       }
     }
 
-    // POST /api/transcribe - Two modes:
-    // 1. With url only: Use YouTube URL (if supported)
-    // 2. With audio: Upload audio file for transcription
     if (request.method === 'POST' && path === 'transcribe') {
       const contentType = request.headers.get('content-type') || '';
       
-      // Mode 1: JSON with URL (for local download flow)
       if (contentType.includes('application/json')) {
         const body = await request.json();
         const { url: videoUrl, title, srt_content, markdown_content } = body;
@@ -910,7 +855,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         if (!parsed) {
           return handleError(new Error('Unsupported video URL'), 400);
         }
-        // X text posts arrive from the article flow; only video transcripts keep the x: id
         if (parsed.platform === 'x' && !/\*\*Type:\*\*\s*Video/.test(markdown_content || '')) {
           const id = hashUrl(videoUrl);
           parsed = { platform: 'article', id, prefixedId: `article:${id}` };
@@ -918,7 +862,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
 
         const videoId = parsed.prefixedId;
 
-        // Check for duplicate - return existing transcript info
         const existing = await env.DB
           .prepare('SELECT id, title FROM transcripts WHERE video_id = ?')
           .bind(videoId)
@@ -935,18 +878,15 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           }, 200);
         }
 
-        // If markdown content provided (from local transcription), save it
         if (markdown_content) {
           const wordCount = markdown_content.split(/\s+/).filter(w => w.length > 0).length;
 
-          // Extract title from markdown content if title looks like a file name
           const mdTitleMatch = markdown_content.match(/^#\s+(.+)$/m);
           let mdTitle = mdTitleMatch ? mdTitleMatch[1].trim() : null;
 
           const srtPath = `content/${parsed.id}.md`;
           await env.TRANSCRIPTS.put(srtPath, markdown_content);
 
-          // Get video info if available
           let videoTitle = title || mdTitle || `Video ${parsed.id}`;
           let videoChannel =
             parsed.platform === 'tiktok' ? 'TikTok' :
@@ -956,16 +896,13 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
 
           try {
             if (parsed.platform === 'x') {
-              // Title comes from yt-dlp via process.sh; noembed has no X video metadata
             } else
             if (parsed.platform === 'article') {
-              // Article - channel = domain, title from markdown
               try {
                 videoChannel = new URL(videoUrl).hostname.replace(/^www\./, '');
               } catch {}
               videoTitle = mdTitle || title || videoTitle;
             } else if (parsed.platform === 'tiktok') {
-              // Use TikTok's oEmbed API
               const infoRes = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`);
               if (infoRes.ok) {
                 const info = await infoRes.json() as any;
@@ -974,13 +911,10 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
                 noembedThumbnail = info.thumbnail_url;
               }
             } else {
-              // Use noembed for YouTube
               const infoRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(videoUrl)}`);
               if (infoRes.ok) {
                 const info = await infoRes.json() as any;
                 if (!info.error) {
-                  // Replace placeholder headings produced by older/local clients
-                  // with the canonical YouTube title whenever metadata is available.
                   const genericTitle = !mdTitle || /^(Video Transcript|Untitled|Video [A-Za-z0-9_-]+)$/i.test(mdTitle);
                   if (genericTitle || title) {
                     videoTitle = info.title || videoTitle;
@@ -1017,7 +951,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           }, 201);
         }
 
-        // If only URL provided, return instructions for local download
         return jsonResponse({
           video_id: videoId,
           message: 'Download locally with yt-dlp and upload the audio.',
@@ -1028,7 +961,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         });
       }
 
-      // Mode 2: multipart/form-data with audio file
       if (contentType.includes('multipart/form-data')) {
         let formData;
         try {
@@ -1046,17 +978,14 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         console.log('audioField constructor:', audioField?.constructor?.name);
         console.log('audioField instanceof File:', audioField instanceof File);
         
-        // Check if audioField is valid
         if (!audioField) {
           return handleError(new Error('Audio file is required'), 400);
         }
         
-        // audioField should be an object (File is an object)
         if (typeof audioField !== 'object') {
           return handleError(new Error(`Audio data must be an object, got: ${typeof audioField}`), 400);
         }
         
-        // In Workers, formData returns File objects
         const audioFile = audioField as File;
         
         if (audioFile.size === 0) {
@@ -1067,7 +996,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         const videoUrl = videoUrlField ? String(videoUrlField) : '';
         const title = titleField ? String(titleField) : 'Untitled';
         
-        // Get video ID or generate one if URL is unrecognized
         let videoId: string;
         let parsedUpload: ParsedVideo | null = null;
         if (videoUrl) {
@@ -1082,10 +1010,8 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           return handleError(new Error('Audio file required'), 400);
         }
 
-        // Handle both File objects and string data
         let audioBuffer: ArrayBuffer;
         if (typeof audioData === 'string') {
-          // Convert base64 string to ArrayBuffer
           const binary = atob(audioData);
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) {
@@ -1096,7 +1022,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           audioBuffer = await (audioData as File).arrayBuffer();
         }
 
-        // Check duplicate - return existing transcript info
         console.log('Checking duplicate for videoId:', videoId);
         if (videoId && !videoId.startsWith('audio-')) {
           const existing = await env.DB
@@ -1116,7 +1041,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         }
         console.log('No duplicate found, proceeding with transcription');
 
-        // Transcribe with Workers AI
         console.log(`Transcribing audio with Cloudflare AI, buffer size: ${audioBuffer.byteLength}`);
         let transcript: WhisperResponse;
         try {
@@ -1130,7 +1054,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
           return handleError(new Error(`Transcription failed: ${e.message}`), 500);
         }
 
-        // Generate markdown
         const wordCount = transcript.text.split(/\s+/).filter(w => w.length > 0).length;
         const srtContent = transcript.segments ? whisperToSRT(transcript.segments) : '';
         
@@ -1151,11 +1074,9 @@ ${srtContent || transcript.text}
 *Transcribed with Cloudflare Workers AI*
 `;
 
-        // Save to R2
         const srtPath = `content/${parsedUpload ? parsedUpload.id : videoId}.md`;
         await env.TRANSCRIPTS.put(srtPath, markdownContent);
 
-        // Get video info
         let videoTitle = title;
         let videoChannel = parsedUpload?.platform === 'tiktok' ? 'TikTok' : 'YouTube';
         let noembedThumb: string | undefined;
@@ -1163,7 +1084,6 @@ ${srtContent || transcript.text}
         if (videoUrl) {
           try {
             if (parsedUpload?.platform === 'tiktok') {
-              // Use TikTok's oEmbed API
               const infoRes = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`);
               if (infoRes.ok) {
                 const info = await infoRes.json() as any;
@@ -1172,7 +1092,6 @@ ${srtContent || transcript.text}
                 noembedThumb = info.thumbnail_url;
               }
             } else {
-              // Use noembed for YouTube
               const infoRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(videoUrl)}`);
               if (infoRes.ok) {
                 const info = await infoRes.json() as any;
@@ -1188,7 +1107,6 @@ ${srtContent || transcript.text}
           }
         }
 
-        // Save metadata to D1
         const thumbnailUrl = parsedUpload
           ? getThumbnailUrl(parsedUpload, noembedThumb)
           : null;
@@ -1217,9 +1135,6 @@ ${srtContent || transcript.text}
         let tags: string[] = [];
         const enrichmentErrors: string[] = [];
 
-        // Manual dashboard uploads previously stopped after Whisper. Run the
-        // same summary and classification helpers used by the explicit API
-        // actions before returning the completed record.
         if (transcriptId) {
           try {
             enrichedMarkdown = await summarizeContent(markdownContent, env.AI, { video_id: videoId, duration: Math.round(wordCount / 2.5) });
@@ -1278,7 +1193,6 @@ ${srtContent || transcript.text}
       return handleError(new Error('Invalid request'), 400);
     }
 
-    // DELETE /api/transcripts/:id - Delete transcript
     if (request.method === 'DELETE' && path.startsWith('transcripts/')) {
       const parts = path.split('/');
       if (parts.length === 2) {
@@ -1304,7 +1218,6 @@ ${srtContent || transcript.text}
       }
     }
 
-    // PUT /api/transcripts/:id - Update transcript content and title
     if (request.method === 'PUT' && path.startsWith('transcripts/')) {
       const parts = path.split('/');
       if (parts.length === 2) {
@@ -1357,7 +1270,6 @@ ${srtContent || transcript.text}
       }
     }
 
-    // POST /api/transcripts/:id/analyze - summarize and classify entirely on Workers AI
     if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/analyze')) {
       const parts = path.split('/');
       if (parts.length === 3) {
@@ -1422,7 +1334,6 @@ ${srtContent || transcript.text}
       }
     }
 
-    // POST /api/transcripts/:id/summarize - (re)generate TL;DR + Summary + Talking Points via Workers AI
     if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/summarize')) {
       const parts = path.split('/');
       if (parts.length === 3) {
@@ -1446,7 +1357,6 @@ ${srtContent || transcript.text}
         try {
           newMarkdown = await summarizeContent(rawMarkdown, env.AI, existing);
         } catch (e: any) {
-          // Leave R2 untouched on failure - no half-overwrite
           return handleError(new Error(`Summarization failed: ${e.message}`), 502);
         }
 
@@ -1461,7 +1371,6 @@ ${srtContent || transcript.text}
       }
     }
 
-    // POST /api/transcripts/:id/classify - (re)generate category + tags via Workers AI
     if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/classify')) {
       const parts = path.split('/');
       if (parts.length === 3) {
@@ -1487,7 +1396,6 @@ ${srtContent || transcript.text}
         }
         const rawMarkdown = await content.text();
 
-        // Existing categories - encourage reuse over inventing near-duplicates
         const { results: catRows } = await env.DB
           .prepare("SELECT DISTINCT category FROM transcripts WHERE category IS NOT NULL AND category != ''")
           .all<{ category: string }>();
@@ -1513,11 +1421,7 @@ ${srtContent || transcript.text}
     }
 
 
-    // --- Android companion queue ---
-    // The phone can't run yt-dlp, so a shared URL is parked here and drained by
-    // queue.sh on the box that can (cron -> monitor.sh --force).
 
-    // POST /api/queue { url } - enqueue a shared URL
     if (request.method === 'POST' && path === 'queue') {
       let body: unknown;
       try {
@@ -1533,21 +1437,18 @@ ${srtContent || transcript.text}
       return jsonResponse(result.data, result.status);
     }
 
-    // GET /api/queue - pending rows, oldest first (queue.sh)
     if (request.method === 'GET' && path === 'queue') {
       const result = await listPendingQueue(env.DB, url.searchParams);
       if (result.error) return handleError(new Error(result.error), result.status);
       return jsonResponse(result.data);
     }
 
-    // GET /api/queue/all - dashboard history, separate from the drainer feed
     if (request.method === 'GET' && path === 'queue/all') {
       const result = await listAllQueue(env.DB, url.searchParams);
       if (result.error) return handleError(new Error(result.error), result.status);
       return jsonResponse(result.data);
     }
 
-    // PUT/DELETE /api/queue/:id - lifecycle and history management
     if (['PUT', 'DELETE'].includes(request.method) && path.startsWith('queue/')) {
       const id = path.slice('queue/'.length);
       if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) < 1) {
@@ -1569,7 +1470,6 @@ ${srtContent || transcript.text}
       return jsonResponse(result.data, result.status);
     }
 
-    // Search transcripts
     if (request.method === 'GET' && path === 'search') {
       const query = url.searchParams.get('q') || '';
       
@@ -1600,15 +1500,11 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: CORS_HEADERS });
     }
 
-    // API routes
     if (url.pathname.startsWith('/api/')) {
-      // Android self-updater routes (latest manifest + immutable APKs).
-      // Returns null for every other /api/ path so existing routing is intact.
       const updaterResponse = await handleAndroidUpdates(request, env);
       if (updaterResponse) return updaterResponse;
       return handleApi(request, env);
@@ -1618,7 +1514,6 @@ export default {
       if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
       const object = await env.TRANSCRIPTS.get(`${url.pathname.slice(1)}.html`);
       if (!object) return new Response('Report not found', { status: 404 });
-      // The report template has inline CSS but no scripts. Sandbox untrusted generated HTML.
       return new Response(request.method === 'HEAD' ? null : object.body, { headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Security-Policy': "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-popups allow-popups-to-escape-sandbox;",
@@ -1627,7 +1522,6 @@ export default {
       } });
     }
 
-    // CSP header to allow API calls even when embedded in YouTube iframe
     const CSP_HEADER = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https: data:; connect-src 'self' https://chromescribe.yeoux.net https://*.youtube.com https://img.youtube.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;";
 
     const HTML_HEADERS = {
@@ -1635,7 +1529,6 @@ export default {
       'Content-Security-Policy': CSP_HEADER,
     };
 
-    // Serve HTML pages
     if (url.pathname === '/' || url.pathname === '/index.html') {
       const object = await env.TRANSCRIPTS.get('index.html');
       if (object) {
@@ -1692,7 +1585,6 @@ export default {
       if (object) return new Response(object.body, { headers: HTML_HEADERS });
     }
 
-    // Serve debug page
     if (url.pathname === '/debug.html') {
       const object = await env.TRANSCRIPTS.get('debug.html');
       if (object) {
@@ -1702,7 +1594,6 @@ export default {
       }
     }
 
-    // Static assets
     const staticFile = await env.TRANSCRIPTS.get(url.pathname.slice(1));
     if (staticFile) {
       const ext = url.pathname.split('.').pop();

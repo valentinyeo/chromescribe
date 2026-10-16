@@ -1,9 +1,4 @@
 #!/bin/bash
-# One-shot backfill: run all @thejimmyreilly videos through the standard
-# monitor.sh pipeline (yt-dlp → Whisper → summary → classify → D1/R2).
-# Reuses monitor.sh --force per video. Sequential — no parallelism (avoids
-# slamming YouTube + CF Worker; per-video state already isolated by mktemp).
-# Per-video Telegram suppressed; final summary handled by the caller.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
 
@@ -16,27 +11,21 @@ PROCESSED="$SCRIPT_DIR/.processed_videos"
 DASHBOARD="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
 
 export PATH="$HOME/.local/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
-# Suppress per-video Telegram notifications during the batch
 export TELEGRAM_TINYDICTATION_BOT_TOKEN="disabled"
 
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
 
 log "=== backfill start: @thejimmyreilly ==="
 
-# 1. Refresh the video list (real tab via $'\t' — yt-dlp's --print does NOT
-# interpret backslash escapes, so the literal must come from the shell).
-# Skip refresh if list already exists and is non-empty (idempotent re-runs).
 if [ ! -s "$LIST" ]; then
   yt-dlp --flat-playlist --print $'%(id)s\t%(title)s' "$CHANNEL" 2>/dev/null > "$LIST"
 fi
 TOTAL=$(wc -l < "$LIST")
 log "Enumerated $TOTAL videos"
 
-# 2. Process each video. Skip ones already in the dashboard (avoids re-Whisper cost).
 CF_HDR=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"
         -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
 
-# Pull existing transcript video_ids once
 EXISTING=$(curl -sL "${CF_HDR[@]}" "$DASHBOARD/api/transcripts?limit=1000" \
   | python3 -c "import sys,json; print('\n'.join(t['video_id'] for t in json.load(sys.stdin).get('data',[])))" 2>/dev/null)
 
@@ -48,15 +37,11 @@ while IFS=$'\t' read -r VID TITLE; do
   if echo "$EXISTING" | grep -qFx "$VID"; then
     log "[$I/$TOTAL] SKIP (already in dashboard): $VID  $TITLE"
     SKIP=$((SKIP+1))
-    # Mark processed so monitor cron doesn't redo it
     grep -qF "$VID" "$PROCESSED" 2>/dev/null || echo "$VID" >> "$PROCESSED"
     continue
   fi
 
   log "[$I/$TOTAL] PROCESS: $VID  $TITLE"
-  # </dev/null is load-bearing: monitor.sh spawns yt-dlp/ffmpeg/python which
-  # otherwise read from this loop's stdin (the $LIST file), stealing partial
-  # lines and corrupting the next iteration's VID.
   if "$SCRIPT_DIR/monitor.sh" --force "$VID" "$TITLE" < /dev/null >> "$LOG" 2>&1; then
     OK=$((OK+1))
     log "[$I/$TOTAL] OK"

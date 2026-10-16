@@ -1,6 +1,4 @@
 #!/bin/bash
-# Re-classify a broad category through Cloudflare Workers AI + AI Gateway.
-# Usage: ./refine_category.sh "AI Tools" [--dry-run]
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
 

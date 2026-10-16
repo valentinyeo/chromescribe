@@ -1,6 +1,4 @@
 #!/bin/bash
-# Backfill category + tags through Cloudflare Workers AI + AI Gateway.
-# Safe to re-run; skips classified rows unless --force is supplied.
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
 

@@ -16,6 +16,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Comment checker tests
+        run: node --test tools/strip-comments.test.js
+      - name: No code comments
+        run: node tools/strip-comments.mjs --check .
       - name: CLI tests
         run: node --test cli/test/*.test.mjs
       - name: Dashboard tests

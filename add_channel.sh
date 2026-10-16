@@ -1,9 +1,4 @@
 #!/bin/bash
-# Append a channel to channels.txt for the monitor, deduped.
-# Usage: add_channel.sh <UC_CHANNEL_ID> [@handle] [Channel Name]   (YouTube)
-#        add_channel.sh tiktok:@handle [Channel Name]              (TikTok)
-#        add_channel.sh @handle [Channel Name]                     (TikTok)
-#        add_channel.sh https://www.tiktok.com/@handle [name]      (TikTok)
 cd "$(dirname "$0")"
 ARG="$1"; HANDLE="${2:-}"; NAME="${3:-}"
 if [ -z "$ARG" ]; then echo "Usage: add_channel.sh <UC_CHANNEL_ID>|<tiktok @handle|url> [name]"; exit 1; fi

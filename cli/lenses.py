@@ -24,7 +24,6 @@ CHUNK_SIZE = 40000
 
 
 def api(path, method='GET', body=None):
-    # The site's bot rules reject urllib's default agent, but accept the curl CLI.
     headers = {'User-Agent': 'curl/8.5.0'}
     for env, header in [('CF_ACCESS_CLIENT_ID', 'CF-Access-Client-Id'),
                         ('CF_ACCESS_CLIENT_SECRET', 'CF-Access-Client-Secret')]:
@@ -64,8 +63,6 @@ def resolve(channels, value, missing_ok=False):
     key = selector(value)
     matches = [c for c in channels if key in
                [str(c.get(field, '')).casefold() for field in ('id', 'name', 'handle')]]
-    # Older subscriptions stored a UC ID in the handle field. Resolve the handle
-    # once against YouTube, then still require an ID in the subscription list.
     if not matches and key.startswith('@') and any(
             c.get('platform') == 'youtube' and not c.get('handle', '').startswith('@') for c in channels):
         try:
@@ -103,7 +100,6 @@ def slug_for(channel):
 
 
 def chunks(text, size=CHUNK_SIZE):
-    # Exact, contiguous slices; prefer paragraph boundaries without dropping tails.
     parts = []
     while len(text) > size:
         end = text.rfind('\n', size // 2, size)
@@ -213,7 +209,6 @@ def uploads(channel, maximum):
 def copied_run(text, sources):
     def words(value):
         return re.findall(r"[\w']+", value.casefold())
-    # Attributed quotations may be short; still prefer paraphrasing all generated knowledge.
     output = words(text)
     runs = {tuple(output[i:i + 8]) for i in range(len(output) - 7)}
     for source in sources:
@@ -341,7 +336,6 @@ def learn(args):
                     continue
                 paths = [path for rid, path in results if str(rid) == tid]
                 note = lens / 'notes' / f'{tid}.md'
-                # A failed merge can resume without paying to distill unchanged sources again.
                 write(note, '\n\n'.join(p.read_text() for p in paths))
                 write(note.with_suffix('.sha256'), digests[tid])
                 notes[tid] = note
@@ -365,7 +359,6 @@ def learn(args):
                         raise ValueError('Knowledge contains copied wording; refusing to install it')
                 if not re.search(r'\[transcript:\d+\]', result.read_text()):
                     raise ValueError('Knowledge is missing transcript citations')
-                # Install only after every chunk and the merged artifact succeeded.
                 write(knowledge, result.read_text())
         def cell(value):
             return str(value).replace('|', '\\|').replace('\n', ' ')
@@ -468,7 +461,6 @@ def report(args):
                 path = work / f'{name}.md'
                 shutil.copyfile(source, path)
                 inputs.append(path)
-        # Learning already mapped every chunk. Reuse that evidence for each topic.
         jobs, evidence_paths = [], []
         sources = []
         for tid in relevant:

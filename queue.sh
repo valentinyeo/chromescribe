@@ -1,8 +1,4 @@
 #!/bin/bash
-# ChromeScribe queue drainer.
-# The Android app POSTs shared URLs to /api/queue; the phone can't run yt-dlp,
-# so this box does. Runs from cron every minute, one at a time via flock.
-# Usage: ./queue.sh   (add to cron: * * * * * . $HOME/.bashrc && .../queue.sh >> .../queue.log 2>&1)
 
 set -uo pipefail
 
@@ -28,9 +24,6 @@ else
     exit 1
 fi
 
-# Only one drainer at a time - a transcription run takes minutes, cron fires every minute.
-# Git Bash on Windows has no flock; there Task Scheduler's default "do not start
-# a new instance" policy prevents overlapping runs instead.
 if command -v flock >/dev/null 2>&1; then
     exec 9>"$QUEUE_LOCK_FILE"
     flock -n 9 || exit 0
@@ -42,13 +35,6 @@ trap cleanup EXIT
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
-# api_call METHOD PATH [extra curl args...]
-# On success ($? == 0) the raw `data` field is not needed by callers; the full
-# response body is left at "$TMPDIR_Q/api.json" and we return 0 only when the
-# request succeeded AND the {success:true,...} envelope validated.
-#
-# No -L: service-token headers must never follow a redirect to another host.
-# No shared cookiejar: the service token is sent on every request instead.
 api_call() {
     local method="$1" path="$2"
     shift 2
@@ -149,7 +135,6 @@ while IFS=$'\t' read -r qid video_id url; do
             process_rc=${PIPESTATUS[0]}
             ;;
         *)
-            # Real title, so the dashboard entry isn't called "Manual run".
             title=$( { curl -sS -f --max-time 10 --proto '=https' \
                 "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${video_id}" \
                 | "$PYTHON" -c 'import sys,json; print(json.load(sys.stdin)["title"])'; } 2>/dev/null )
@@ -160,7 +145,6 @@ while IFS=$'\t' read -r qid video_id url; do
             ;;
     esac
     if [ "$process_rc" -eq 0 ]; then
-        # Transcription succeeded; the row is only "done" once the API agrees.
         if api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"done"}'; then
             log "Queue #$qid: done"
         else

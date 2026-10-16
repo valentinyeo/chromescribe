@@ -1,5 +1,3 @@
-// The TikTok Saves extension must never import favourites that existed before
-// its first run, must queue each new save once, and must retry failed ones.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

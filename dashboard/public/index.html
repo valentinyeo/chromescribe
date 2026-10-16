@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChromeScribe</title>
   <script>
-    // Shared theme bootstrap. This block is identical in index.html and
-    // transcript.html on purpose - change both or neither. It runs before
-    // paint so the page never flashes the wrong theme.
     (function () {
       var KEY = 'cs-theme';
       var ORDER = ['system', 'dark', 'light'];
@@ -34,7 +31,6 @@
         },
         cycle: function () { window.csTheme.set(ORDER[(ORDER.indexOf(choice()) + 1) % ORDER.length]); }
       };
-      // Following the device means following it as it changes, not just at load.
       mq.addEventListener('change', function () { if (choice() === 'system') paint('system'); });
       paint(choice());
     })();
@@ -104,7 +100,6 @@
       min-height: 100vh;
     }
     
-    /* Header */
     header {
       position: sticky;
       top: 0;
@@ -214,14 +209,12 @@
       height: 16px;
     }
     
-    /* Main Content */
     main {
       max-width: 1280px;
       margin: 0 auto;
       padding: 32px 24px;
     }
     
-    /* Search */
     .search-bar {
       display: flex;
       gap: 12px;
@@ -267,7 +260,6 @@
       font-family: inherit;
     }
     
-    /* Grid */
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -380,7 +372,6 @@
       white-space: nowrap;
     }
 
-    /* Category filter bar */
     .category-filters {
       max-width: 1280px;
       margin: 0 auto;
@@ -390,7 +381,6 @@
       gap: 8px;
     }
 
-    /* Chips clamp to a single row; the expander toggles full height */
     .category-chips {
       flex: 1;
       min-width: 0;
@@ -476,7 +466,6 @@
       font-size: 13px;
     }
     
-    /* Empty State */
     .empty-state {
       text-align: center;
       padding: 80px 24px;
@@ -502,7 +491,6 @@
       margin-bottom: 24px;
     }
     
-    /* Modal */
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -614,7 +602,6 @@
       height: 40px;
     }
     
-    /* Toast */
     .toast {
       position: fixed;
       bottom: 24px;
@@ -652,10 +639,8 @@
     
 
     
-    /* Hide */
     .hidden { display: none !important; }
     
-    /* Mobile */
     @media (max-width: 640px) {
       .header-inner {
         padding: 12px 16px;
@@ -673,7 +658,6 @@
         grid-template-columns: 1fr;
       }
     }
-    /* Keyboard selection + Ctrl+K command menu (same keys as transcript page / Hypertask) */
     .card.kb-selected { border-color: #3ea6ff; box-shadow: 0 0 0 2px #3ea6ff; }
     #cmdk { border: 1px solid var(--border); border-radius: 10px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--card); color: inherit; margin: 12vh auto auto; }
     #cmdk::backdrop { background: rgba(0,0,0,0.5); }
@@ -685,7 +669,6 @@
   </style>
 </head>
 <body>
-  <!-- Header -->
   <header>
     <div class="header-inner">
       <a href="/" class="logo">
@@ -718,7 +701,6 @@
     </div>
   </header>
 
-  <!-- Category filters -->
   <div id="categoryFilters" class="category-filters">
     <div class="category-chips" id="categoryChips"></div>
     <button class="category-expand" id="categoryExpand" onclick="toggleCategories()" aria-expanded="false" title="Show all categories">
@@ -726,7 +708,6 @@
     </button>
   </div>
 
-  <!-- Main -->
   <main>
     <div class="search-bar">
       <input type="text" id="searchInput" class="search-input" placeholder="Search transcripts..." onkeyup="handleSearch(this.value)">
@@ -752,7 +733,6 @@
 
   </main>
 
-  <!-- Add Modal -->
   <div id="addModal" class="modal-backdrop hidden" onclick="if(event.target===this)closeAddModal()">
     <div class="modal">
       <div class="modal-header">
@@ -791,7 +771,6 @@
     </div>
   </div>
 
-  <!-- View Modal -->
   <div id="viewModal" class="modal-backdrop hidden" onclick="if(event.target===this)closeViewModal()">
     <div class="modal" style="max-width: 800px; max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
@@ -819,7 +798,6 @@
     </div>
   </div>
 
-  <!-- Toast -->
   <div id="toast" class="toast">
     <div class="toast-inner">
       <span id="toastIcon"></span>
@@ -835,9 +813,8 @@
     const API_BASE = '/api';
     let transcripts = [];
     let activeCategory = null;
-    let activeChannel = null; // canonical channel name or null
+    let activeChannel = null;
 
-    // Keeps the theme button in step with the stored choice.
     window.csThemeRender = function () {
       var btn = document.getElementById('themeToggle');
       if (!btn) return;
@@ -873,9 +850,6 @@
       if (e.persisted) restoreScrollPosition();
     });
 
-    // Pinned clusters cut across the narrower model-generated categories. Match
-    // title, channel, category, and tags so a relevant channel belongs to the
-    // cluster even when one of its videos received an unexpected category.
     const ALL_AI_CLUSTER = '__all_ai__';
     const RUSSIA_CLUSTER = '__russia__';
     const HEALTH_CLUSTER = '__health__';
@@ -941,7 +915,6 @@
       loadCategories();
     });
 
-    // Channel name on a card opens that channel's view instead of the video
     document.addEventListener('click', e => {
       const el = e.target.closest('.card-channel-link');
       if (!el || !el.dataset.channel) return;
@@ -957,7 +930,7 @@
         transcripts = data || [];
         renderTranscripts();
         restoreScrollPosition();
-        loadCategories(); // refresh chips so the SEO cluster count reflects loaded transcripts
+        loadCategories();
       } catch (err) {
         showToast('Failed to load transcripts', 'error');
       }
@@ -986,13 +959,11 @@
       ];
       chipsBox.innerHTML = chips.join('');
 
-      // Restore the saved collapsed/expanded state
       const bar = document.getElementById('categoryFilters');
       const expanded = localStorage.getItem('cs-categories-expanded') === '1';
       bar.classList.toggle('expanded', expanded);
       expandBtn.setAttribute('aria-expanded', String(expanded));
 
-      // Only show the expander when the chips actually overflow one row
       requestAnimationFrame(() => {
         expandBtn.classList.toggle('hidden', chipsBox.scrollHeight <= 44);
       });
@@ -1240,7 +1211,6 @@
       if (e.key === 'Escape') { closeAddModal(); closeViewModal(); }
     });
 
-    // Keyboard shortcuts, following Hypertask's conventions (same as transcript page)
     let kbIndex = -1;
     const kbCards = () => [...document.querySelectorAll('#grid .card, .grid .card')];
     function kbSelect(i) {
@@ -1323,7 +1293,6 @@
 
     function toggleChannelFilter(name) {
       activeChannel = activeChannel === name ? null : name;
-      // Keep ?channel= in the address so a channel view can be linked and reloaded
       const url = new URL(window.location.href);
       if (activeChannel) url.searchParams.set('channel', activeChannel); else url.searchParams.delete('channel');
       history.replaceState(null, '', url);

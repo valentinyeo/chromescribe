@@ -137,7 +137,6 @@ test('delete removes nonprocessing rows, rejects processing and returns 404 for 
 test('all joins transcripts by video_id, returns every status newest first and validates limits without altering pending feed', async () => {
   const db = makeD1();
   for (const [index, status] of ['pending', 'processing', 'failed', 'done'].entries()) insert(db, String(index), status, '2026-01-02 00:00:00');
-  // Older timestamp with a newer id must not jump ahead.
   insert(db, 'older', 'pending', '2026-01-01 00:00:00');
   db.raw.exec("INSERT INTO transcripts VALUES (42, '3', 'A title', 'A channel')");
   const all = (await (await api(db, 'queue/all?limit=200')).json()).data;

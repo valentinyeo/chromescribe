@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# ChromeScribe Dashboard - Deployment Script
 
 set -euo pipefail
 

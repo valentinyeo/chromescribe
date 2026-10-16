@@ -30,7 +30,6 @@ test('rejects junk, videos, lookalike hosts, unsafe URLs, and invalid identifier
     'tiktok:@user.', 'tiktok:@' + 'a'.repeat(25), 'javascript:alert(1)',
     'http://youtube.com/@jaketrinder', 'https://youtube.com.evil.com/@jaketrinder',
     'https://evil.com/?url=https://youtube.com/@jaketrinder', 'https://music.youtube.com/@jaketrinder',
-    // Split so secret scanners don't read the fake login as a real one
     'https://user' + ':' + 'x@youtube.com/@jaketrinder', 'https://youtube.com:8443/@jaketrinder',
     'https://youtube.com/watch?v=abcdefghijk', 'https://youtu.be/abcdefghijk',
     `https://youtube.com/channel/${id}/shorts`, 'https://youtube.com/@jaketrinder/about',
