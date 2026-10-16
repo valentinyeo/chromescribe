@@ -1,0 +1,9 @@
+CHROMESCRIBE_ENV_FILE="${CHROMESCRIBE_ENV_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.env.chromescribe}"
+if [ -z "${CF_ACCESS_CLIENT_ID-}" ] || [ -z "${CF_ACCESS_CLIENT_SECRET-}" ]; then
+    if [ -f "$CHROMESCRIBE_ENV_FILE" ]; then
+        . "$CHROMESCRIBE_ENV_FILE"
+    fi
+fi
+: "${CF_ACCESS_CLIENT_ID:?CF_ACCESS_CLIENT_ID is required (env or $CHROMESCRIBE_ENV_FILE)}"
+: "${CF_ACCESS_CLIENT_SECRET:?CF_ACCESS_CLIENT_SECRET is required (env or $CHROMESCRIBE_ENV_FILE)}"
+export CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET

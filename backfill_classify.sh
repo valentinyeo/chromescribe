@@ -2,12 +2,12 @@
 # Backfill category + tags through Cloudflare Workers AI + AI Gateway.
 # Safe to re-run; skips classified rows unless --force is supplied.
 
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
+
 set -uo pipefail
 cd "$(dirname "$0")"
 
 DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
-CF_ACCESS_ID="${CF_ACCESS_CLIENT_ID:-REMOVED_OLD_KEY}"
-CF_ACCESS_SECRET="${CF_ACCESS_CLIENT_SECRET:-REMOVED_OLD_KEY}"
 FORCE=0
 if [ "${1:-}" = "--force" ]; then FORCE=1; fi
 TMPDIR="$(mktemp -d /tmp/chromescribe-classify.XXXXXX)"
@@ -19,8 +19,8 @@ api_call() {
     local method="$1" path="$2"
     shift 2
     curl -s -L -X "$method" \
-        -H "CF-Access-Client-Id: $CF_ACCESS_ID" \
-        -H "CF-Access-Client-Secret: $CF_ACCESS_SECRET" \
+        -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+        -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
         "$@" "${DASHBOARD_URL}${path}"
 }
 

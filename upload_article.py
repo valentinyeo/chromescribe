@@ -7,13 +7,13 @@ Usage:
 Reads the trafilatura-extracted markdown and POSTs it to the dashboard API
 wrapped in the standard ChromeScribe markdown envelope.
 """
-import json, os, re, sys, urllib.request
+import json, re, sys, urllib.request
 from datetime import date
+from cf_access import load
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-CF_ACCESS_ID = os.environ.get('CF_ACCESS_CLIENT_ID', 'REMOVED_OLD_KEY')
-CF_ACCESS_SECRET = os.environ.get('CF_ACCESS_CLIENT_SECRET', 'REMOVED_OLD_KEY')
+CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET = load()
 
 if len(sys.argv) < 3:
     print("Usage: python upload_article.py <url> <article_md_file> [title]")
@@ -81,8 +81,8 @@ req = urllib.request.Request(
     headers={
         'Content-Type': 'application/json',
         'User-Agent': 'ChromeScribe/1.0',
-        'CF-Access-Client-Id': CF_ACCESS_ID,
-        'CF-Access-Client-Secret': CF_ACCESS_SECRET,
+        'CF-Access-Client-Id': CF_ACCESS_CLIENT_ID,
+        'CF-Access-Client-Secret': CF_ACCESS_CLIENT_SECRET,
     }
 )
 try:

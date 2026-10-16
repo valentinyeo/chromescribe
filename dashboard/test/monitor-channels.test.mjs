@@ -19,8 +19,8 @@ function run(payload, exit = 0) {
 TMPDIR="$TEST_DIR"
 CHANNELS_FILE="$TEST_DIR/fallback.txt"
 DASHBOARD_URL="https://test.example"
-CF_ACCESS_ID="test-id"
-CF_ACCESS_SECRET="test-secret"
+CF_ACCESS_CLIENT_ID="test-id"
+CF_ACCESS_CLIENT_SECRET="test-secret"
 log() { echo "$*" >&2; }
 ${apiCall}
 ${channelBlock}

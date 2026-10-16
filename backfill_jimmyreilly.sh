@@ -5,6 +5,8 @@
 # slamming YouTube + CF Worker; per-video state already isolated by mktemp).
 # Per-video Telegram suppressed; final summary handled by the caller.
 
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
+
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CHANNEL="https://www.youtube.com/@thejimmyreilly/videos"
@@ -31,8 +33,8 @@ TOTAL=$(wc -l < "$LIST")
 log "Enumerated $TOTAL videos"
 
 # 2. Process each video. Skip ones already in the dashboard (avoids re-Whisper cost).
-CF_HDR=(-H "CF-Access-Client-Id: REMOVED_OLD_KEY"
-        -H "CF-Access-Client-Secret: REMOVED_OLD_KEY")
+CF_HDR=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"
+        -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
 
 # Pull existing transcript video_ids once
 EXISTING=$(curl -sL "${CF_HDR[@]}" "$DASHBOARD/api/transcripts?limit=1000" \

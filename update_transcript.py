@@ -5,13 +5,13 @@ Usage:
     python update_transcript.py <transcript_id> <markdown_file>
     python update_transcript.py <transcript_id> <markdown_file> <title>
 """
-import json, os, sys, urllib.request
+import json, sys, urllib.request
+from cf_access import load
 
 # Fix Windows console encoding for emoji/unicode
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-CF_ACCESS_ID = os.environ.get('CF_ACCESS_CLIENT_ID', 'REMOVED_OLD_KEY')
-CF_ACCESS_SECRET = os.environ.get('CF_ACCESS_CLIENT_SECRET', 'REMOVED_OLD_KEY')
+CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET = load()
 
 if len(sys.argv) < 3:
     print("Usage: python update_transcript.py <transcript_id> <markdown_file> [title]")
@@ -35,8 +35,8 @@ req = urllib.request.Request(
     headers={
         'Content-Type': 'application/json',
         'User-Agent': 'ChromeScribe/1.0',
-        'CF-Access-Client-Id': CF_ACCESS_ID,
-        'CF-Access-Client-Secret': CF_ACCESS_SECRET,
+        'CF-Access-Client-Id': CF_ACCESS_CLIENT_ID,
+        'CF-Access-Client-Secret': CF_ACCESS_CLIENT_SECRET,
     }
 )
 try:

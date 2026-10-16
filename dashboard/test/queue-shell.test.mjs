@@ -124,6 +124,8 @@ function runQueue({ mode = 'ok', monitorExit = 0, failVideo = '', analyzeFail = 
   writeFileSync(join(bindir, 'curl'), CURL_MOCK, { mode: 0o755 });
   writeFileSync(join(tmp, 'monitor.sh'), MONITOR_MOCK, { mode: 0o755 });
   copyFileSync(QUEUE_SH, join(tmp, 'queue.sh'));
+  mkdirSync(join(tmp, 'lib'));
+  copyFileSync(join(REPO, 'lib/cf_access.sh'), join(tmp, 'lib/cf_access.sh'));
   writeFileSync(join(tmp, 'process.sh'), PROCESS_MOCK, { mode: 0o755 });
   if (pythonStub) {
     const pythonPath = spawnSync('which', ['python3'], { encoding: 'utf8' }).stdout.trim();

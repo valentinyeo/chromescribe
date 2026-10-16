@@ -14,6 +14,8 @@ function run({required = '1', exists = false, analysis = false, fallback = false
     const bin = join(dir, 'bin');
     mkdirSync(bin);
     copyFileSync(join(repo, 'process.sh'), join(dir, 'process.sh'));
+    mkdirSync(join(dir, 'lib'));
+    copyFileSync(join(repo, 'lib/cf_access.sh'), join(dir, 'lib/cf_access.sh'));
     copyFileSync(join(repo, 'fxtwitter_article.py'), join(dir, 'fxtwitter_article.py'));
     writeFileSync(join(dir, 'upload_article.py'), `print(${JSON.stringify(JSON.stringify({data:{id:7,already_exists:exists}}))})\n`);
     writeFileSync(join(bin, 'curl'), `#!/bin/bash
@@ -30,7 +32,7 @@ fi
       writeFileSync(join(bin, 'python'), `#!/bin/bash\nexec '${realPython}' "$@"\n`, {mode:0o755});
     }
     const result = spawnSync('bash', [join(dir,'process.sh'), url], {
-      encoding:'utf8', env:{...process.env, PATH:`${bin}:${process.env.PATH}`, CHROMESCRIBE_NO_OPEN:'1', REQUIRE_ANALYZE:required}
+      encoding:'utf8', env:{...process.env, PATH:`${bin}:${process.env.PATH}`, CF_ACCESS_CLIENT_ID:'test-id', CF_ACCESS_CLIENT_SECRET:'test-secret', CHROMESCRIBE_ENV_FILE:join(dir,'missing.env'), CHROMESCRIBE_NO_OPEN:'1', REQUIRE_ANALYZE:required}
     });
     assert.equal(existsSync(join(dir,'opened')), false, result.stdout);
     return {...result, analyzed:existsSync(join(dir,'analyzed'))};

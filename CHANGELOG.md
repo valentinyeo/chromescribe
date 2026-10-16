@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Scripts read the dashboard key only from the environment or `.env.chromescribe` (CHRO-6).
+
 ## [0.2.0] - 2026-09-22
 
 Android share-to-YouTube queue backend correctness pass (not yet deployed).

@@ -4,6 +4,8 @@
 # transcribes them via pi agent, uploads to dashboard, notifies via Telegram.
 # Usage: ./monitor.sh [--force VIDEO_ID [TITLE]]
 
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -19,10 +21,6 @@ export DISPLAY=:0
 # Telegram config (hardcoded - cron can't source .bashrc interactive-only exports)
 TG_TOKEN="${TELEGRAM_TINYDICTATION_BOT_TOKEN:-}"
 TG_CHAT="${TELEGRAM_TINYDICTATION_CHAT_ID:-2068947468}"
-
-# CF Access credentials
-CF_ACCESS_ID="${CF_ACCESS_CLIENT_ID:-REMOVED_OLD_KEY}"
-CF_ACCESS_SECRET="${CF_ACCESS_CLIENT_SECRET:-REMOVED_OLD_KEY}"
 
 # Cleanup on exit - no leftovers
 cleanup() {
@@ -40,8 +38,8 @@ api_call() {
     shift 2
     curl -s -L \
         -X "$method" \
-        -H "CF-Access-Client-Id: $CF_ACCESS_ID" \
-        -H "CF-Access-Client-Secret: $CF_ACCESS_SECRET" \
+        -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+        -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
         -c /tmp/cf-cookies-chromescribe.txt \
         -b /tmp/cf-cookies-chromescribe.txt \
         "$@" \

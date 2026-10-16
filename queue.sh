@@ -9,18 +9,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
 
-# Credentials: prefer the environment, else a gitignored local file that uses
-# normal shell `export KEY=value` syntax. No hardcoded fallback is kept here
-# (the old shared secrets were removed); without creds the drainer refuses to
-# run rather than silently calling the API as an anonymous client.
-ENV_FILE="${CHROMESCRIBE_ENV_FILE:-$SCRIPT_DIR/.env.chromescribe}"
-if [ -f "$ENV_FILE" ]; then
-    # shellcheck disable=SC1090
-    . "$ENV_FILE"
-fi
-: "${CF_ACCESS_CLIENT_ID:?CF_ACCESS_CLIENT_ID is required (env or $ENV_FILE)}"
-: "${CF_ACCESS_CLIENT_SECRET:?CF_ACCESS_CLIENT_SECRET is required (env or $ENV_FILE)}"
-export CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET
+# shellcheck disable=SC1090
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
 
 export PATH="$HOME/.local/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
 
