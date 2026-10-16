@@ -61,60 +61,42 @@ R2 resources are not recreated during a deployment.
 
 ## API Endpoints
 
-### List Transcripts
-```
-GET /api/transcripts
-```
+All `/api/*` calls go through Cloudflare Zero Trust and need the
+`CF-Access-Client-Id` and `CF-Access-Client-Secret` headers.
 
-### Get Single Transcript
-```
-GET /api/transcripts/:id
-```
+### Transcripts
 
-### Get Transcript Content (SRT)
-```
-GET /api/transcript/:id/content
-```
+- `GET /api/transcripts`, `GET /api/transcripts/:id`, `GET /api/transcript/:id/content`
+- `PUT /api/transcripts/:id`, `DELETE /api/transcripts/:id`, `GET /api/search?q=`
+- `POST /api/transcribe` has two modes: a JSON body with URL and markdown (from Claude), or a multipart form with an audio file that the Worker transcribes with Workers AI Whisper.
+- `POST /api/whisper` transcribes one audio chunk; `POST /api/transcripts/:id/analyze` writes the summary and classification.
+- Video IDs: YouTube (`youtube.com/watch`, `youtu.be/`, `/shorts/`) and TikTok (`tiktok.com/@user/video/id`, stored as `tiktok:<id>`).
 
-### Add New Transcription
-```
-POST /api/transcribe
-Content-Type: application/json
+### Channel subscriptions
 
-{
-  "url": "https://youtube.com/watch?v=...",
-  "title": "Video Title",
-  "channel": "Channel Name",
-  "srt_content": "..." 
-}
-```
+- `GET /api/channels` includes integer `paused` and a `transcripts` count matched on `transcripts.channel = channels.name`; `?active=1` returns only active subscriptions.
+- `POST /api/channels {input}` accepts YouTube channel URLs, @handles, UC IDs, and TikTok profile URLs or `tiktok:@handle`.
+- `PATCH /api/channels/:id {paused: true|false}`; pausing skips monitoring without removing the subscription or its transcripts.
+- `POST /api/channels/:id/refresh` re-resolves YouTube names and handles without degrading real metadata; TikTok is unchanged.
+- `DELETE /api/channels/:id`.
+- The Worker lazily creates an empty `channels` table and adds `paused INTEGER NOT NULL DEFAULT 0` once per database binding per isolate. There are no seeded subscriptions.
 
-### Delete Transcript
-```
-DELETE /api/transcripts/:id
-```
+### Reports
 
-### Search
-```
-GET /api/search?q=query
-```
+- `POST /api/reports {title, channel, topic, html}`, `GET /api/reports`, `DELETE /api/reports/:id`.
+- `GET /reports/:id` serves the HTML sandboxed: the CSP allows template CSS and fonts but no scripts, frames, API connections, or forms.
+- The Worker lazily creates the D1 `reports` table and stores HTML in R2 at `reports/<id>.html`, limited to 2 MB UTF-8.
 
-### Android share queue
+### Share queue
 
-The Android companion app shares a YouTube URL; `queue.sh` (cron, on the box
-with yt-dlp) drains it. Only strict YouTube watch/shorts/live/youtu.be URLs on
-the exact https hosts `youtube.com`, `www.youtube.com`, `m.youtube.com` and
-`youtu.be` are accepted.
+- `POST /api/queue {url}` enqueues YouTube, TikTok, and article URLs with race-free pending deduplication (`src/queue-lib.mjs`).
+- `GET /api/queue?platforms=youtube,article,tiktok` returns pending rows only, oldest first, limit 10, for drainers.
+- `GET /api/queue/all?limit=200` returns all statuses newest first with transcript title, channel and ID (limit 1 to 1000).
+- `PUT /api/queue/:id {status, error?, transcript_id?}` accepts processing, done, failed or pending. Processing claims a pending row, records `started_at` and increments attempts; done and failed record `finished_at`. Error text is trimmed and capped at 500 characters. Retrying to pending is only allowed from failed and clears error and `finished_at`; a conflict with an existing pending row returns 409.
+- `DELETE /api/queue/:id` removes history except processing rows (409). Missing rows return 404.
+- Lifecycle columns are lazily added once per database binding per isolate, ignoring only duplicate-column errors.
 
-```
-POST /api/queue            { "url": "https://youtu.be/<11-char-id>" }
-GET  /api/queue            # up to 10 pending rows, oldest first (queue.sh)
-PUT  /api/queue/:id        { "status": "done" | "failed" } (queue.sh)
-```
-
-`POST` returns `{success:true,data:{queued:true,id}}`, adds `duplicate:true`
-when a pending row already existed, or `{queued:false,transcript_id}` when the
-video is already transcribed. Malformed input returns HTTP 400, never 500.
+`queue.sh` filters by `QUEUE_PLATFORMS`: the VPS drains `youtube,article`, and a Windows scheduled task drains `tiktok` because TikTok blocks datacenter IPs. YouTube uses `monitor.sh --force`; articles and TikTok use `process.sh` with `CHROMESCRIBE_NO_OPEN=1` and `REQUIRE_ANALYZE=1`. A row is marked processing before the download starts, then done only when processing succeeds (including analysis, or confirmation the content already exists), or failed with a short diagnostic that redacts credentials and downloader URLs. If the final status update fails, the row stays processing for an operator to inspect.
 
 ## Queue setup, migration and verification
 
@@ -147,8 +129,10 @@ this repo is the original prototype and is no longer the source of truth.
 
 ## Pages
 
-- `/` - Dashboard with video grid
-- `/transcript.html?id=:id` - Individual transcript view with video embed
+Static pages live in R2 and are served by the Worker: `index.html`, `transcript.html?id=:id`, `settings.html`, `stats.html`, `subscriptions.html`, `reports.html`, `queue.html`.
+
+- `/subscriptions.html` is the only channel-management page: add, pause, resume, or remove subscriptions. Names and counts link to `/?channel=<name>`.
+- `/queue.html` shows In progress, Waiting (oldest first, with server or laptop routing), Failed (errors, attempts, Retry and Remove), and the last 30 Done with transcript links. It shows the newest 200 entries and refreshes every 15 seconds while visible.
 
 ## Environment
 

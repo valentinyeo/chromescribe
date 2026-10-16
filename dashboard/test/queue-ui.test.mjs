@@ -175,7 +175,7 @@ test('all dashboard nav, both deployment paths, Worker static allowlist and docs
   for (const page of ['subscriptions', 'reports']) assert.match(html, new RegExp(`href="/${page}.html"`));
   assert.match(read('../deploy.sh'), /STATIC_PAGES=\([^\n]*queue.html\)/);
   assert.match(read('../../.github/workflows/deploy.yml'), /wrangler r2 object put chromescribe-transcripts\/queue.html --file=.\/public\/queue.html --remote/);
-  const doc = read('../../CLAUDE.md');
+  const doc = read('../README.md');
   for (const endpoint of ['GET /api/queue/all?limit=200', 'DELETE /api/queue/:id', 'PUT /api/queue/:id', '/queue.html']) assert.ok(doc.includes(endpoint));
   const objects = [];
   const response = await worker.fetch(new Request('https://test.example/queue.html'), { TRANSCRIPTS: { async get(key) { objects.push(key); return { body: html }; } } });
