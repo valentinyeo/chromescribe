@@ -3,6 +3,8 @@ from pathlib import Path
 import shlex
 import sys
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 
 def load() -> tuple[str, str]:
     keys = ('CF_ACCESS_CLIENT_ID', 'CF_ACCESS_CLIENT_SECRET')

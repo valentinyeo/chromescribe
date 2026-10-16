@@ -4,7 +4,6 @@ set -euo pipefail
 
 WRANGLER="${WRANGLER:-wrangler}"
 BUCKET_NAME="chromescribe-transcripts"
-STATIC_PAGES=(index.html transcript.html settings.html stats.html subscriptions.html reports.html queue.html)
 
 echo "🚀 ChromeScribe Dashboard Deployment"
 echo "======================================"
@@ -12,9 +11,9 @@ echo "Using the Cloudflare account configured in wrangler.toml."
 
 echo ""
 echo "📦 Step 1: Upload static files to R2..."
-for page in "${STATIC_PAGES[@]}"; do
-  "$WRANGLER" r2 object put "$BUCKET_NAME/$page" \
-    --file="./public/$page" \
+for page in ./public/*.html; do
+  "$WRANGLER" r2 object put "$BUCKET_NAME/$(basename "$page")" \
+    --file="$page" \
     --remote
 done
 echo "✓ Static files uploaded"

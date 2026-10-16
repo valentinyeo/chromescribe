@@ -57,11 +57,9 @@ test('reports UI shows empty and failed API states without exposing HTML', async
   }
 });
 
-test('all dashboard navigation and both deploy paths include reports', () => {
+test('all dashboard navigation and Worker routes include reports', () => {
   for (const page of ['index', 'transcript', 'settings', 'stats', 'subscriptions']) {
     assert.match(readFileSync(new URL(`../public/${page}.html`, import.meta.url), 'utf8'), /href="\/reports.html"/);
   }
-  for (const file of ['../deploy.sh', '../../.github/workflows/deploy.yml', '../src/index.ts']) {
-    assert.match(readFileSync(new URL(file, import.meta.url), 'utf8'), /reports.html/);
-  }
+  assert.match(readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8'), /reports.html/);
 });

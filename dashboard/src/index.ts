@@ -1585,15 +1585,6 @@ export default {
       if (object) return new Response(object.body, { headers: HTML_HEADERS });
     }
 
-    if (url.pathname === '/debug.html') {
-      const object = await env.TRANSCRIPTS.get('debug.html');
-      if (object) {
-        return new Response(object.body, {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        });
-      }
-    }
-
     const staticFile = await env.TRANSCRIPTS.get(url.pathname.slice(1));
     if (staticFile) {
       const ext = url.pathname.split('.').pop();

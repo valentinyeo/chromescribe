@@ -18,6 +18,8 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 SITE = 'https://chromescribe.yeoux.net'
 ROOT = Path(os.environ.get('CHROMESCRIBE_LENSES', str(Path.home() / 'projects/channel-lenses')))
 CHUNK_SIZE = 40000

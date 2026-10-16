@@ -57,7 +57,7 @@ api_call() {
     if ! "$PYTHON" - "$out" <<'PY'
 import json, sys
 try:
-    with open(sys.argv[1]) as fh:
+    with open(sys.argv[1], encoding='utf-8') as fh:
         body = json.load(fh)
 except Exception as exc:  # noqa: BLE001
     print("invalid JSON:", exc, file=sys.stderr)
@@ -83,7 +83,7 @@ rows_file="$TMPDIR_Q/rows.tsv"
 if ! "$PYTHON" - "$TMPDIR_Q/api.json" "$rows_file" <<'PY'
 import json, re, sys
 src, dst = sys.argv[1], sys.argv[2]
-with open(src) as fh:
+with open(src, encoding='utf-8') as fh:
     body = json.load(fh)
 data = body.get("data")
 if not isinstance(data, list):
@@ -107,7 +107,7 @@ for i, row in enumerate(data):
         print(f"queue[{i}] missing url", file=sys.stderr)
         sys.exit(1)
     lines.append("%s\t%s\t%s" % (qid, video_id, url))
-with open(dst, "w") as fh:
+with open(dst, "w", encoding='utf-8') as fh:
     for line in lines:
         fh.write(line + "\n")
 PY
@@ -155,7 +155,7 @@ while IFS=$'\t' read -r qid video_id url; do
         log "Queue #$qid: FAILED (downloader/transcription), marking failed and continuing"
         failure_payload=$("$PYTHON" - "$output_file" "$process_rc" <<'PYERROR'
 import json, os, re, sys
-with open(sys.argv[1], errors='replace') as fh:
+with open(sys.argv[1], encoding='utf-8', errors='replace') as fh:
     output = fh.read()
 output = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', output)
 lines = [line.strip() for line in output.splitlines() if line.strip()]

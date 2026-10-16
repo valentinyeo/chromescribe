@@ -212,8 +212,8 @@ process_video() {
         local upload_result
         upload_result=$(COMBINED_FILE="$combined_file" TITLE_FILE="$title_file" VIDEO_URL="$url" TODAY_DATE="$TODAY" python3 -c '
 import json, os
-with open(os.environ["COMBINED_FILE"]) as f: text = f.read().strip()
-with open(os.environ["TITLE_FILE"]) as f: title = f.read().strip()
+with open(os.environ["COMBINED_FILE"], encoding="utf-8") as f: text = f.read().strip()
+with open(os.environ["TITLE_FILE"], encoding="utf-8") as f: title = f.read().strip()
 url, date = os.environ["VIDEO_URL"], os.environ["TODAY_DATE"]
 md = f"# {title}\n\n**Source:** {url}\n**Date:** {date}\n**Type:** Video Transcription\n\n---\n\n## Full Transcript\n\n{text}\n\n---\n\n*Transcribed with Cloudflare Workers AI (chunked)*\n"
 print(json.dumps({"url": url, "title": title, "markdown_content": md}))

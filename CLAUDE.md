@@ -22,6 +22,8 @@ ChromeScribe turns YouTube videos, TikToks and web articles into transcripts wit
 
 ```bash
 node tools/strip-comments.mjs --check .
+node tools/encoding-check.mjs
+node --test tools/*.test.js
 node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
 ```
@@ -30,9 +32,8 @@ No package.json and no build step. Every PR runs these in CI. No code comments: 
 
 ## Ship
 
-- Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs the tests, uploads `dashboard/public/` pages to R2, and deploys the Worker when `dashboard/src` or `wrangler.toml` changed.
+- Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs the tests, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker.
 - Local `wrangler` deploys get 403: the shell's `CLOUDFLARE_API_TOKEN` belongs to the Hypertask account, not Yeo UX.
-- A new static page must be added to `deploy.yml`, `dashboard/deploy.sh`, and the Worker's static page routes in `dashboard/src/index.ts`.
 - Read-only D1 queries: `cd dashboard && wrangler d1 execute chromescribe-db --remote --command "<SQL>"`.
 
 ## Facts
@@ -41,10 +42,18 @@ No package.json and no build step. Every PR runs these in CI. No code comments: 
 - Only show users https://chromescribe.yeoux.net; never show or link the workers.dev host.
 - The dashboard is behind Cloudflare Zero Trust: API calls need `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keep credentials in the environment, never in committed files.
 - TikTok blocks datacenter IPs: list and download TikTok only from the Windows box, never this VPS. First monitor run for a TikTok channel only seeds the backlog.
-- Python scripts on Windows need `sys.stdout.reconfigure(encoding='utf-8', errors='replace')`; API responses contain emoji.
 - Frontend is vanilla HTML, CSS and JS, dark theme, Geist font.
 - Gitignored: `*.srt`, `output/`, `tmp/`, `docs/`, `.superpowers/`.
 
 ## `process: <url>` requests
 
 When a message says `process: <url>`, follow `system-prompt.txt` exactly: never ask questions, write `output/YYYY-MM-DD-<slug>.md` with TL;DR, The Article and Full Transcript, then print the TL;DR and the file path.
+
+## Rules and what enforces them
+
+| Rule | Enforced by |
+|---|---|
+| No code comments | `tools/strip-comments.mjs --check` in CI |
+| A new page is a file in `dashboard/public/` plus its route in `dashboard/src/index.ts` | `dashboard/test/static-pages.test.mjs` |
+| Python text IO is UTF-8: `open(..., encoding='utf-8')`, and scripts that print call `sys.stdout.reconfigure` | `tools/encoding-check.mjs` in CI |
+| A `[skip ci]` push still reaches production on the next push | `dashboard/deploy.sh` always deploys the Worker |
