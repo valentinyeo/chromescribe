@@ -108,7 +108,7 @@ cd dashboard && node import.js
 ```
 
 ### CI/CD
-Push to `master` triggers `.github/workflows/deploy.yml` which uploads static files to R2 and deploys the Worker. Requires `CLOUDFLARE_API_TOKEN` secret.
+Pull requests run `.github/workflows/tests.yml` (both test suites, Node 22). Push to `master` runs the same tests, then `.github/workflows/deploy.yml` uploads static files to R2 and deploys the Worker. Requires `CLOUDFLARE_API_TOKEN` secret.
 **Local deploys don't work**: the `CLOUDFLARE_API_TOKEN` in the shell env is scoped to the Hypertask account, not Yeo UX (`7865043d…`) where chromescribe lives - any local `wrangler` R2/Worker command gets 403. Deploy by pushing to `master`.
 
 ## Key Details
