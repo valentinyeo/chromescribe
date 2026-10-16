@@ -13,6 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No skip markers in PR commits or title
+        if: github.event_name == 'pull_request'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if { echo "$TITLE"; git log --format=%B "$BASE..$HEAD"; } | grep -niE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]'; then
+            echo "Remove the skip marker above: a squash merge carries it to master and the deploy never runs."
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
