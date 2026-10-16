@@ -23,6 +23,7 @@ ChromeScribe turns YouTube videos, TikToks and web articles into transcripts wit
 ```bash
 node tools/strip-comments.mjs --check .
 node tools/encoding-check.mjs
+node tools/media-check.mjs
 node --test tools/*.test.js
 node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
@@ -43,7 +44,7 @@ No package.json and no build step. Every PR runs these in CI. No code comments: 
 - The dashboard is behind Cloudflare Zero Trust: API calls need `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keep credentials in the environment, never in committed files.
 - TikTok blocks datacenter IPs: list and download TikTok only from the Windows box, never this VPS. First monitor run for a TikTok channel only seeds the backlog.
 - Frontend is vanilla HTML, CSS and JS, dark theme, Geist font.
-- Gitignored: `*.srt`, `output/`, `tmp/`, `docs/`, `.superpowers/`.
+- Gitignored: `*.srt`, `output/`, `tmp/`, `docs/`, `.superpowers/`, and video, audio, subtitle and image files in the top folder.
 
 ## `process: <url>` requests
 
@@ -56,4 +57,5 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | No code comments | `tools/strip-comments.mjs --check` in CI |
 | A new page is a file in `dashboard/public/` plus its route in `dashboard/src/index.ts` | `dashboard/test/static-pages.test.mjs` |
 | Python text IO is UTF-8: `open(..., encoding='utf-8')`, and scripts that print call `sys.stdout.reconfigure` | `tools/encoding-check.mjs` in CI |
+| No downloaded videos, audio, subtitles or top-folder images in git | `tools/media-check.mjs` in CI |
 | Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |
