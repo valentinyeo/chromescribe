@@ -171,3 +171,93 @@ export async function listPendingQueue(db, params) {
   const { results } = await query.all();
   return { status: 200, data: results };
 }
+
+const queueReady = new WeakMap();
+
+export async function ensureQueue(db) {
+  let ready = queueReady.get(db);
+  if (!ready) {
+    ready = (async () => {
+      for (const [name, type] of [
+        ['started_at', 'DATETIME'], ['finished_at', 'DATETIME'], ['error', 'TEXT'],
+        ['attempts', 'INTEGER DEFAULT 0'], ['transcript_id', 'INTEGER'],
+      ]) {
+        try {
+          await db.prepare(`ALTER TABLE queue ADD COLUMN ${name} ${type}`).run();
+        } catch (err) {
+          if (!(err instanceof Error) || !new RegExp(`duplicate column name:\\s*${name}\\b`, 'i').test(err.message)) throw err;
+        }
+      }
+    })().catch(err => {
+      queueReady.delete(db);
+      throw err;
+    });
+    queueReady.set(db, ready);
+  }
+  await ready;
+}
+
+export async function listAllQueue(db, params) {
+  const limits = params.getAll('limit');
+  const limit = limits[0] ?? '200';
+  if (limits.length > 1 || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 1000) {
+    return { status: 400, error: 'limit must be between 1 and 1000' };
+  }
+  await ensureQueue(db);
+  const { results } = await db.prepare(`SELECT q.id, q.url, q.video_id, q.status, q.created_at,
+    q.started_at, q.finished_at, q.error, q.attempts, t.title, t.channel,
+    COALESCE(q.transcript_id, t.id) AS transcript_id
+    FROM queue q LEFT JOIN transcripts t ON t.video_id = q.video_id
+    ORDER BY q.created_at DESC, q.id DESC LIMIT ?`).bind(Number(limit)).all();
+  return { status: 200, data: results };
+}
+
+export async function updateQueue(db, id, body) {
+  if (!body || !['processing', 'done', 'failed', 'pending'].includes(body.status)) {
+    return { status: 400, error: 'status must be processing, done, failed or pending' };
+  }
+  if (body.error !== undefined && typeof body.error !== 'string') {
+    return { status: 400, error: 'error must be a string' };
+  }
+  if (body.transcript_id !== undefined && (!Number.isSafeInteger(body.transcript_id) || body.transcript_id < 1)) {
+    return { status: 400, error: 'transcript_id must be a positive integer' };
+  }
+  await ensureQueue(db);
+  const row = await db.prepare('SELECT status FROM queue WHERE id = ?').bind(id).first();
+  if (!row) return { status: 404, error: 'Queue row not found' };
+  const status = body.status;
+  const fields = ['status = ?'];
+  const values = [status];
+  if (status === 'processing') {
+    fields.push('started_at = CURRENT_TIMESTAMP', 'attempts = COALESCE(attempts, 0) + 1', 'finished_at = NULL', 'error = NULL');
+  } else if (status === 'pending') {
+    fields.push('error = NULL', 'finished_at = NULL');
+  } else {
+    fields.push('finished_at = CURRENT_TIMESTAMP');
+  }
+  if (body.error !== undefined && status !== 'pending') {
+    fields.push('error = ?');
+    values.push(body.error.trim().slice(0, 500));
+  }
+  if (body.transcript_id !== undefined) {
+    fields.push('transcript_id = ?');
+    values.push(body.transcript_id);
+  }
+  // Conditional writes prevent two drainers claiming a row or racing a retry.
+  const guard = status === 'pending' ? " AND status = 'failed'" : status === 'processing' ? " AND status = 'pending'" : '';
+  try {
+    const result = await db.prepare(`UPDATE queue SET ${fields.join(', ')} WHERE id = ?${guard}`).bind(...values, id).run();
+    if (!result.meta.changes) return { status: 409, error: status === 'pending' ? 'Only failed rows can be retried' : 'Row is no longer pending' };
+  } catch (err) {
+    if (status !== 'pending' || !(err instanceof Error) || !/UNIQUE constraint failed:\s*queue\.video_id\b/i.test(err.message)) throw err;
+    return { status: 409, error: 'This video already has a pending row' };
+  }
+  return { status: 200, data: { id, status } };
+}
+
+export async function deleteQueue(db, id) {
+  const result = await db.prepare("DELETE FROM queue WHERE id = ? AND status != 'processing'").bind(id).run();
+  if (result.meta.changes) return { status: 200, data: { id, deleted: true } };
+  const row = await db.prepare('SELECT id FROM queue WHERE id = ?').bind(id).first();
+  return row ? { status: 409, error: 'Cannot remove a processing row' } : { status: 404, error: 'Queue row not found' };
+}

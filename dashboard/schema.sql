@@ -26,8 +26,13 @@ CREATE TABLE IF NOT EXISTS queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT NOT NULL,
     video_id TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',  -- pending | done | failed
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending | processing | done | failed
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME,
+    finished_at DATETIME,
+    error TEXT,
+    attempts INTEGER DEFAULT 0,
+    transcript_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_queue_status ON queue(status);
 

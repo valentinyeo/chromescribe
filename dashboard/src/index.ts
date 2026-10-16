@@ -5,7 +5,7 @@
 
 import { transcriptSourceResponse } from './source-lib.mjs';
 import { addEstimatedTimestamps } from './timestamps.mjs';
-import { enqueueSharedUrl, hashUrl, listPendingQueue } from './queue-lib.mjs';
+import { enqueueSharedUrl, hashUrl, listPendingQueue, listAllQueue, updateQueue, deleteQueue } from './queue-lib.mjs';
 import { handleAndroidUpdates } from './android-updates.mjs';
 import { parseChannelInput } from './channels-lib.mjs';
 
@@ -1540,24 +1540,33 @@ ${srtContent || transcript.text}
       return jsonResponse(result.data);
     }
 
-    // PUT /api/queue/:id { status } - mark done/failed (queue.sh)
-    if (request.method === 'PUT' && path.startsWith('queue/')) {
-      const id = path.split('/')[1];
-      if (!/^\d+$/.test(id)) {
+    // GET /api/queue/all - dashboard history, separate from the drainer feed
+    if (request.method === 'GET' && path === 'queue/all') {
+      const result = await listAllQueue(env.DB, url.searchParams);
+      if (result.error) return handleError(new Error(result.error), result.status);
+      return jsonResponse(result.data);
+    }
+
+    // PUT/DELETE /api/queue/:id - lifecycle and history management
+    if (['PUT', 'DELETE'].includes(request.method) && path.startsWith('queue/')) {
+      const id = path.slice('queue/'.length);
+      if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) < 1) {
         return handleError(new Error('Invalid queue id'), 400);
       }
-      let body: unknown;
-      try {
-        body = await request.json();
-      } catch {
-        return handleError(new Error('Invalid JSON body'), 400);
+      let result;
+      if (request.method === 'DELETE') {
+        result = await deleteQueue(env.DB, Number(id));
+      } else {
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return handleError(new Error('Invalid JSON body'), 400);
+        }
+        result = await updateQueue(env.DB, Number(id), body);
       }
-      const status = body && typeof (body as any).status === 'string' ? (body as any).status : '';
-      if (status !== 'done' && status !== 'failed') {
-        return handleError(new Error('status must be done or failed'), 400);
-      }
-      await env.DB.prepare('UPDATE queue SET status = ? WHERE id = ?').bind(status, id).run();
-      return jsonResponse({ id, status });
+      if (result.error) return handleError(new Error(result.error), result.status);
+      return jsonResponse(result.data, result.status);
     }
 
     // Search transcripts
@@ -1670,6 +1679,12 @@ export default {
           headers: HTML_HEADERS,
         });
       }
+    }
+
+    if (url.pathname === '/queue.html') {
+      const object = await env.TRANSCRIPTS.get('queue.html');
+      if (!object) return new Response('Not found', { status: 404 });
+      return new Response(object.body, { headers: HTML_HEADERS });
     }
 
     if (url.pathname === '/reports.html') {

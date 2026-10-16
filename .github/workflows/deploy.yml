@@ -40,6 +40,7 @@ jobs:
           wrangler r2 object put chromescribe-transcripts/stats.html --file=./public/stats.html --remote
           wrangler r2 object put chromescribe-transcripts/subscriptions.html --file=./public/subscriptions.html --remote
 
+          wrangler r2 object put chromescribe-transcripts/queue.html --file=./public/queue.html --remote
           wrangler r2 object put chromescribe-transcripts/reports.html --file=./public/reports.html --remote
 
       - name: Deploy Worker

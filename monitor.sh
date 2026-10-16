@@ -306,7 +306,7 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
     fi
 
     # Step 4: Send Telegram notification with ChromeScribe URL + thumbnail
-    local cs_url="$DASHBOARD_URL/transcript.html?id=$transcript_id"
+    local cs_url="https://chromescribe.yeoux.net/transcript.html?id=$transcript_id"
     send_telegram "$(printf '📝 <b>New transcript</b>\n<b>%s</b>\n<a href="%s">View in ChromeScribe</a>' "$title" "$cs_url")" "$thumb_url"
 
     log "  Telegram sent: $cs_url"

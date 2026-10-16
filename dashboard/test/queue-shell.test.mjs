@@ -78,13 +78,17 @@ case "$mode" in
     log; body '{"success":true,"data":null}'; echo 200; exit 0;;
   baddata_row)
     log; body '{"success":true,"data":[{"id":7}]}'; echo 200; exit 0;;
-  put_fail)
+  put_fail|processing_fail|failed_put_fail)
     log
     if [ "$method" = "GET" ]; then
       body '{"success":true,"data":[{"id":7,"video_id":"abcdefghijk","url":"https://www.youtube.com/watch?v=abcdefghijk"}]}'
       echo 200; exit 0
+    elif { [ "$mode" = "put_fail" ] && [[ "$data" == *'"done"'* ]]; } ||
+         { [ "$mode" = "processing_fail" ] && [[ "$data" == *'"processing"'* ]]; } ||
+         { [ "$mode" = "failed_put_fail" ] && [[ "$data" == *'"failed"'* ]]; }; then
+      echo 500; echo "status update failed" >&2; exit 22
     else
-      echo 500; echo "markdone failed" >&2; exit 22
+      body '{"success":true,"data":{}}'; echo 200; exit 0
     fi;;
   *) echo "unknown mock mode" >&2; exit 97;;
 esac
@@ -93,25 +97,27 @@ esac
 const MONITOR_MOCK = `#!/usr/bin/env bash
 set -uo pipefail
 vid="$2"
+printf 'WORK\\t%s\\n' "$vid" >> "$MOCK_CURL_LOG"
 if [ -n "\${MOCK_MONITOR_LOG:-}" ]; then printf '%s\\n' "\${REQUIRE_ANALYZE:-unset}" >> "$MOCK_MONITOR_LOG"; fi
 if [ "\${MOCK_ANALYZE_FAIL:-0}" = "1" ] && [ "\${REQUIRE_ANALYZE:-0}" = "1" ]; then
   echo "mock /analyze failed for $vid" >&2
   exit 1
 fi
 if [ -n "\${MOCK_FAIL_VIDEO:-}" ] && [ "$vid" = "$MOCK_FAIL_VIDEO" ]; then
-  echo "mock monitor failure for $vid" >&2
+  printf '%s\\n' "\${MOCK_FAILURE_OUTPUT:-mock monitor failure for $vid}" >&2
   exit 1
 fi
 exit 0
 `;
 
 const PROCESS_MOCK = `#!/usr/bin/env bash
+printf 'WORK\\t%s\\n' "$1" >> "$MOCK_CURL_LOG"
 printf '%s\\t%s\\t%s\\t%s\\n' "$PWD" "$CHROMESCRIBE_NO_OPEN" "$REQUIRE_ANALYZE" "$1" >> "$MOCK_PROCESS_LOG"
-if [ "$1" = "\${MOCK_FAIL_URL:-}" ]; then exit 1; fi
+if [ "$1" = "\${MOCK_FAIL_URL:-}" ]; then printf '%s\\n' "\${MOCK_FAILURE_OUTPUT:-}" >&2; exit 1; fi
 exit 0
 `;
 
-function runQueue({ mode = 'ok', monitorExit = 0, failVideo = '', analyzeFail = false, monitorLog = true, failUrl = '', platforms, pythonStub = false } = {}) {
+function runQueue({ mode = 'ok', monitorExit = 0, failVideo = '', analyzeFail = false, monitorLog = true, failUrl = '', platforms, pythonStub = false, failureOutput = '' } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), 'cs-queue-test-'));
   const bindir = join(tmp, 'bin');
   mkdirSync(bindir);
@@ -139,6 +145,7 @@ function runQueue({ mode = 'ok', monitorExit = 0, failVideo = '', analyzeFail = 
     MOCK_CURL_LOG: curlLog,
     MOCK_FAIL_VIDEO: failVideo,
     MOCK_FAIL_URL: failUrl,
+    MOCK_FAILURE_OUTPUT: failureOutput,
     MOCK_PROCESS_LOG: processLog,
     MOCK_PYTHON_LOG: pythonLog,
     MOCK_ANALYZE_FAIL: analyzeFail ? '1' : '0',
@@ -246,7 +253,7 @@ test('downloader failure marks failed, continues to next row, exits nonzero', ()
     assert.notEqual(r.status, 0, r.output);
     assert.match(r.output, /Queue #7: FAILED/);
     assert.match(r.output, /Queue #8: done/);
-    assert.match(r.curlLog, /PUT\t.*\/api\/queue\/7\t\{"status":"failed"\}/);
+    assert.match(r.curlLog, /PUT\t.*\/api\/queue\/7\t\{"status":"failed","error":/);
     assert.match(r.curlLog, /PUT\t.*\/api\/queue\/8\t\{"status":"done"\}/);
   } finally {
     r.cleanup();
@@ -269,7 +276,7 @@ test('analyze failure in the force path is reported as a failed row', () => {
   try {
     assert.notEqual(r.status, 0, r.output);
     assert.match(r.output, /Queue #7: FAILED/);
-    assert.match(r.curlLog, /PUT\t.*\/api\/queue\/7\t\{"status":"failed"\}/);
+    assert.match(r.curlLog, /PUT\t.*\/api\/queue\/7\t\{"status":"failed","error":/);
     assert.doesNotMatch(r.output, /Queue #7: done/);
   } finally {
     r.cleanup();
@@ -321,7 +328,7 @@ for (const [id, url] of [[8, 'https://example.com/story'], [9, 'https://www.tikt
     const r = runQueue({ mode: 'mixed', failUrl: url });
     try {
       assert.notEqual(r.status, 0, r.output);
-      assert.match(r.curlLog, new RegExp(`/api/queue/${id}\\t\\{"status":"failed"\\}`));
+      assert.match(r.curlLog, new RegExp(`/api/queue/${id}\\t\\{"status":"failed","error":`));
       assert.equal((r.curlLog.match(/"status":"done"/g) || []).length, 3);
     } finally { r.cleanup(); }
   });
@@ -334,4 +341,61 @@ test('broken python3 Store stub falls back to python once for the entire drain',
     assert.equal(r.pythonLog, 'stub\n');
     assert.equal((r.curlLog.match(/"status":"done"/g) || []).length, 4);
   } finally { r.cleanup(); }
+});
+
+test('processing status precedes each platform downloader and done follows it', () => {
+  const r = runQueue({ mode: 'mixed' });
+  try {
+    assert.equal(r.status, 0, r.output);
+    const events = r.curlLog.trim().split('\n');
+    assert.equal(events.length, 13, r.curlLog);
+    for (let i = 0; i < 4; i++) {
+      assert.match(events[1 + i * 3], /PUT\t.*\t\{"status":"processing"\}/);
+      assert.match(events[2 + i * 3], /^WORK\t/);
+      assert.match(events[3 + i * 3], /PUT\t.*\t\{"status":"done"\}/);
+    }
+  } finally { r.cleanup(); }
+});
+
+test('failed processing claim skips downloader and never sends a terminal status', () => {
+  const r = runQueue({ mode: 'processing_fail' });
+  try {
+    assert.notEqual(r.status, 0);
+    assert.match(r.output, /could not mark processing/);
+    assert.equal(r.monLog, '');
+    assert.equal(r.processLog, '');
+    assert.doesNotMatch(r.curlLog, /WORK|"status":"(?:failed|done)"/);
+  } finally { r.cleanup(); }
+});
+
+test('failure payload retains last meaningful ERROR, strips ANSI and secrets, and uses valid bounded JSON', () => {
+  // Split so secret scanners don't read the fake login as a real one
+  const fakeLoginUrl = 'https://user' + ':' + 'pass@host/path?token=secret';
+  const r = runQueue({ failVideo: 'abcdefghijk', failureOutput: `\x1b[31mERROR: yt-dlp test-secret test-id ${fakeLoginUrl} "bad"\x1b[0m\ncleanup finished\n\n` });
+  try {
+    assert.notEqual(r.status, 0);
+    const line = r.curlLog.split('\n').find(line => line.includes('"status":"failed"'));
+    const payload = JSON.parse(line.split('\t')[2]);
+    assert.equal(payload.error, 'ERROR: yt-dlp [redacted] [redacted] [URL] "bad"');
+    assert.doesNotMatch(line, /test-secret|test-id|user:pass|token=secret|\\u001b/);
+  } finally { r.cleanup(); }
+  const long = runQueue({ failVideo: 'abcdefghijk', failureOutput: 'ERROR: ' + 'x'.repeat(600) });
+  try {
+    const payload = JSON.parse(long.curlLog.split('\n').find(line => line.includes('"status":"failed"')).split('\t')[2]);
+    assert.equal(payload.error.length, 500);
+  } finally { long.cleanup(); }
+});
+
+test('failure without output gets an exit diagnostic and failed status API errors remain nonzero', () => {
+  const r = runQueue({ mode: 'mixed', failUrl: 'https://example.com/story' });
+  try {
+    const payload = JSON.parse(r.curlLog.split('\n').find(line => line.includes('"status":"failed"')).split('\t')[2]);
+    assert.equal(payload.error, 'Processing failed (exit 1)');
+  } finally { r.cleanup(); }
+  const failedPut = runQueue({ mode: 'failed_put_fail', failVideo: 'abcdefghijk' });
+  try {
+    assert.notEqual(failedPut.status, 0);
+    assert.match(failedPut.output, /could not mark failed/);
+    assert.doesNotMatch(failedPut.output, /Queue #7: done/);
+  } finally { failedPut.cleanup(); }
 });

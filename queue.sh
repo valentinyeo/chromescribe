@@ -38,7 +38,7 @@ else
     exit 1
 fi
 
-# Only one drainer at a time — a transcription run takes minutes, cron fires every minute.
+# Only one drainer at a time - a transcription run takes minutes, cron fires every minute.
 # Git Bash on Windows has no flock; there Task Scheduler's default "do not start
 # a new instance" policy prevents overlapping runs instead.
 if command -v flock >/dev/null 2>&1; then
@@ -146,11 +146,17 @@ overall_rc=0
 while IFS=$'\t' read -r qid video_id url; do
     [ -n "$qid" ] || continue
 
+    if ! api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"processing"}'; then
+        log "ERROR: Queue #$qid: could not mark processing; skipping row"
+        overall_rc=1
+        continue
+    fi
+    output_file="$TMPDIR_Q/process.log"
     case "$video_id" in
         article:*|tiktok:*|tiktok-short:*)
             log "Queue #$qid: $url"
-            (cd "$SCRIPT_DIR" && CHROMESCRIBE_NO_OPEN=1 REQUIRE_ANALYZE=1 bash ./process.sh "$url" < /dev/null)
-            process_rc=$?
+            (cd "$SCRIPT_DIR" && CHROMESCRIBE_NO_OPEN=1 REQUIRE_ANALYZE=1 bash ./process.sh "$url" < /dev/null) 2>&1 | tee "$output_file"
+            process_rc=${PIPESTATUS[0]}
             ;;
         *)
             # Real title, so the dashboard entry isn't called "Manual run".
@@ -159,8 +165,8 @@ while IFS=$'\t' read -r qid video_id url; do
                 | "$PYTHON" -c 'import sys,json; print(json.load(sys.stdin)["title"])'; } 2>/dev/null )
             [ -n "$title" ] || title="Shared from Android"
             log "Queue #$qid: $title ($url)"
-            REQUIRE_ANALYZE=1 "$MONITOR_SH" --force "$video_id" "$title" < /dev/null
-            process_rc=$?
+            REQUIRE_ANALYZE=1 "$MONITOR_SH" --force "$video_id" "$title" < /dev/null 2>&1 | tee "$output_file"
+            process_rc=${PIPESTATUS[0]}
             ;;
     esac
     if [ "$process_rc" -eq 0 ]; then
@@ -168,12 +174,30 @@ while IFS=$'\t' read -r qid video_id url; do
         if api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"done"}'; then
             log "Queue #$qid: done"
         else
-            log "ERROR: Queue #$qid: transcription finished but marking done failed; will retry next run"
+            log "ERROR: Queue #$qid: transcription finished but marking done failed; row remains processing, check the queue"
             overall_rc=1
         fi
     else
         log "Queue #$qid: FAILED (downloader/transcription), marking failed and continuing"
-        if ! api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d '{"status":"failed"}'; then
+        failure_payload=$("$PYTHON" - "$output_file" "$process_rc" <<'PYERROR'
+import json, os, re, sys
+with open(sys.argv[1], errors='replace') as fh:
+    output = fh.read()
+output = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', output)
+lines = [line.strip() for line in output.splitlines() if line.strip()]
+errors = [line for line in lines if re.search(r'\bERROR\b', line, re.I)]
+message = (errors or lines or ['Processing failed (exit %s)' % sys.argv[2]])[-1]
+# Never persist service credentials or token-bearing downloader URLs.
+for name, value in os.environ.items():
+    if value and any(word in name.upper() for word in ('SECRET', 'TOKEN', 'PASSWORD', 'API_KEY', 'CLIENT_ID')):
+        message = message.replace(value, '[redacted]')
+message = re.sub(r'https?://\S+', '[URL]', message)
+message = re.sub(r'(?i)((?:authorization|cookie|password|token|secret|api[_-]?key)\s*[:=]\s*).*', r'\1[redacted]', message)
+message = re.sub(r'[\x00-\x1f\x7f]', '', message)
+print(json.dumps({'status': 'failed', 'error': message[:500]}, separators=(',', ':')))
+PYERROR
+)
+        if ! api_call PUT "/api/queue/$qid" -H "Content-Type: application/json" -d "$failure_payload"; then
             log "ERROR: Queue #$qid: could not mark failed"
         fi
         overall_rc=1

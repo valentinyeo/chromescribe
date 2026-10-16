@@ -161,7 +161,7 @@ except Exception:
         if [ -n "$EXISTING_TRANSCRIPT" ]; then
             TRANSCRIPT_ID=${EXISTING_TRANSCRIPT%%$'\t'*}
             TRANSCRIPT_TITLE=${EXISTING_TRANSCRIPT#*$'\t'}
-            DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
+            DASHBOARD_URL="https://chromescribe.yeoux.net/transcript.html?id=${TRANSCRIPT_ID}"
             echo ">>> Already transcribed: #$TRANSCRIPT_ID — $TRANSCRIPT_TITLE"
             open_transcript
             exit 0
@@ -291,7 +291,7 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}, ensure_as
 
     echo ">>> Phase 1 complete! Transcript #$TRANSCRIPT_ID — $TRANSCRIPT_TITLE"
 
-    DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
+    DASHBOARD_URL="https://chromescribe.yeoux.net/transcript.html?id=${TRANSCRIPT_ID}"
     open_transcript
 
     if ! run_hosted_analysis "$TRANSCRIPT_ID"; then
@@ -342,7 +342,7 @@ else
     fi
     echo ">>> Phase 1 complete! Article #$TRANSCRIPT_ID on dashboard."
 
-    DASHBOARD_URL="$DASHBOARD_BASE/transcript.html?id=${TRANSCRIPT_ID}"
+    DASHBOARD_URL="https://chromescribe.yeoux.net/transcript.html?id=${TRANSCRIPT_ID}"
     open_transcript
 
     if ! run_hosted_analysis "$TRANSCRIPT_ID"; then
