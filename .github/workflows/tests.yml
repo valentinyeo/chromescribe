@@ -41,6 +41,8 @@ jobs:
         run: node --test tools/media-check.test.js
       - name: No downloaded media
         run: node tools/media-check.mjs
+      - name: Live check tests
+        run: node --test tools/live-check.test.js
       - name: CLI tests
         run: node --test cli/test/*.test.mjs
       - name: Dashboard tests

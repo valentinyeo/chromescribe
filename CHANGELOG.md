@@ -5,6 +5,7 @@
 ### Changed
 
 - Scripts read the dashboard key only from the environment or `.env.chromescribe` (CHRO-6).
+- Every deploy now checks the live site and fails unless each dashboard page matches the committed file (CHRO-7).
 
 ## [0.2.0] - 2026-09-22
 

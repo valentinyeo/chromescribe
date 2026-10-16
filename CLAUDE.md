@@ -33,7 +33,7 @@ No package.json and no build step. Every PR runs these in CI. No code comments: 
 
 ## Ship
 
-- Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs the tests, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker.
+- Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs the tests, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker, then `tools/live-check.mjs`, which fails the run unless every page on https://chromescribe.yeoux.net matches `dashboard/public`.
 - Local `wrangler` deploys get 403: the shell's `CLOUDFLARE_API_TOKEN` belongs to the Hypertask account, not Yeo UX.
 - Read-only D1 queries: `cd dashboard && wrangler d1 execute chromescribe-db --remote --command "<SQL>"`.
 
@@ -58,4 +58,5 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | A new page is a file in `dashboard/public/` plus its route in `dashboard/src/index.ts` | `dashboard/test/static-pages.test.mjs` |
 | Python text IO is UTF-8: `open(..., encoding='utf-8')`, and scripts that print call `sys.stdout.reconfigure` | `tools/encoding-check.mjs` in CI |
 | No downloaded videos, audio, subtitles or top-folder images in git | `tools/media-check.mjs` in CI |
+| Every deploy is checked on the live site | `tools/live-check.mjs` in `deploy.yml`, tested by `tools/live-check.test.js` |
 | Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |

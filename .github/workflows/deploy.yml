@@ -26,3 +26,7 @@ jobs:
 
       - name: Deploy dashboard
         run: bash deploy.sh
+
+      - name: Check the live site
+        working-directory: .
+        run: node tools/live-check.mjs https://chromescribe.yeoux.net --version "$GITHUB_SHA"
