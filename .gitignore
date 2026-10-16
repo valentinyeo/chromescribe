@@ -23,3 +23,4 @@ extension/config.js
 /*.jpg
 /*.jpeg
 /*.webp
+.wrangler/
