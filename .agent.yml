@@ -1,11 +1,11 @@
 name: chromescribe-monitor
 project: chromescribe
 description: >-
-  YouTube channel monitor: checks subscribed channels for new videos, transcribes via Whisper API, summarizes with pi (MiniMax), classifies topics, uploads to Chromescribe dashboard, notifies via
+  YouTube channel monitor: checks subscribed channels for new videos, transcribes with Workers AI Whisper, summarizes and classifies with Workers AI Gemma through AI Gateway, uploads to Chromescribe dashboard, notifies via
   Telegram. Runs 4x/day.
 tech: cron
-llm: pi
-provider: minimax
+llm: workers-ai
+provider: cloudflare
 trigger:
   type: cron
   frequency: every-4h
