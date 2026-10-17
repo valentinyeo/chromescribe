@@ -4,12 +4,15 @@ import { addEstimatedTimestamps } from './timestamps.mjs';
 import { enqueueSharedUrl, hashUrl, listPendingQueue, listAllQueue, updateQueue, deleteQueue } from './queue-lib.mjs';
 import { handleAndroidUpdates } from './android-updates.mjs';
 import { parseChannelInput } from './channels-lib.mjs';
+import { accessGate } from './access-gate.mjs';
 
 interface Env {
   DB: D1Database;
   TRANSCRIPTS: R2Bucket;
   AI: Ai;
   DEEPGRAM_API_KEY: string;
+  CHRO10_API_GATE?: string;
+  ACCESS_AUD?: string;
 }
 
 interface Transcript {
@@ -149,12 +152,6 @@ const gatewayOptions = (task: 'transcription' | 'summarization' | 'classificatio
 const textFromModelResponse = (result: TextGenerationResponse): string =>
   result?.response || result?.choices?.[0]?.message?.content || '';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
 interface ParsedVideo {
   platform: 'youtube' | 'tiktok' | 'x' | 'article';
   id: string;
@@ -202,14 +199,14 @@ const handleError = (error: any, status = 500): Response => {
   console.error('API Error:', error);
   return new Response(
     JSON.stringify({ success: false, error: error.message || 'Internal error' }),
-    { status, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } }
+    { status, headers: { 'Content-Type': 'application/json' } }
   );
 };
 
 const jsonResponse = (data: any, status = 200): Response => {
   return new Response(JSON.stringify({ success: true, data }), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+    headers: { 'Content-Type': 'application/json' },
   });
 };
 
@@ -554,7 +551,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
             'Content-Type': cached.httpMetadata?.contentType || 'image/jpeg',
             'Cache-Control': 'public, max-age=31536000, immutable',
             'CDN-Cache-Control': 'public, max-age=31536000, immutable',
-            ...CORS_HEADERS,
           },
         });
       }
@@ -571,7 +567,7 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
       }
 
       if (!sourceUrl) {
-        return new Response('Not found', { status: 404, headers: CORS_HEADERS });
+        return new Response('Not found', { status: 404 });
       }
 
       try {
@@ -589,11 +585,10 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
             'Content-Type': contentType,
             'Cache-Control': 'public, max-age=31536000, immutable',
             'CDN-Cache-Control': 'public, max-age=31536000, immutable',
-            ...CORS_HEADERS,
           },
         });
       } catch {
-        return new Response('Not found', { status: 404, headers: CORS_HEADERS });
+        return new Response('Not found', { status: 404 });
       }
     }
 
@@ -805,7 +800,6 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
         'Content-Length': String(audio.length),
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'public, max-age=31536000, immutable',
-        ...CORS_HEADERS,
       };
       const range = request.headers.get('Range')?.match(/^bytes=(\d*)-(\d*)$/);
       if (range && (range[1] || range[2])) {
@@ -1501,10 +1495,12 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS_HEADERS });
+      return new Response(null, { status: 204, headers: { Allow: 'GET, POST, PUT, PATCH, DELETE, OPTIONS' } });
     }
 
     if (url.pathname.startsWith('/api/')) {
+      const denied = await accessGate(request, env);
+      if (denied) return denied;
       const updaterResponse = await handleAndroidUpdates(request, env);
       if (updaterResponse) return updaterResponse;
       return handleApi(request, env);

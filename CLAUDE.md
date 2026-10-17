@@ -41,7 +41,9 @@ No package.json and no build step. Every PR runs these in CI. No code comments: 
 
 - Cloudflare account Yeo UX `7865043d9ae730882b77f3d5d670c158`; D1 `chromescribe-db` (`08532531-b2b5-4922-9e88-7cfdd074928a`); R2 `chromescribe-transcripts`.
 - Only show users https://chromescribe.yeoux.net; never show or link the workers.dev host.
-- The dashboard is behind Cloudflare Zero Trust: API calls need `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keep credentials in the environment, never in committed files.
+- API calls send `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keep credentials in the environment, never in committed files. Zero Trust covers the workers.dev host; chromescribe.yeoux.net is not covered until CHRO-10 lands.
+- `/api/*` also verifies the Access login itself when `CHRO10_API_GATE = "1"` in `dashboard/wrangler.toml` (`dashboard/src/access-gate.mjs`), checking the audience tag in the Worker secret `ACCESS_AUD` (refuses everyone when it is missing). Keep it `"0"` until Zero Trust covers chromescribe.yeoux.net, or the dashboard goes dark.
+- The API sends no CORS headers: only same-origin pages may call it.
 - TikTok blocks datacenter IPs: list and download TikTok only from the Windows box, never this VPS. First monitor run for a TikTok channel only seeds the backlog.
 - Frontend is vanilla HTML, CSS and JS, dark theme, Geist font.
 - Gitignored: `*.srt`, `output/`, `tmp/`, `docs/`, `.superpowers/`, and video, audio, subtitle and image files in the top folder.
@@ -59,4 +61,5 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | Python text IO is UTF-8: `open(..., encoding='utf-8')`, and scripts that print call `sys.stdout.reconfigure` | `tools/encoding-check.mjs` in CI |
 | No downloaded videos, audio, subtitles or top-folder images in git | `tools/media-check.mjs` in CI |
 | Every deploy is checked on the live site | `tools/live-check.mjs` in `deploy.yml`, tested by `tools/live-check.test.js` |
+| With the gate on, `/api/*` refuses calls without a valid Access login; no CORS headers | `dashboard/test/access-gate.test.mjs`, `dashboard/test/channels-api.test.mjs` |
 | Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |

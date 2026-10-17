@@ -211,12 +211,13 @@ test('PATCH strictly validates JSON, boolean shape and channel IDs, and reports 
   assert.equal((await (await api(db)).json()).data[0].paused, 0);
 });
 
-test('CORS preflight permits the pause method', async () => {
-  const response = await worker.fetch(new Request('https://test.example/api/channels/tiktok%3A%40mine', {
-    method: 'OPTIONS', headers: { 'Access-Control-Request-Method': 'PATCH' },
+test('API never allows calls from other websites', async () => {
+  const preflight = await worker.fetch(new Request('https://test.example/api/channels/tiktok%3A%40mine', {
+    method: 'OPTIONS', headers: { 'Access-Control-Request-Method': 'DELETE', Origin: 'https://evil.example' },
   }), {});
-  assert.equal(response.status, 200);
-  assert.ok(response.headers.get('Access-Control-Allow-Methods').split(', ').includes('PATCH'));
+  assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), null);
+  const list = await api(makeD1());
+  assert.equal(list.headers.get('Access-Control-Allow-Origin'), null);
 });
 
 test('an older channels table without an id column is kept aside, not dropped', async () => {
