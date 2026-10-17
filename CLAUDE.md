@@ -10,7 +10,7 @@ ChromeScribe turns YouTube videos, TikToks and web articles into transcripts wit
 - `monitor.sh`: polls active subscriptions from `GET /api/channels?active=1`, transcribes new videos, and notifies Telegram. `channels.txt` is only an offline fallback when the API fails.
 - `dashboard/`: TypeScript Cloudflare Worker with the API and static pages. D1 for metadata, R2 for transcripts, pages and reports. API, queue lifecycle and pages: `dashboard/README.md`. Schema: `dashboard/schema.sql`.
 - `cli/`: the `chromescribe` CLI and channel lenses. Commands: `cli/README.md`.
-- `system-prompt-pi.txt` and `android/` are legacy and unused.
+- `system-prompt-pi.txt` is legacy and unused. The phone app lives in https://github.com/valentinyeo/chromescribe-android and signs users in; it carries no service key.
 
 ## AI
 
@@ -24,6 +24,7 @@ ChromeScribe turns YouTube videos, TikToks and web articles into transcripts wit
 node tools/strip-comments.mjs --check .
 node tools/encoding-check.mjs
 node tools/media-check.mjs
+node tools/client-key-check.mjs
 node --test tools/*.test.js
 node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
@@ -60,6 +61,7 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | A new page is a file in `dashboard/public/` plus its route in `dashboard/src/index.ts` | `dashboard/test/static-pages.test.mjs` |
 | Python text IO is UTF-8: `open(..., encoding='utf-8')`, and scripts that print call `sys.stdout.reconfigure` | `tools/encoding-check.mjs` in CI |
 | No downloaded videos, audio, subtitles or top-folder images in git | `tools/media-check.mjs` in CI |
+| No Access service key in the extension, Android sources or public pages | `tools/client-key-check.mjs` in CI |
 | Every deploy is checked on the live site | `tools/live-check.mjs` in `deploy.yml`, tested by `tools/live-check.test.js` |
 | With the gate on, `/api/*` refuses calls without a valid Access login; no CORS headers | `dashboard/test/access-gate.test.mjs`, `dashboard/test/channels-api.test.mjs` |
 | Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |

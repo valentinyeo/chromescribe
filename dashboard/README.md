@@ -123,9 +123,8 @@ All `/api/*` calls go through Cloudflare Zero Trust and need the
    cd dashboard && wrangler deploy --dry-run
    ```
 
-The canonical Android client lives at
-https://github.com/valentinyeo/chromescribe-android. The `android/` folder in
-this repo is the original prototype and is no longer the source of truth.
+The Android client lives at
+https://github.com/valentinyeo/chromescribe-android.
 
 ## Pages
 
