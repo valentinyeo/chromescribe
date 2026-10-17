@@ -19,4 +19,4 @@ binding = "AI"
 
 [vars]
 ENVIRONMENT = "production"
-CHRO10_API_GATE = "0"
+CHRO10_API_GATE = "1"

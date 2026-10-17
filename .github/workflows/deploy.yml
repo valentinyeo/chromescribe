@@ -29,4 +29,7 @@ jobs:
 
       - name: Check the live site
         working-directory: .
-        run: node tools/live-check.mjs https://chromescribe.yeoux.net --version "$GITHUB_SHA"
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: node tools/live-check.mjs https://chromescribe.yeoux.net --version "$GITHUB_SHA" --require-login

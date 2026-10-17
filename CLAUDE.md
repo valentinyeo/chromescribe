@@ -33,7 +33,7 @@ No package.json and no build step. Every PR runs these in CI. No code comments: 
 
 ## Ship
 
-- Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs the tests, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker, then `tools/live-check.mjs`, which fails the run unless every page on https://chromescribe.yeoux.net matches `dashboard/public`.
+- Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs the tests, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker, then `tools/live-check.mjs --require-login`, which fails the run unless every page on https://chromescribe.yeoux.net matches `dashboard/public`, the API refuses calls without a login, the service key gets in, and `/reports/<id>` stays open. It reads the service key from the repo secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`.
 - Local `wrangler` deploys get 403: the shell's `CLOUDFLARE_API_TOKEN` belongs to the Hypertask account, not Yeo UX.
 - Read-only D1 queries: `cd dashboard && wrangler d1 execute chromescribe-db --remote --command "<SQL>"`.
 
@@ -41,8 +41,8 @@ No package.json and no build step. Every PR runs these in CI. No code comments: 
 
 - Cloudflare account Yeo UX `7865043d9ae730882b77f3d5d670c158`; D1 `chromescribe-db` (`08532531-b2b5-4922-9e88-7cfdd074928a`); R2 `chromescribe-transcripts`.
 - Only show users https://chromescribe.yeoux.net; never show or link the workers.dev host.
-- API calls send `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keep credentials in the environment, never in committed files. Zero Trust covers the workers.dev host; chromescribe.yeoux.net is not covered until CHRO-10 lands.
-- `/api/*` also verifies the Access login itself when `CHRO10_API_GATE = "1"` in `dashboard/wrangler.toml` (`dashboard/src/access-gate.mjs`), checking the audience tag in the Worker secret `ACCESS_AUD` (refuses everyone when it is missing). Keep it `"0"` until Zero Trust covers chromescribe.yeoux.net, or the dashboard goes dark.
+- API calls send `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keep credentials in the environment, never in committed files. Zero Trust app "ChromeScribe Dashboard" covers both hosts; the bypass app "ChromeScribe public reports" keeps `chromescribe.yeoux.net/reports/*` open.
+- `/api/*` also verifies the Access login itself when `CHRO10_API_GATE = "1"` in `dashboard/wrangler.toml` (`dashboard/src/access-gate.mjs`), checking the audience tag in the Worker secret `ACCESS_AUD` (refuses everyone when it is missing; the deploy live check then fails). It is on; setting it to `"0"` turns the Worker check off while Zero Trust still guards both hosts.
 - The API sends no CORS headers: only same-origin pages may call it.
 - TikTok blocks datacenter IPs: list and download TikTok only from the Windows box, never this VPS. First monitor run for a TikTok channel only seeds the backlog.
 - Frontend is vanilla HTML, CSS and JS, dark theme, Geist font.
