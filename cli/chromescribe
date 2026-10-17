@@ -39,6 +39,7 @@ Env:
   CHROMESCRIBE_API           Override API base (default: https://chromescribe.yeoux.net)
   CF_ACCESS_CLIENT_ID        Cloudflare Access service token ID (required: API is gated)
   CF_ACCESS_CLIENT_SECRET    Cloudflare Access service token secret
+  CHROMESCRIBE_YEO_KEY       Key reader tried first for "Chromescribe Access" (default: yeo-key, empty: env only)
 
 Examples:
   chromescribe list -n 20
@@ -55,6 +56,16 @@ need() { command -v "$1" >/dev/null 2>&1 || die "missing dep: $1"; }
 
 need curl
 need jq
+
+YEO_KEY="${CHROMESCRIBE_YEO_KEY-yeo-key}"
+if [ -n "$YEO_KEY" ] && command -v "$YEO_KEY" >/dev/null 2>&1; then
+  vault_id="$("$YEO_KEY" "Chromescribe Access" CF_ACCESS_CLIENT_ID 2>/dev/null || true)"
+  vault_secret="$("$YEO_KEY" "Chromescribe Access" CF_ACCESS_CLIENT_SECRET 2>/dev/null || true)"
+  if [ -n "$vault_id" ] && [ -n "$vault_secret" ]; then
+    export CF_ACCESS_CLIENT_ID="$vault_id" CF_ACCESS_CLIENT_SECRET="$vault_secret"
+  fi
+  unset vault_id vault_secret
+fi
 
 CF_ID="${CF_ACCESS_CLIENT_ID:-}"
 CF_SECRET="${CF_ACCESS_CLIENT_SECRET:-}"

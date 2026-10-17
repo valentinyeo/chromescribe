@@ -34,7 +34,7 @@ async function setup(t) {
   const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
-    requests.push({ method: req.method, url: req.url, body });
+    requests.push({ method: req.method, url: req.url, body, accessId: req.headers['cf-access-client-id'], accessSecret: req.headers['cf-access-client-secret'] });
     const url = new URL(req.url, 'http://test');
     let data;
     if (url.pathname === '/api/channels' && req.method === 'GET') data = channels;
@@ -98,13 +98,27 @@ fs.writeFileSync(output, text);
   await writeFile(path.join(skill, 'SKILL.md'), 'Bottom line first. Use statement headings and reading time.');
   await writeFile(path.join(skill, 'template.html'), '<main><div class="verdict"></div></main>');
   const env = { ...process.env, HOME: dir, PATH: bin + ':' + process.env.PATH,
-    CF_ACCESS_CLIENT_ID: '', CF_ACCESS_CLIENT_SECRET: '', PYTHONDONTWRITEBYTECODE: '1',
+    CF_ACCESS_CLIENT_ID: '', CF_ACCESS_CLIENT_SECRET: '', CHROMESCRIBE_YEO_KEY: '', PYTHONDONTWRITEBYTECODE: '1',
     CHROMESCRIBE_API: `http://127.0.0.1:${server.address().port}`,
     CHROMESCRIBE_LENSES: path.join(dir, 'lenses-repo'), HAX_LOG: path.join(dir, 'hax.log') };
   t.after(async () => { await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
   return { dir, env, requests, rows, channels, call: (...args) => run('bash', [cli, ...args], env),
     log: async () => (await readFile(env.HAX_LOG, 'utf8')).trim().split('\n').map(JSON.parse) };
 }
+
+test('Access key comes from the vault reader before a stale env value, env when the vault is empty', async t => {
+  const { dir, env, requests } = await setup(t);
+  const reader = path.join(dir, 'fake-yeo-key');
+  await writeFile(reader, '#!/usr/bin/env bash\n[ "$1" = "Chromescribe Access" ] || exit 1\n[ -n "$VAULT_EMPTY" ] && exit 1\necho "vault-$2"\n');
+  await chmod(reader, 0o755);
+  const base = { ...env, CF_ACCESS_CLIENT_ID: 'stale-id', CF_ACCESS_CLIENT_SECRET: 'stale-secret', CHROMESCRIBE_YEO_KEY: reader };
+  const vault = await run('bash', [cli, 'channels', '--json'], base);
+  assert.equal(vault.code, 0, vault.stderr);
+  assert.deepEqual([requests.at(-1).accessId, requests.at(-1).accessSecret], ['vault-CF_ACCESS_CLIENT_ID', 'vault-CF_ACCESS_CLIENT_SECRET']);
+  const fallback = await run('bash', [cli, 'channels', '--json'], { ...base, VAULT_EMPTY: '1' });
+  assert.equal(fallback.code, 0, fallback.stderr);
+  assert.deepEqual([requests.at(-1).accessId, requests.at(-1).accessSecret], ['stale-id', 'stale-secret']);
+});
 
 test('channels sort by name, preserve JSON, and show paused state', async t => {
   const { call } = await setup(t);
