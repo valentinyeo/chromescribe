@@ -36,11 +36,11 @@ No package.json and no build step. Every PR runs these in CI. No code comments: 
 
 - Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs the tests, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker, then `tools/live-check.mjs --require-login`, which fails the run unless every page on https://chromescribe.yeoux.net matches `dashboard/public`, the API refuses calls without a login, the service key gets in, and `/reports/<id>` stays open. It reads the service key from the repo secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`.
 - Local `wrangler` deploys get 403: the shell's `CLOUDFLARE_API_TOKEN` belongs to the Hypertask account, not Yeo UX.
-- Read-only D1 queries: `cd dashboard && wrangler d1 execute chromescribe-db --remote --command "<SQL>"`.
+- Read-only D1 queries: `cd dashboard && wrangler d1 execute chromescribe --remote --command "<SQL>"`.
 
 ## Facts
 
-- Cloudflare account Yeo UX `7865043d9ae730882b77f3d5d670c158`; D1 `chromescribe-db` (`08532531-b2b5-4922-9e88-7cfdd074928a`); R2 `chromescribe-transcripts`.
+- Cloudflare account Yeo UX `7865043d9ae730882b77f3d5d670c158`; D1 `chromescribe` (`08532531-b2b5-4922-9e88-7cfdd074928a`); R2 `chromescribe-transcripts`.
 - Only show users https://chromescribe.yeoux.net; never show or link the workers.dev host.
 - API calls send `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keys live only in 1Password: the CLI reads `yeo-key "Chromescribe Access"` first (`CHROMESCRIBE_YEO_KEY=` turns that off), then the environment; scripts (`lib/cf_access.sh`, `cf_access.py`) read env, then yeo-key, then the plain file. `secret-scan` is a required check on master; `.github/workflows/secret-rescan.yml` scans all history weekly and stays red while a working key sits in it. Zero Trust app "ChromeScribe Dashboard" covers both hosts; the bypass app "ChromeScribe public reports" keeps `chromescribe.yeoux.net/reports/*` open.
 - `/api/*` also verifies the Access login itself when `CHRO10_API_GATE = "1"` in `dashboard/wrangler.toml` (`dashboard/src/access-gate.mjs`), checking the audience tag in the Worker secret `ACCESS_AUD` (refuses everyone when it is missing; the deploy live check then fails). It is on; setting it to `"0"` turns the Worker check off while Zero Trust still guards both hosts.

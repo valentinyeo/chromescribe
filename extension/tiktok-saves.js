@@ -1,5 +1,3 @@
-try { importScripts('config.js'); } catch (e) { console.warn('[tiktok-saves] config.js missing'); }
-
 const SEC_UID = 'MS4wLjABAAAAO8vjkqSS1JkvuHoW-QqfEGHehWGnNUw7e__oQOp6csS2ko6HkiSgZOLvWDR6GPph';
 const QUEUE_URL = 'https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/queue';
 const FAVS_URL = 'https://www.tiktok.com/api/user/collect/item_list/?aid=1988&count=30&cursor=0&secUid=' + SEC_UID;
@@ -18,7 +16,6 @@ async function setStatus(status) {
 }
 
 async function check() {
-  if (!self.CS_ACCESS) return setStatus({ ok: false, error: 'config.js missing' });
   let items;
   try {
     const res = await fetch(FAVS_URL, { credentials: 'include' });
@@ -41,19 +38,22 @@ async function check() {
   const fresh = items.filter((i) => !known.has(i.id));
   const queued = [];
   const failed = [];
+  let signedOut = false;
   for (const item of fresh.reverse()) {
     if (item.imagePost) { known.add(item.id); continue; }
     const url = 'https://www.tiktok.com/@' + item.author.uniqueId + '/video/' + item.id;
     try {
       const res = await fetch(QUEUE_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'CF-Access-Client-Id': self.CS_ACCESS.id,
-          'CF-Access-Client-Secret': self.CS_ACCESS.secret,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        redirect: 'manual',
         body: JSON.stringify({ url }),
       });
+      if (res.type === 'opaqueredirect' || [0, 401, 403].includes(res.status)) {
+        signedOut = true;
+        break;
+      }
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.success) throw new Error(body.error || 'HTTP ' + res.status);
       known.add(item.id);
@@ -63,5 +63,6 @@ async function check() {
     }
   }
   await chrome.storage.local.set({ seen: [...known].slice(-MAX_SEEN) });
+  if (signedOut) return setStatus({ ok: false, error: 'Signed out of ChromeScribe: open https://chromescribe.yeoux.net once to sign in', queued, failed });
   return setStatus({ ok: failed.length === 0, queued, failed });
 }

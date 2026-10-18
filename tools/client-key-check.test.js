@@ -21,7 +21,7 @@ test('repository passes the client key check', () => {
   const result = run(root);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Client key check passed/);
-  assert.match(result.stdout, /extension\/tiktok-saves\.js: known, removed by CHRO-13/);
+  assert.doesNotMatch(result.stdout, /tiktok-saves/);
 });
 
 test('staged client files with the secret fail, server scripts with it pass', () => {
@@ -45,8 +45,10 @@ test('staged client files with the secret fail, server scripts with it pass', ()
     assert.match(bad.stderr, /dashboard\/public\/index\.html:1/);
     assert.match(bad.stderr, /app\/build\.gradle\.kts:1/);
     assert.doesNotMatch(bad.stderr, /cli\/chromescribe/);
-    write('extension/tiktok-saves.js', 'fetch(url)\n');
+    write('extension/tiktok-saves.js', 'headers: { "CF-Access-Client-Secret": s }\n');
     git('add', '.');
-    assert.match(run(dir).stderr, /extension\/tiktok-saves\.js: clean now, remove it from knownUntilFixed/);
+    const tiktok = run(dir);
+    assert.equal(tiktok.status, 1);
+    assert.match(tiktok.stderr, /extension\/tiktok-saves\.js:1/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

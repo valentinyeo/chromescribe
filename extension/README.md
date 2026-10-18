@@ -12,6 +12,11 @@ The button shows **Subscribed**, **Already subscribed**, or the returned error.
 Channels already in the monitored library appear as **Subscribed**.
 Sign in to the dashboard through Cloudflare Access before subscribing.
 
+## TikTok saves
+
+The extension checks your TikTok favourites every 15 minutes and queues new videos using your ChromeScribe dashboard login; no key file is needed.
+If you are signed out, it pauses and catches up after you sign in at https://chromescribe.yeoux.net.
+
 ## TikTok transcription
 
 Open a TikTok video and click the ChromeScribe extension icon. The extension

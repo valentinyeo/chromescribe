@@ -3,7 +3,6 @@ import { execFileSync } from 'node:child_process';
 
 const clientFile = /^(extension|dashboard\/public)\/|\.(gradle|gradle\.kts|kt|java)$|(^|\/)AndroidManifest\.xml$/;
 const secretName = /cfSecret|CF_SECRET|CF-Access-Client-Secret/i;
-const knownUntilFixed = { 'extension/tiktok-saves.js': 'CHRO-13' };
 
 function entries(rev) {
   const output = rev
@@ -23,10 +22,7 @@ const problems = [];
 for (const { file, sha } of list) {
   const lines = execFileSync('git', ['cat-file', 'blob', sha], { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n');
   const hits = lines.flatMap((line, i) => secretName.test(line) ? [`${file}:${i + 1}: mentions the Access client secret`] : []);
-  if (knownUntilFixed[file]) {
-    if (hits.length) console.log(`${file}: known, removed by ${knownUntilFixed[file]}`);
-    else problems.push(`${file}: clean now, remove it from knownUntilFixed`);
-  } else problems.push(...hits);
+  problems.push(...hits);
 }
 if (problems.length) {
   for (const problem of problems) console.error(problem);
