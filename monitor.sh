@@ -58,29 +58,13 @@ send_telegram() {
 
 get_todays_videos() {
     local channel_id="$1"
-    python3 -c "
-import urllib.request, re, sys
-from datetime import datetime, timedelta, timezone
-try:
-    rss = urllib.request.urlopen('https://www.youtube.com/feeds/videos.xml?channel_id=$channel_id').read().decode()
-except Exception as e:
-    print(f'RSS fetch error: {e}', file=sys.stderr)
-    sys.exit(1)
-cutoff = datetime.now(timezone.utc) - timedelta(hours=36)
-entries = re.findall(r'<entry>(.*?)</entry>', rss, re.DOTALL)
-for e in entries:
-    vid = re.search(r'<yt:videoId>([^<]+)', e)
-    title = re.search(r'<title>([^<]+)', e)
-    pub = re.search(r'<published>([^<]+)', e)
-    if not (vid and pub):
-        continue
-    try:
-        pub_dt = datetime.fromisoformat(pub.group(1).replace('Z', '+00:00'))
-    except ValueError:
-        continue
-    if pub_dt >= cutoff:
-        print(f'{vid.group(1)}\t{title.group(1) if title else \"Unknown\"}')
-"
+    python3 "$SCRIPT_DIR/lib/youtube_feed.py" "$channel_id"
+}
+
+is_youtube_short() {
+    local code
+    code=$(curl -s --max-time 15 -o /dev/null -w '%{http_code}' "https://www.youtube.com/shorts/$1")
+    [ "$code" = "200" ]
 }
 
 get_tiktok_videos() {
@@ -399,6 +383,11 @@ while IFS= read -r line; do
 
         if grep -qF "$video_id" "$PROCESSED_FILE"; then
             log "  Already processed: $video_id ($title)"
+            continue
+        fi
+
+        if is_youtube_short "$video_id"; then
+            log "  Skipping Short: $video_id ($title)"
             continue
         fi
 
