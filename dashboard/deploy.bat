@@ -1,6 +1,5 @@
 @echo off
 setlocal
-REM ChromeScribe Dashboard - Deployment Script (Windows)
 
 set "BUCKET_NAME=chromescribe-transcripts"
 

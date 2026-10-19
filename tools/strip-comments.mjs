@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const extensions = { '.zig': 'zig', '.js': 'javascript', '.ts': 'typescript', '.mjs': 'javascript', '.cjs': 'javascript', '.jsx': 'javascript', '.tsx': 'typescript', '.py': 'python', '.kt': 'kotlin', '.kts': 'kotlin', '.java': 'java', '.ps1': 'powershell', '.psm1': 'powershell', '.sh': 'shell', '.bash': 'shell', '.c': 'c', '.h': 'c', '.cpp': 'c', '.hpp': 'c', '.rc': 'c', '.css': 'css', '.html': 'html' };
+const extensions = { '.zig': 'zig', '.js': 'javascript', '.ts': 'typescript', '.mjs': 'javascript', '.cjs': 'javascript', '.jsx': 'javascript', '.tsx': 'typescript', '.py': 'python', '.kt': 'kotlin', '.kts': 'kotlin', '.java': 'java', '.ps1': 'powershell', '.psm1': 'powershell', '.sh': 'shell', '.bash': 'shell', '.c': 'c', '.h': 'c', '.cpp': 'c', '.hpp': 'c', '.rc': 'c', '.css': 'css', '.html': 'html', '.yml': 'yaml', '.yaml': 'yaml', '.toml': 'toml', '.sql': 'sql', '.bat': 'batch', '.cmd': 'batch' };
 const excluded = new Set(['third_party', 'third-party', 'vendor', 'vendored', 'node_modules', 'skillsrepo', 'openwiki', 'docs', 'docs-site', '.git', '.zig-cache', 'zig-out', 'build', 'generated']);
 const operators = ['>>>=', '===', '!==', '**=', '&&=', '||=', '??=', '>>>', '<<=', '>>=', '...', '=>', '==', '!=', '<=', '>=', '++', '--', '&&', '||', '??', '?.', '**', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<', '>>', '::', '->', '..', '##'];
 const white = c => c !== undefined && /\s/.test(c);
@@ -14,7 +14,7 @@ const jsLanguages = new Set(['javascript', 'typescript']);
 
 function keptReason(text, start, source) {
   if (start === 0 && text.startsWith('#!')) return 'shebang';
-  if (/eslint-(?:disable|enable)|@ts-(?:check|nocheck|ignore|expect-error)|prettier-ignore|#\s*type:\s*ignore|#\s*noqa\b|#.*coding[:=]|#Requires\b|#\s*shellcheck\b|\/\/\s*noinspection\b/i.test(text)) return 'tool directive';
+  if (/eslint-(?:disable|enable)|@ts-(?:check|nocheck|ignore|expect-error)|prettier-ignore|#\s*type:\s*ignore|#\s*noqa\b|#.*coding[:=]|#Requires\b|#\s*shellcheck\b|\/\/\s*noinspection\b|trufflehog:ignore|gitleaks:allow/i.test(text)) return 'tool directive';
   return null;
 }
 
@@ -170,10 +170,20 @@ function lex(source, language) {
   }
   if (language === 'shell') return shellLex(source);
   if (language === 'html') return htmlLex(source);
+  if (language === 'yaml') return yamlLex(source);
+  if (language === 'batch') return batchLex(source);
   while (i < source.length) {
     const start = i, c = source[i];
     if (white(c)) { i++; continue; }
     if (i === 0 && source.startsWith('#!')) { comment(i, lineEnd(i)); continue; }
+    if (language === 'toml' && c === '#') { comment(i, lineEnd(i)); continue; }
+    if (language === 'sql' && source.startsWith('--', i)) { comment(i, lineEnd(i)); continue; }
+    if ((language === 'toml' || language === 'sql') && (c === '"' || c === "'")) {
+      const delimiter = language === 'toml' && source.startsWith(c.repeat(3), i) ? c.repeat(3) : c;
+      i = quoted(source, i, delimiter, language === 'toml' && c === '"' ? '\\' : '', language === 'sql');
+      if (delimiter.length === 3) while (source[i] === c) i++;
+      token(start, i, 'string'); continue;
+    }
     if (language === 'zig' && source.startsWith('\\\\', i)) {
       i = lineEnd(i); token(start, i, 'string'); expression = false; continue;
     }
@@ -186,12 +196,12 @@ function lex(source, language) {
     }
     if (language === 'powershell' && source.startsWith('<#', i)) { comment(i, blockEnd(i, '<#', '#>', true)); continue; }
     if (language === 'powershell' && c === '#') { comment(i, lineEnd(i)); continue; }
-    if (language !== 'powershell' && language !== 'css' && source.startsWith('//', i)) {
+    if (language !== 'powershell' && language !== 'css' && language !== 'toml' && language !== 'sql' && source.startsWith('//', i)) {
       let end = lineEnd(i);
       if (language === 'c') while (source[end - 1] === '\\' && end < source.length) end = lineEnd(end + (source[end] === '\r' ? 2 : 1));
       comment(i, end); continue;
     }
-    if (language !== 'powershell' && source.startsWith('/*', i)) { comment(i, blockEnd(i, '/*', '*/', language === 'kotlin')); continue; }
+    if (language !== 'powershell' && language !== 'toml' && source.startsWith('/*', i)) { comment(i, blockEnd(i, '/*', '*/', language === 'kotlin')); continue; }
     if (language === 'c' && source.startsWith('R"', i)) {
       const opening = source.indexOf('(', i + 2);
       if (opening < 0) throw new Error('Invalid C++ raw string');
@@ -232,6 +242,70 @@ function lex(source, language) {
       else expression = ![']', '++', '--', '.', '?.'].includes(op);
     }
     previous = op;
+  }
+  return { tokens, comments };
+}
+
+function yamlLex(source) {
+  const tokens = [], comments = [];
+  let i = 0, block = null, plain = false, flow = 0;
+  while (i < source.length) {
+    if (i === 0 || source[i - 1] === '\n') {
+      plain = false;
+      const newline = source.indexOf('\n', i);
+      const end = newline < 0 ? source.length : newline;
+      const line = source.slice(i, end).replace(/\r$/, '');
+      const indent = /^[ \t]*/.exec(line)[0].length;
+      if (block && line.trim() && indent < (block.contentIndent ?? block.indent + 1)) block = null;
+      if (block) {
+        if (line.trim()) block.contentIndent ??= indent;
+        if (/^#(?!\!)/.test(line.slice(indent))) comments.push({ start: i + indent, end: i + line.length, reason: null });
+        else tokens.push(['scalar', source.slice(i, end)]);
+        i = newline < 0 ? end : end + 1; continue;
+      }
+    }
+    const start = i, c = source[i];
+    if (white(c)) { i++; continue; }
+    if (c === '#' && !source.startsWith('#!', i) && (i === 0 || white(source[i - 1]))) {
+      const end = source.indexOf('\n', i);
+      i = end < 0 ? source.length : end;
+      if (source[i - 1] === '\r') i--;
+      comments.push({ start, end: i, reason: null }); continue;
+    }
+    if ((c === '"' || c === "'") && !plain) {
+      i = quoted(source, i, c, c === '"' ? '\\' : '', c === "'");
+      tokens.push(['string', source.slice(start, i)]); plain = true; continue;
+    }
+    if (!plain && (c === '&' || c === '!')) {
+      i++; while (i < source.length && !white(source[i])) i++;
+      tokens.push(['code', source.slice(start, i)]); continue;
+    }
+    if (!plain && (c === '|' || c === '>') && /^[|>](?:[1-9][+-]?|[+-][1-9]?)?[ \t]*(?:#.*)?\r?$/.test(source.slice(i).split('\n')[0])) {
+      const lineStart = source.lastIndexOf('\n', i - 1) + 1;
+      const prefix = source.slice(lineStart, i);
+      const indent = (/^[ \t]*(?:-[ \t]+)*(?=\S.*:[ \t])/.exec(prefix) || /^[ \t]*/.exec(prefix))[0].length;
+      const explicit = /^[|>][+-]?([1-9])/.exec(source.slice(i));
+      block = { indent, contentIndent: explicit ? indent + Number(explicit[1]) : null };
+    }
+    if (!plain && '[{'.includes(c)) { flow++; plain = false; }
+    else if (flow && ']}'.includes(c)) { flow--; plain = true; }
+    else if ((flow && c === ',') || (c === ':' && (white(source[i + 1]) || flow && '[{"\''.includes(source[i + 1])))) plain = false;
+    else if (!plain && '-?'.includes(c) && white(source[i + 1])) plain = false;
+    else plain = true;
+    tokens.push(['code', c]); i++;
+  }
+  return { tokens, comments };
+}
+
+function batchLex(source) {
+  const tokens = [], comments = [];
+  let offset = 0;
+  for (const line of source.match(/[^\n]*\n|[^\n]+$/g) || []) {
+    const body = line.replace(/\r?\n$/, '');
+    const indent = /^[ \t]*/.exec(body)[0].length;
+    if (/^(?:@?rem(?:[ \t]|$)|::)/i.test(body.slice(indent))) comments.push({ start: offset + indent, end: offset + body.length, reason: null });
+    else if (body.trim()) tokens.push(['code', body]);
+    offset += line.length;
   }
   return { tokens, comments };
 }
@@ -373,7 +447,7 @@ export function strip(source, language) {
 
 export function languageFor(file, source = '') {
   if (file.split('/').some(p => excluded.has(p)) || file.startsWith('gradle/wrapper/') || /(^|\/)README(?:\.|$)/i.test(file)) return null;
-  if (/\.(?:md|mdx|json|jsonc|zon|ya?ml|toml|xml|properties|svg)$/i.test(file)) return null;
+  if (/\.(?:md|mdx|json|jsonc|zon|xml|properties|svg)$/i.test(file)) return null;
   if (/(?:@generated|auto-generated|automatically generated|generated by)/i.test(source.slice(0, 1000))) return null;
   if (path.extname(file) === '.html' && !/^(?:src|assets|extension|dashboard\/public|android\/app\/src\/main\/assets)\//.test(file)) return null;
   return extensions[path.extname(file)] || (source.startsWith('#!/bin/sh') || /^#!.*\b(?:bash|sh)\b/.test(source.split('\n')[0]) ? 'shell' : null);

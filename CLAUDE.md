@@ -57,7 +57,7 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 
 | Rule | Enforced by |
 |---|---|
-| No code comments | `tools/strip-comments.mjs --check` in CI |
+| No code comments (including YAML, TOML, SQL and batch) | `tools/strip-comments.mjs --check` in CI |
 | A new page is a file in `dashboard/public/` plus its route in `dashboard/src/index.ts` | `dashboard/test/static-pages.test.mjs` |
 | Python text IO is UTF-8: `open(..., encoding='utf-8')`, and scripts that print call `sys.stdout.reconfigure` | `tools/encoding-check.mjs` in CI |
 | No downloaded videos, audio, subtitles or top-folder images in git | `tools/media-check.mjs` in CI |
