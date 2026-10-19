@@ -30,7 +30,7 @@ node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
 ```
 
-No package.json and no build step. Every PR runs these in CI. No code comments: CI fails on any; `node tools/strip-comments.mjs .` removes them. Do not deploy as part of local verification unless explicitly authorized.
+No package.json and no build step. Every PR runs these in CI as the `tests` job, and a PR cannot merge until it passes. No code comments: CI fails on any; `node tools/strip-comments.mjs .` removes them. Do not deploy as part of local verification unless explicitly authorized.
 
 ## Ship
 
@@ -64,4 +64,5 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | No Access service key in the extension, Android sources or public pages | `tools/client-key-check.mjs` in CI |
 | Every deploy is checked on the live site | `tools/live-check.mjs` in `deploy.yml`, tested by `tools/live-check.test.js` |
 | With the gate on, `/api/*` refuses calls without a valid Access login; no CORS headers | `dashboard/test/access-gate.test.mjs`, `dashboard/test/channels-api.test.mjs` |
+| A PR merges only when `tests` (from GitHub Actions) and `secret-scan` pass | GitHub ruleset "secret-scan and tests required" on master |
 | Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |
