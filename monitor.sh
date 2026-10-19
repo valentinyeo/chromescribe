@@ -242,13 +242,6 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
         fi
     fi
 
-    log "  Warming read-aloud audio..."
-    if api_call GET "/api/speak/$transcript_id" --max-time 300 --fail -o /dev/null; then
-        log "  Read-aloud audio cached"
-    else
-        log "  WARNING: read-aloud warm-up failed - it will generate on first play"
-    fi
-
     local cs_url="https://chromescribe.yeoux.net/transcript.html?id=$transcript_id"
     send_telegram "$(printf '📝 <b>New transcript</b>\n<b>%s</b>\n<a href="%s">View in ChromeScribe</a>' "$title" "$cs_url")" "$thumb_url"
 
