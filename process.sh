@@ -160,12 +160,31 @@ except Exception:
     DOWNLOAD_TEMPLATE="$TMPDIR/raw.%(ext)s"
     TITLE_FILE="$TMPDIR/title.txt"
     CANONICAL_URL_FILE="$TMPDIR/url.txt"
-    if ! yt-dlp -S "vcodec:h264" -o "$DOWNLOAD_TEMPLATE" \
-        --print-to-file "%(title)s" "$TITLE_FILE" \
-        --print-to-file "%(webpage_url)s" "$CANONICAL_URL_FILE" "$URL" 2>&1 | tail -3; then
-        echo ">>> ERROR: yt-dlp failed"
+    DOWNLOAD_LOG="$TMPDIR/yt-dlp.log"
+    DOWNLOAD_IPV6=()
+    for DOWNLOAD_ATTEMPT in 1 2; do
+        yt-dlp "${DOWNLOAD_IPV6[@]}" -S "vcodec:h264" -o "$DOWNLOAD_TEMPLATE" \
+            --print-to-file "%(title)s" "$TITLE_FILE" \
+            --print-to-file "%(webpage_url)s" "$CANONICAL_URL_FILE" "$URL" > "$DOWNLOAD_LOG" 2>&1
+        DOWNLOAD_STATUS=$?
+        tail -3 "$DOWNLOAD_LOG"
+        RAW_FILE=$(ls "$TMPDIR"/raw.* 2>/dev/null | head -1)
+        if [ "$DOWNLOAD_STATUS" -eq 0 ] && [ -n "$RAW_FILE" ] && [ -s "$RAW_FILE" ]; then
+            break
+        fi
+        if "$PYTHON" -c 'import sys; from urllib.parse import urlsplit; sys.exit(0 if urlsplit(sys.argv[1]).hostname in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"} else 1)' "$URL" &&
+            grep -q "Sign in to confirm" "$DOWNLOAD_LOG"; then
+            if [ "$DOWNLOAD_ATTEMPT" -eq 1 ]; then
+                echo ">>> YouTube asked for a bot check; retrying over IPv6..."
+                DOWNLOAD_IPV6=(-6)
+                continue
+            fi
+            echo ">>> ERROR: YouTube blocked this download with a bot check (\"Sign in to confirm you're not a bot\"). Try again later or from another network."
+        else
+            echo ">>> ERROR: yt-dlp failed"
+        fi
         exit 1
-    fi
+    done
     case "$URL" in
         https://vm.tiktok.com/*|https://vt.tiktok.com/*)
             CANONICAL_URL=$(head -1 "$CANONICAL_URL_FILE" 2>/dev/null | tr -d '\r')
@@ -178,11 +197,6 @@ except Exception:
     esac
     VIDEO_TITLE=$(head -1 "$TITLE_FILE" 2>/dev/null | tr -d '\r')
     [ -n "$VIDEO_TITLE" ] || VIDEO_TITLE="Video Transcript"
-    RAW_FILE=$(ls "$TMPDIR"/raw.* 2>/dev/null | head -1)
-    if [ -z "$RAW_FILE" ] || [ ! -s "$RAW_FILE" ]; then
-        echo ">>> ERROR: yt-dlp produced no file"
-        exit 1
-    fi
     echo ">>> Downloaded: $(du -h "$RAW_FILE" | cut -f1)"
 
     AUDIO_FILE="$TMPDIR/audio.mp3"
