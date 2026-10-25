@@ -40,7 +40,7 @@ api_call() {
 }
 
 send_telegram() {
-    [ -n "$TG_TOKEN" ] || return 0
+    [ -n "$TG_TOKEN" ] || return 1
     local msg="$1"
     local photo="${2:-}"
     if [ -n "$photo" ]; then
@@ -243,9 +243,9 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
     fi
 
     local cs_url="https://chromescribe.yeoux.net/transcript.html?id=$transcript_id"
-    send_telegram "$(printf '📝 <b>New transcript</b>\n<b>%s</b>\n<a href="%s">View in ChromeScribe</a>' "$title" "$cs_url")" "$thumb_url"
-
-    log "  Telegram sent: $cs_url"
+    if send_telegram "$(printf '📝 <b>New transcript</b>\n<b>%s</b>\n<a href="%s">View in ChromeScribe</a>' "$title" "$cs_url")" "$thumb_url"; then
+        log "  Telegram sent: $cs_url"
+    fi
     log "  Done: $title"
 }
 

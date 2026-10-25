@@ -28,3 +28,16 @@ test('monitor.sh keeps Telegram posts off when the setting is absent', () => {
 test('monitor.sh sends again when CHROMESCRIBE_TELEGRAM is 1', () => {
   assert.equal(telegramState({ CHROMESCRIBE_TELEGRAM: '1' }), 'on');
 });
+
+function sender() {
+  const text = fs.readFileSync(script, 'utf8');
+  const start = text.indexOf('send_telegram() {');
+  const end = text.indexOf('\n}\n', start);
+  return text.slice(start, end + 3);
+}
+
+test('monitor.sh reports no Telegram send when the posts are off', () => {
+  const result = spawnSync('bash', ['-c', 'TG_TOKEN=""; TG_CHAT="0"; eval "$1"; send_telegram test; echo "exit=$?"', 'bash', sender()], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'exit=1');
+});
