@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `monitor.sh` stops posting transcript updates to Telegram; set `CHROMESCRIBE_TELEGRAM=1` to turn the posts back on (IGSH-821).
 - Removed the old `android/` prototype, which baked the dashboard key into the app; CI now fails if an app people install mentions the key (CHRO-11).
 - Scripts read the dashboard key only from the environment or `.env.chromescribe` (CHRO-6).
 - Every deploy now checks the live site and fails unless each dashboard page matches the committed file (CHRO-7).

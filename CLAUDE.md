@@ -7,7 +7,7 @@ ChromeScribe turns YouTube videos, TikToks and web articles into transcripts wit
 - `extension/`: Manifest V3 Chrome extension. Sends the page URL to the local web terminal (`localhost:7681`, VPSManager), which runs `bash process.sh <url>`. Hardcoded to Windows paths.
 - `process.sh`: videos are downloaded with yt-dlp and chunked with ffmpeg, then uploaded to `/api/whisper` or `/api/transcribe`; articles go through Jina Reader and `upload_article.py`. Then `/api/transcripts/:id/analyze` writes the summary. It opens the transcript in Edge unless `CHROMESCRIBE_NO_OPEN=1`.
 - `queue.sh`: drains the Android share queue (client: https://github.com/valentinyeo/chromescribe-android). The VPS drains `youtube,article`; a Windows scheduled task drains `tiktok`.
-- `monitor.sh`: polls active subscriptions from `GET /api/channels?active=1`, transcribes new videos, and notifies Telegram. `channels.txt` is only an offline fallback when the API fails.
+- `monitor.sh`: polls active subscriptions from `GET /api/channels?active=1`, transcribes new videos, and notifies Telegram only when `CHROMESCRIBE_TELEGRAM=1` is set (off by default). `channels.txt` is only an offline fallback when the API fails.
 - `dashboard/`: TypeScript Cloudflare Worker with the API and static pages. D1 for metadata, R2 for transcripts, pages and reports. API, queue lifecycle and pages: `dashboard/README.md`. Schema: `dashboard/schema.sql`.
 - `cli/`: the `chromescribe` CLI and channel lenses. Commands: `cli/README.md`.
 - `system-prompt-pi.txt` is legacy and unused. The phone app lives in https://github.com/valentinyeo/chromescribe-android and signs users in; it carries no service key.

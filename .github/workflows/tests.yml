@@ -51,6 +51,8 @@ jobs:
         run: node tools/client-key-check.mjs
       - name: Live check tests
         run: node --test tools/live-check.test.js
+      - name: Telegram switch tests
+        run: node --test tools/telegram-switch.test.js
       - name: CLI tests
         run: node --test cli/test/*.test.mjs
       - name: Dashboard tests

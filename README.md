@@ -6,6 +6,7 @@ ChromeScribe turns YouTube videos, TikToks and web articles into readable transc
 
 - `extension/`: Chrome extension that sends the current page to the local processing script.
 - `process.sh`, `queue.sh`, `monitor.sh`: download audio or article text, upload it, and drain the share queue and channel subscriptions.
+- `monitor.sh` posts each new transcript to Telegram only when `CHROMESCRIBE_TELEGRAM=1` is set in its environment; with the setting absent or `0` it transcribes and stays silent.
 - `dashboard/`: Cloudflare Worker with the API and the dashboard pages (D1 for metadata, R2 for files, Workers AI for transcription and summaries).
 - `cli/`: the `chromescribe` command line tool for listing, searching, subscribing and building channel lenses.
 
