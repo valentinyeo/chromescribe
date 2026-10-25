@@ -162,8 +162,12 @@ except Exception:
     CANONICAL_URL_FILE="$TMPDIR/url.txt"
     DOWNLOAD_LOG="$TMPDIR/yt-dlp.log"
     DOWNLOAD_IPV6=()
+    DOWNLOAD_PROXY=()
+    case "$URL" in
+        *://tiktok.com/*|*://*.tiktok.com/*) DOWNLOAD_PROXY=(--proxy "") ;;
+    esac
     for DOWNLOAD_ATTEMPT in 1 2; do
-        yt-dlp "${DOWNLOAD_IPV6[@]}" -S "vcodec:h264" -o "$DOWNLOAD_TEMPLATE" \
+        yt-dlp "${DOWNLOAD_IPV6[@]}" "${DOWNLOAD_PROXY[@]}" -S "vcodec:h264" -o "$DOWNLOAD_TEMPLATE" \
             --print-to-file "%(title)s" "$TITLE_FILE" \
             --print-to-file "%(webpage_url)s" "$CANONICAL_URL_FILE" "$URL" > "$DOWNLOAD_LOG" 2>&1
         DOWNLOAD_STATUS=$?

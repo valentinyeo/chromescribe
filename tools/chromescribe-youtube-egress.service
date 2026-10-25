@@ -1,0 +1,13 @@
+[Unit]
+Description=ChromeScribe login-free YouTube egress through the egress server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/chromescribe/egress.env
+ExecStart=/usr/bin/ssh -N -o ControlMaster=no -o ControlPath=none -D 127.0.0.1:14416 -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 ${YOUTUBE_EGRESS_HOST}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

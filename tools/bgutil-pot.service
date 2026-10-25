@@ -1,0 +1,14 @@
+[Unit]
+Description=bgutil yt-dlp PO token HTTP provider (2.0.2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/bgutil-pot/server
+ExecStart=/usr/bin/node %h/.local/share/bgutil-pot/server/build/main.js --host 127.0.0.1 --port 4416
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

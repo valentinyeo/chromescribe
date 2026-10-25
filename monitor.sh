@@ -70,7 +70,7 @@ is_youtube_short() {
 get_tiktok_videos() {
     local handle="$1"
     local ids
-    ids=$(yt-dlp --no-check-certificate --flat-playlist --print "%(id)s" \
+    ids=$(yt-dlp --proxy "" --no-check-certificate --flat-playlist --print "%(id)s" \
         "https://www.tiktok.com/@${handle}" 2>/dev/null | grep -E '^[0-9]{15,21}$')
     if [ -n "$ids" ]; then
         echo "$ids"
@@ -137,8 +137,7 @@ process_video() {
     log "  Downloading audio..."
     local yt_extra=()
     case "$url" in
-        *tiktok.com*) ;;
-        *) yt_extra=(--cookies-from-browser chrome) ;;
+        *://tiktok.com/*|*://*.tiktok.com/*) yt_extra=(--proxy "") ;;
     esac
     if ! yt-dlp "${yt_extra[@]}" --no-check-certificate \
         --remote-components ejs:github -x --audio-format mp3 \

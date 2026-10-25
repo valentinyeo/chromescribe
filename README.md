@@ -9,6 +9,11 @@ ChromeScribe turns YouTube videos, TikToks and web articles into readable transc
 - `dashboard/`: Cloudflare Worker with the API and the dashboard pages (D1 for metadata, R2 for files, Workers AI for transcription and summaries).
 - `cli/`: the `chromescribe` command line tool for listing, searching, subscribing and building channel lenses.
 
+## YouTube downloads
+
+See [YOUTUBE.md](YOUTUBE.md) for the verified login-free server configuration,
+direct Windows laptop downloads, and bot-blocking diagnostics.
+
 ## Tests
 
 Requires Node 22 or newer.
