@@ -67,6 +67,7 @@ All `/api/*` calls go through Cloudflare Zero Trust and need the
 ### Transcripts
 
 - `GET /api/transcripts`, `GET /api/transcripts/:id`, `GET /api/transcript/:id/content`
+- `GET /api/transcripts` with no parameters returns every row. With `?limit=N&offset=M` (limit clamped 1 to 500) it returns that page newest first, only the columns the cards show, and a `total` next to `data`. Answers carry an `ETag` and `Cache-Control: private, no-cache`, so a repeat call with `If-None-Match` gets 304.
 - `PUT /api/transcripts/:id`, `DELETE /api/transcripts/:id`, `GET /api/search?q=`
 - `POST /api/transcribe` has two modes: a JSON body with URL and markdown (from Claude), or a multipart form with an audio file that the Worker transcribes with Workers AI Whisper.
 - `POST /api/whisper` transcribes one audio chunk; `POST /api/transcripts/:id/analyze` writes the summary and classification.

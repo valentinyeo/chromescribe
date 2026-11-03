@@ -195,6 +195,33 @@ const formatDuration = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
+const LIST_COLUMNS = 'id, video_id, title, channel, duration, word_count, created_at, category, tags';
+const LIST_PAGE_MAX = 500;
+
+const listPage = (params: URLSearchParams): { limit: number; offset: number } | null => {
+  if (!params.has('limit') && !params.has('offset')) return null;
+  const limit = Number.parseInt(params.get('limit') ?? '', 10);
+  const offset = Number.parseInt(params.get('offset') ?? '', 10);
+  return {
+    limit: Math.min(Math.max(Number.isNaN(limit) ? LIST_PAGE_MAX : limit, 1), LIST_PAGE_MAX),
+    offset: Math.max(Number.isNaN(offset) ? 0 : offset, 0),
+  };
+};
+
+const listItem = (t: Transcript) => ({
+  ...t,
+  duration_formatted: formatDuration(t.duration),
+  created_at_formatted: new Date(t.created_at).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  })
+});
+
+const sha256Hex = async (text: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
 const handleError = (error: any, status = 500): Response => {
   console.error('API Error:', error);
   return new Response(
@@ -689,19 +716,25 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
 
     if (request.method === 'GET' && (path === 'transcripts' || path === '')) {
       const requestedVideoId = url.searchParams.get('video_id');
+      const page = requestedVideoId ? null : listPage(url.searchParams);
       const statement = requestedVideoId
         ? env.DB.prepare('SELECT * FROM transcripts WHERE video_id = ?').bind(requestedVideoId)
-        : env.DB.prepare('SELECT * FROM transcripts ORDER BY created_at DESC');
-      const { results } = await statement.all<Transcript>();
-      
-      return jsonResponse(results.map(t => ({
-        ...t,
-        duration_formatted: formatDuration(t.duration),
-        created_at_formatted: new Date(t.created_at).toLocaleDateString('en-US', {
-          year: 'numeric', month: 'short', day: 'numeric',
-          hour: '2-digit', minute: '2-digit'
-        })
-      })));
+        : page
+          ? env.DB.prepare(`SELECT ${LIST_COLUMNS} FROM transcripts ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(page.limit, page.offset)
+          : env.DB.prepare('SELECT * FROM transcripts ORDER BY created_at DESC');
+      const [{ results }, count] = await Promise.all([
+        statement.all<Transcript>(),
+        page ? env.DB.prepare('SELECT COUNT(*) AS total FROM transcripts').first<{ total: number }>() : null,
+      ]);
+      const body = JSON.stringify({
+        success: true,
+        data: results.map(listItem),
+        ...(count ? { total: count.total } : {}),
+      });
+      const etag = `"${await sha256Hex(body)}"`;
+      const headers = { ETag: etag, 'Cache-Control': 'private, no-cache' };
+      if (request.headers.get('If-None-Match')?.replace(/^W\//, '') === etag) return new Response(null, { status: 304, headers });
+      return new Response(body, { headers: { ...headers, 'Content-Type': 'application/json' } });
     }
 
     if (request.method === 'GET' && /^transcripts\/\d+\/source$/.test(path)) {

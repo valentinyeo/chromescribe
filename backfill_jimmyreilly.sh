@@ -26,7 +26,7 @@ log "Enumerated $TOTAL videos"
 CF_HDR=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"
         -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
 
-EXISTING=$(curl -sL "${CF_HDR[@]}" "$DASHBOARD/api/transcripts?limit=1000" \
+EXISTING=$(curl -sL "${CF_HDR[@]}" "$DASHBOARD/api/transcripts" \
   | python3 -c "import sys,json; print('\n'.join(t['video_id'] for t in json.load(sys.stdin).get('data',[])))" 2>/dev/null)
 
 OK=0; SKIP=0; FAIL=0; I=0

@@ -13,6 +13,7 @@ function setup(search = '') {
     innerHTML: '', textContent: '', value: id === 'sortSelect' ? 'newest' : '',
     classList: { add() {}, remove() {}, toggle() {} },
     addEventListener() {}, setAttribute() {},
+    insertAdjacentHTML(_, markup) { this.innerHTML += markup; },
   }]));
   const calls = [];
   const rows = [
@@ -33,7 +34,7 @@ function setup(search = '') {
     history: { replaceState(_, __, url) { location.href = String(url); } },
     fetch: async url => {
       calls.push(url);
-      return { json: async () => ({ data: url === '/api/transcripts' ? rows : [] }) };
+      return { json: async () => ({ data: url.startsWith('/api/transcripts') ? rows : [] }) };
     },
   });
   context.window = context;
@@ -52,7 +53,7 @@ test('home has only Subscriptions navigation, with no channel panel, CSS, handle
   const { handlers, context, calls, elements } = setup();
   for (const handler of handlers.DOMContentLoaded) handler();
   await context.loadTranscripts();
-  assert.ok(calls.includes('/api/transcripts'));
+  assert.ok(calls.includes('/api/transcripts?limit=60'));
   assert.ok(calls.includes('/api/categories'));
   assert.ok(calls.every(url => !url.startsWith('/api/channels')));
   assert.match(elements.videoGrid.innerHTML, /Other video/);

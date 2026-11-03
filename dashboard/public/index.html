@@ -39,7 +39,9 @@
     history.scrollRestoration = 'manual';
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
   <style>
     :root {
       --foreground: #fff;
@@ -720,6 +722,7 @@
     </div>
 
     <div id="videoGrid" class="grid"></div>
+    <div id="gridSentinel"></div>
 
     <div id="emptyState" class="empty-state hidden">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -814,6 +817,17 @@
     let transcripts = [];
     let activeCategory = null;
     let activeChannel = null;
+    let totalCount = 0;
+    let listComplete = false;
+    let loadToken = 0;
+    let categoriesData = [];
+    let view = [];
+    let renderedCount = 0;
+    let sentinelObserver = null;
+    let pendingScroll = null;
+    const FIRST_PAGE = 60;
+    const REST_PAGE = 500;
+    const RENDER_BATCH = 60;
 
     window.csThemeRender = function () {
       var btn = document.getElementById('themeToggle');
@@ -832,14 +846,23 @@
     }
 
     function restoreScrollPosition() {
-      requestAnimationFrame(() => {
-        try {
-          const saved = sessionStorage.getItem('cs-list-scroll');
-          if (saved === null) return;
-          window.scrollTo(0, Number(saved));
-          sessionStorage.removeItem('cs-list-scroll');
-        } catch (err) {}
-      });
+      try {
+        const saved = sessionStorage.getItem('cs-list-scroll');
+        if (saved === null) return;
+        pendingScroll = Number(saved);
+        sessionStorage.removeItem('cs-list-scroll');
+      } catch (err) {}
+      applyPendingScroll();
+    }
+
+    function applyPendingScroll() {
+      if (pendingScroll === null) return;
+      const tallEnough = () => document.documentElement.scrollHeight >= pendingScroll + window.innerHeight;
+      while (!tallEnough() && renderMore()) {}
+      if (!tallEnough() && !listComplete) return;
+      const top = pendingScroll;
+      pendingScroll = null;
+      requestAnimationFrame(() => window.scrollTo(0, top));
     }
 
     document.getElementById('videoGrid').addEventListener('click', e => {
@@ -924,15 +947,47 @@
     });
 
     async function loadTranscripts() {
+      const token = ++loadToken;
+      listComplete = false;
       try {
-        const res = await fetch(`${API_BASE}/transcripts`);
-        const { data } = await res.json();
+        const res = await fetch(`${API_BASE}/transcripts?limit=${FIRST_PAGE}`);
+        const { data, total } = await res.json();
+        if (token !== loadToken) return;
         transcripts = data || [];
+        totalCount = Math.max(total || 0, transcripts.length);
+        listComplete = transcripts.length >= totalCount;
         renderTranscripts();
+        renderCategoryFilters(categoriesData);
         restoreScrollPosition();
-        loadCategories();
       } catch (err) {
         showToast('Failed to load transcripts', 'error');
+        return;
+      }
+      if (!listComplete) await loadRest(token);
+    }
+
+    async function loadRest(token) {
+      const offsets = [];
+      for (let offset = transcripts.length; offset < totalCount; offset += REST_PAGE) offsets.push(offset);
+      try {
+        const pages = await Promise.all(offsets.map(async offset => {
+          const res = await fetch(`${API_BASE}/transcripts?limit=${REST_PAGE}&offset=${offset}`);
+          const { data } = await res.json();
+          return data || [];
+        }));
+        if (token !== loadToken) return;
+        const seen = new Set(transcripts.map(t => t.id));
+        for (const t of pages.flat()) {
+          if (seen.has(t.id)) continue;
+          seen.add(t.id);
+          transcripts.push(t);
+        }
+        listComplete = true;
+        renderTranscripts({ keepRendered: true });
+        renderCategoryFilters(categoriesData);
+        applyPendingScroll();
+      } catch (err) {
+        showToast('Failed to load all transcripts', 'error');
       }
     }
 
@@ -940,14 +995,15 @@
       try {
         const res = await fetch(`${API_BASE}/categories`);
         const { data } = await res.json();
-        renderCategoryFilters(data || []);
+        categoriesData = data || [];
+        renderCategoryFilters(categoriesData);
       } catch (err) {}
     }
 
     function renderCategoryFilters(categories) {
       const chipsBox = document.getElementById('categoryChips');
       const expandBtn = document.getElementById('categoryExpand');
-      const total = transcripts.length;
+      const total = listComplete ? transcripts.length : Math.max(totalCount, transcripts.length);
       const pinnedChips = PINNED_CLUSTERS.map(cluster => {
         const count = transcripts.filter(cluster.matches).length;
         return `<button class="category-chip ${activeCategory === cluster.id ? 'active' : ''}" onclick="setCategory('${cluster.id}')">${cluster.label}<span class="count">${count}</span></button>`;
@@ -979,7 +1035,7 @@
 
     function setCategory(cat) {
       activeCategory = cat;
-      loadCategories();
+      renderCategoryFilters(categoriesData);
       renderTranscripts();
     }
 
@@ -987,19 +1043,7 @@
       return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
     }
 
-    function renderTranscripts() {
-      const grid = document.getElementById('videoGrid');
-      const empty = document.getElementById('emptyState');
-
-      if (transcripts.length === 0) {
-        grid.innerHTML = '';
-        empty.classList.remove('hidden');
-        document.getElementById('stats').textContent = '';
-        return;
-      }
-
-      empty.classList.add('hidden');
-
+    function filteredSorted() {
       const activeCluster = getActiveCluster();
       let filtered = activeCluster
         ? transcripts.filter(activeCluster.matches)
@@ -1029,17 +1073,18 @@
         });
       }
 
-      const sorted = [...filtered].sort((a, b) => {
-        const sort = document.getElementById('sortSelect').value;
+      const sort = document.getElementById('sortSelect').value;
+      return [...filtered].sort((a, b) => {
         if (sort === 'newest') return new Date(b.created_at) - new Date(a.created_at);
         if (sort === 'oldest') return new Date(a.created_at) - new Date(b.created_at);
         if (sort === 'title') return a.title.localeCompare(b.title);
         if (sort === 'duration') return b.duration - a.duration;
         return 0;
       });
+    }
 
-      grid.innerHTML = sorted.map(t => `
-        <div class="card">
+    function cardHtml(t) {
+      return `<div class="card">
           <a href="transcript.html?id=${t.id}" style="text-decoration: none; display: block;">
             ${t.video_id.startsWith('article:') ? '' : `<div class="card-thumb">
               <img src="${API_BASE}/thumb/${encodeURIComponent(t.video_id)}" alt="${escapeHtml(t.title)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.background='#111';this.style.objectFit='none'">
@@ -1071,13 +1116,66 @@
             </button>
           </div>
         </div>
-      `).join('');
+      `;
+    }
 
-      const shown = sorted.length;
-      const total = transcripts.length;
+    function renderStats() {
+      const total = listComplete ? transcripts.length : Math.max(totalCount, transcripts.length);
       document.getElementById('stats').textContent = (activeCategory || activeChannel)
-        ? `${shown} of ${total} video${total !== 1 ? 's' : ''}`
+        ? `${view.length} of ${total} video${total !== 1 ? 's' : ''}`
         : `${total} video${total !== 1 ? 's' : ''}`;
+    }
+
+    function renderMore() {
+      if (renderedCount >= view.length) return false;
+      const next = view.slice(renderedCount, renderedCount + RENDER_BATCH);
+      document.getElementById('videoGrid').insertAdjacentHTML('beforeend', next.map(cardHtml).join(''));
+      renderedCount += next.length;
+      return true;
+    }
+
+    function watchSentinel() {
+      if (typeof IntersectionObserver !== 'function') {
+        while (renderMore()) {}
+        return;
+      }
+      const sentinel = document.getElementById('gridSentinel');
+      if (!sentinelObserver) {
+        sentinelObserver = new IntersectionObserver(entries => {
+          if (!entries.some(e => e.isIntersecting)) return;
+          renderMore();
+          watchSentinel();
+        }, { rootMargin: '1200px 0px' });
+      }
+      sentinelObserver.unobserve(sentinel);
+      if (renderedCount < view.length) sentinelObserver.observe(sentinel);
+    }
+
+    function renderTranscripts({ keepRendered = false } = {}) {
+      const grid = document.getElementById('videoGrid');
+      const empty = document.getElementById('emptyState');
+
+      if (transcripts.length === 0) {
+        view = [];
+        renderedCount = 0;
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        document.getElementById('stats').textContent = '';
+        return;
+      }
+
+      empty.classList.add('hidden');
+
+      const previous = view.slice(0, renderedCount);
+      view = filteredSorted();
+      const unchanged = keepRendered && previous.length <= view.length && previous.every((t, i) => t.id === view[i].id);
+      if (!unchanged) {
+        grid.innerHTML = '';
+        renderedCount = 0;
+      }
+      if (renderedCount === 0) renderMore();
+      renderStats();
+      watchSentinel();
     }
 
     function renderCardTags(t) {
@@ -1126,10 +1224,25 @@
           throw new Error(err.error || `HTTP ${res.status}`);
         }
         showToast('Deleted', 'success');
-        loadTranscripts();
+        removeFromList(id);
       } catch (err) {
         showToast('Failed to delete: ' + err.message, 'error');
       }
+    }
+
+    function removeFromList(id) {
+      const card = document.querySelector(`.js-delete[data-id="${id}"]`)?.closest('.card');
+      if (card) {
+        card.remove();
+        renderedCount = Math.max(0, renderedCount - 1);
+      }
+      transcripts = transcripts.filter(t => t.id !== id);
+      totalCount = Math.max(0, totalCount - 1);
+      view = view.filter(t => t.id !== id);
+      if (!transcripts.length) renderTranscripts();
+      renderStats();
+      renderCategoryFilters(categoriesData);
+      loadCategories();
     }
 
     function openAddModal() {
@@ -1214,6 +1327,7 @@
     let kbIndex = -1;
     const kbCards = () => [...document.querySelectorAll('#grid .card, .grid .card')];
     function kbSelect(i) {
+      while (i >= kbCards().length && renderMore()) {}
       const cards = kbCards();
       if (!cards.length) return;
       kbIndex = Math.max(0, Math.min(i, cards.length - 1));
