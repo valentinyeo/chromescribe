@@ -1,0 +1,61 @@
+name: Release Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_ref:
+        description: chromescribe-android branch, tag or SHA to build
+        required: true
+        default: main
+      notes:
+        description: Release notes shown in the in-app update prompt
+        required: true
+        default: TikTok /t/ share links now reach the queue.
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build, sign and publish
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Check out the app
+        run: |
+          git clone --depth 1 --branch "$APP_REF" https://github.com/valentinyeo/chromescribe-android.git android
+        env:
+          APP_REF: ${{ inputs.app_ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+
+      - name: Install wrangler
+        run: |
+          npm install --prefix "$HOME/.wrangler-cli" wrangler@4.82.2
+          echo "$HOME/.wrangler-cli/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Recreate signing material
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          SIGNING_JSON: ${{ secrets.ANDROID_SIGNING_JSON }}
+        run: |
+          install -d -m 700 "$HOME/.config/chromescribe-android"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.config/chromescribe-android/release.keystore"
+          printf '%s' "$SIGNING_JSON" > "$HOME/.config/chromescribe-android/signing.json"
+          chmod 600 "$HOME/.config/chromescribe-android/release.keystore" "$HOME/.config/chromescribe-android/signing.json"
+
+      - name: Write release notes
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: printf '%s\n' "$NOTES" > /tmp/release-notes.txt
+
+      - name: Build, sign and publish to R2
+        run: python3 android/scripts/release.py --publish --release-notes /tmp/release-notes.txt

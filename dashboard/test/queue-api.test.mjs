@@ -37,6 +37,31 @@ function insert(db, video = 'abcdefghijk', status = 'pending', date = '2026-01-0
 }
 function row(db, id = 1) { return db.raw.prepare('SELECT * FROM queue WHERE id = ?').get(id); }
 
+test('TikTok path shares enqueue once and reach only the TikTok drain', async () => {
+  const db = makeD1();
+  const first = await api(db, 'queue', 'POST', { url: 'https://www.tiktok.com/t/ZP8abc123/?track=phone' });
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), { success: true, data: { queued: true, id: 1, platform: 'tiktok' } });
+  const duplicate = await api(db, 'queue', 'POST', { url: 'https://m.tiktok.com/t/ZP8abc123' });
+  assert.deepEqual(await duplicate.json(), { success: true, data: { queued: true, id: 1, platform: 'tiktok', duplicate: true } });
+  const pending = await (await api(db, 'queue?platforms=tiktok')).json();
+  assert.deepEqual(pending.data, [{ id: 1, url: 'https://www.tiktok.com/t/ZP8abc123/', video_id: 'tiktok-short:ZP8abc123' }]);
+  assert.deepEqual((await (await api(db, 'queue?platforms=youtube,article')).json()).data, []);
+});
+
+test('malformed TikTok path shares never reach the queue', async () => {
+  const db = makeD1();
+  for (const url of [
+    'https://www.tiktok.com/t/', 'https://www.tiktok.com/t/a-b/',
+    'https://www.tiktok.com/t/abc/extra', 'https://www.tiktok.com/t/%61bc/',
+    'https://www.tiktok.com.evil.com/t/abc/', 'https://www.tiktok.com:8443/t/abc/',
+    'https://vm.tiktok.com/t/abc/', 'https://vt.tiktok.com/t/abc/',
+  ]) {
+    assert.equal((await api(db, 'queue', 'POST', { url })).status, 400, url);
+  }
+  assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM queue').get().n, 0);
+});
+
 test('lazy migration adds nullable columns once per binding even with concurrent requests and preserves old rows', async () => {
   const db = makeD1();
   insert(db);

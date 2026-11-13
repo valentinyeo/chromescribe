@@ -106,6 +106,8 @@ export function parseSharedUrl(rawUrl) {
       const match = u.pathname.match(/^\/([A-Za-z0-9]+)\/?$/);
       return match ? { platform: 'tiktok', prefixedId: `tiktok-short:${match[1]}`, url: `https://${host}/${match[1]}/` } : null;
     }
+    const shared = u.pathname.match(/^\/t\/([A-Za-z0-9]+)\/?$/);
+    if (shared) return { platform: 'tiktok', prefixedId: `tiktok-short:${shared[1]}`, url: `https://www.tiktok.com/t/${shared[1]}/` };
     const match = u.pathname.match(/^\/@([A-Za-z0-9_.]+)\/video\/(\d{15,21})\/?$/);
     return match ? { platform: 'tiktok', prefixedId: `tiktok:${match[2]}`, url: `https://www.tiktok.com/@${match[1]}/video/${match[2]}` } : null;
   }

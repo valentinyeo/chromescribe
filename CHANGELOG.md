@@ -4,6 +4,8 @@
 
 ### Changed
 
+- IGSH-1184 Chromescribe Android: TikTok shares never reach the queue — accept TikTok `/t/` short links and route them to the Windows TikTok queue.
+
 - `monitor.sh` stops posting transcript updates to Telegram; set `CHROMESCRIBE_TELEGRAM=1` to turn the posts back on. Its log now prints `Telegram sent` only after a real send (IGSH-821).
 - Removed the old `android/` prototype, which baked the dashboard key into the app; CI now fails if an app people install mentions the key (CHRO-11).
 - Scripts read the dashboard key only from the environment or `.env.chromescribe` (CHRO-6).
