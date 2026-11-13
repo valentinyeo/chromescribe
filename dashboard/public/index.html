@@ -467,6 +467,16 @@
       height: 32px;
       font-size: 13px;
     }
+
+    .card-readtime {
+      display: none;
+    }
+
+    .mobile-actions,
+    .mobile-menu,
+    .fab {
+      display: none;
+    }
     
     .empty-state {
       text-align: center;
@@ -644,21 +654,231 @@
     .hidden { display: none !important; }
     
     @media (max-width: 640px) {
+      header { position: sticky; }
+
       .header-inner {
-        padding: 12px 16px;
+        padding: 10px 16px;
+        gap: 8px;
+        flex-wrap: nowrap;
       }
-      
+
+      .logo { font-size: 17px; }
+      .logo svg { width: 24px; height: 24px; }
+      .header-actions { display: none; }
+      .stats { display: none; }
+
+      .mobile-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .icon-btn {
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        border-radius: 999px;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 20px;
+      }
+
+      .icon-btn:hover,
+      .icon-btn:active { background: var(--chip-bg); color: var(--foreground); }
+      .icon-btn svg { width: 20px; height: 20px; }
+
+      .mobile-menu {
+        position: absolute;
+        top: 56px;
+        right: 12px;
+        z-index: 60;
+        min-width: 210px;
+        padding: 6px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+      }
+
+      .mobile-menu:not(.hidden) { display: block; }
+
+      .mobile-menu a,
+      .mobile-menu button {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--foreground);
+        font-family: inherit;
+        font-size: 14px;
+        text-align: left;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .mobile-menu a:hover,
+      .mobile-menu button:hover { background: var(--card-hover); }
+      .mobile-menu hr { border: none; border-top: 1px solid var(--border); margin: 6px 4px; }
+
       main {
-        padding: 20px 16px;
+        padding: 12px 16px 96px;
       }
-      
+
       .search-bar {
-        flex-direction: column;
+        display: none;
+        flex-direction: row;
+        gap: 8px;
+        margin-bottom: 12px;
       }
-      
+
+      body.search-open .search-bar { display: flex; }
+      body.search-open .search-bar select { display: none; }
+      .search-input { height: 44px; border-radius: 12px; }
+
+      .category-filters {
+        padding: 8px 16px 0;
+        gap: 0;
+      }
+
+      .category-chips {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        max-height: none;
+        gap: 6px;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .category-chips::-webkit-scrollbar { display: none; }
+      .category-expand { display: none; }
+
+      .category-chip {
+        flex: none;
+        padding: 6px 14px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .category-chip .count { display: none; }
+
       .grid {
-        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
       }
+
+      .card {
+        display: block;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid var(--border);
+        border-radius: 0;
+        padding: 9px 0;
+      }
+
+      .card:hover { background: transparent; }
+
+      .card > a {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .card-thumb {
+        width: 84px;
+        flex: none;
+        aspect-ratio: 16 / 9;
+        border-radius: 6px;
+      }
+
+      .card-duration {
+        bottom: 3px;
+        right: 3px;
+        padding: 1px 4px;
+        font-size: 9px;
+      }
+
+      .card-body {
+        flex: 1;
+        min-width: 0;
+        padding: 0;
+      }
+
+      .card-title {
+        font-size: 14px;
+        line-height: 1.3;
+        margin-bottom: 3px;
+        -webkit-line-clamp: 2;
+      }
+
+      .card-channel,
+      .card-meta { display: none; }
+
+      .card-tags {
+        margin-bottom: 0;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .card-tags .tag-pill { display: none; }
+
+      .card-tags .category-pill {
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .card-readtime {
+        display: inline;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .card-readtime::before {
+        content: '·';
+        margin-right: 6px;
+      }
+
+      .card-actions { display: none; }
+
+      .fab {
+        position: fixed;
+        right: 18px;
+        bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+        z-index: 45;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 56px;
+        height: 56px;
+        border: none;
+        border-radius: 16px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 28px;
+        line-height: 1;
+        cursor: pointer;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+      }
+
+      .fab:active { background: var(--accent-hover); }
     }
     .card.kb-selected { border-color: #3ea6ff; box-shadow: 0 0 0 2px #3ea6ff; }
     #cmdk { border: 1px solid var(--border); border-radius: 10px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--card); color: inherit; margin: 12vh auto auto; }
@@ -700,6 +920,24 @@
           <span>Add Video</span>
         </button>
       </div>
+      <div class="mobile-actions">
+        <button class="icon-btn" id="mobileSearchBtn" onclick="toggleMobileSearch()" aria-label="Search" title="Search">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
+        </button>
+        <button class="icon-btn" id="mobileMenuBtn" onclick="toggleMobileMenu(event)" aria-label="More" title="More">
+          <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="mobileMenu" class="mobile-menu hidden">
+      <button onclick="closeMobileMenu();openAddModal()">Add Video</button>
+      <a href="/subscriptions.html">Subscriptions</a>
+      <a href="/queue.html">Queue</a>
+      <a href="/reports.html">Reports</a>
+      <a href="/stats.html">Stats</a>
+      <a href="/settings.html">Settings</a>
+      <hr>
+      <button onclick="csTheme.cycle()">Theme</button>
     </div>
   </header>
 
@@ -735,6 +973,8 @@
 
 
   </main>
+
+  <button class="fab" onclick="openAddModal()" aria-label="Add Video" title="Add Video">+</button>
 
   <div id="addModal" class="modal-backdrop hidden" onclick="if(event.target===this)closeAddModal()">
     <div class="modal">
@@ -1178,6 +1418,10 @@
       watchSentinel();
     }
 
+    function readMinutes(t) {
+      return Math.max(1, Math.round((t.word_count || 0) / 200));
+    }
+
     function renderCardTags(t) {
       const parts = [];
       if (t.category) parts.push(`<span class="category-pill">${escapeHtml(t.category)}</span>`);
@@ -1188,8 +1432,28 @@
       tags.slice(0, 4).forEach(tag => {
         parts.push(`<span class="tag-pill">${escapeHtml(tag)}</span>`);
       });
-      return parts.length ? `<div class="card-tags">${parts.join('')}</div>` : '';
+      parts.push(`<span class="card-readtime">${readMinutes(t)} min read</span>`);
+      return `<div class="card-tags">${parts.join('')}</div>`;
     }
+
+    function toggleMobileSearch() {
+      closeMobileMenu();
+      const open = document.body.classList.toggle('search-open');
+      if (open) document.getElementById('searchInput').focus();
+    }
+
+    function toggleMobileMenu(event) {
+      if (event) event.stopPropagation();
+      document.getElementById('mobileMenu').classList.toggle('hidden');
+    }
+
+    function closeMobileMenu() {
+      document.getElementById('mobileMenu').classList.add('hidden');
+    }
+
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#mobileMenu') && !e.target.closest('#mobileMenuBtn')) closeMobileMenu();
+    });
 
     async function viewTranscript(id) {
       const transcript = transcripts.find(t => t.id === id);

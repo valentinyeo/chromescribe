@@ -417,6 +417,12 @@
     .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
     .nav-bar { display: none; }
+    .back-btn,
+    .menu-toggle,
+    .mobile-tabs,
+    .mobile-summary { display: none; }
+    .nav-chat { background: var(--accent, #0057ff); border-color: var(--accent, #0057ff); color: #fff; font-size: 13px; white-space: nowrap; }
+    .nav-chat:hover:not(:disabled) { background: #0066ff; }
     .nav-fab {
       flex: 1;
       min-height: 48px;
@@ -487,9 +493,131 @@
     [data-theme="light"] .nav-counter { color: #555; }
     [data-theme="light"] .video-side,
     [data-theme="light"] .video-wrapper { background: #000; }
+    [data-theme="light"] .mobile-tabs { background: #ffffff; border-bottom-color: #e0e0e0; }
+    [data-theme="light"] .mobile-tab { color: #555; }
+    [data-theme="light"] .mobile-tab.active { color: #111; border-bottom-color: #0057ff; }
+    [data-theme="light"] .mobile-summary { color: #222; }
+    [data-theme="light"] .mobile-summary h1,
+    [data-theme="light"] .mobile-summary h2,
+    [data-theme="light"] .mobile-summary h3,
+    [data-theme="light"] .mobile-summary strong { color: #111; }
+    [data-theme="light"] .mobile-summary a { color: #1565c0; }
+    [data-theme="light"] .header-btns { background: #ffffff; border-color: #ddd; }
+    [data-theme="light"] .back-btn,
+    [data-theme="light"] .menu-toggle { color: #111; }
+    [data-theme="light"] .back-btn:hover,
+    [data-theme="light"] .menu-toggle:hover { background: rgba(0, 0, 0, 0.06); }
 
     @media (max-width: 768px) {
+      :root { --accent: #0057ff; }
       .container { flex-direction: column; height: auto; min-height: 100vh; }
+      .back-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        border-radius: 999px;
+        background: transparent;
+        border: none;
+        color: #fff;
+        font-size: 20px;
+        text-decoration: none;
+        flex: none;
+      }
+      .back-btn:hover { background: rgba(255, 255, 255, 0.08); }
+      .logo { display: none; }
+      .header { padding: 8px 12px; gap: 8px; flex-wrap: nowrap; position: relative; }
+      .header-btns {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 8px;
+        right: 8px;
+        z-index: 60;
+        grid-template-columns: repeat(2, 1fr);
+        padding: 8px;
+        background: #1f1f1f;
+        border: 1px solid #333;
+        border-radius: 14px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+      }
+      .header.menu-open .header-btns { display: grid; }
+      .menu-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        margin-left: auto;
+        padding: 0;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: #fff;
+        font-size: 20px;
+        cursor: pointer;
+      }
+      .menu-toggle:hover { background: rgba(255, 255, 255, 0.08); }
+      .btn { font-size: 13px; padding: 10px 6px; text-align: center; border-radius: 10px; }
+      .desktop-only { display: none !important; }
+      .video-info { padding: 14px 16px 12px; }
+      .video-title { font-size: 20px; line-height: 1.25; margin-bottom: 6px; }
+      .video-meta { font-size: 12px; }
+      .video-tags { margin-top: 8px; }
+      .video-tags .tag-pill { display: none; }
+      .video-tags .category-pill {
+        padding: 0;
+        border: none;
+        background: none;
+        color: #6ea8ff;
+        font-size: 12px;
+      }
+      .mobile-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 8px 12px 0;
+        background: #181818;
+        border-bottom: 1px solid #333;
+        position: sticky;
+        top: 56.25vw;
+        z-index: 38;
+      }
+      .mobile-tab {
+        flex: 1;
+        padding: 10px 12px 12px;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: #888;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      .mobile-tab.active { color: #fff; border-bottom-color: #0057ff; }
+      .mobile-summary {
+        display: block;
+        padding: 16px;
+        font-size: 15px;
+        line-height: 1.6;
+        color: #ddd;
+      }
+      .mobile-summary h1,
+      .mobile-summary h2,
+      .mobile-summary h3 { font-size: 15px; margin: 14px 0 6px; color: #fff; }
+      .mobile-summary p { margin-bottom: 8px; }
+      .mobile-summary ul,
+      .mobile-summary ol { margin: 8px 0; padding-left: 20px; }
+      .mobile-summary li { margin-bottom: 4px; }
+      .mobile-summary strong { color: #fff; }
+      .mobile-summary a { color: #3ea6ff; text-decoration: none; }
+      .mobile-summary .empty-summary { color: #888; }
+      .transcript-side[data-tab="summary"] .transcript-content { display: none; }
+      .transcript-side[data-tab="transcript"] .mobile-summary { display: none; }
+      .transcript-side[data-tab="transcript"] .transcript-header { display: block; }
+      .transcript-header { display: none; }
       .video-side { display: contents; }
       .video-wrapper {
         flex: none;
@@ -502,10 +630,7 @@
       }
       .article-reader { flex: none; overflow: visible; }
       .transcript-side { width: 100%; flex: 1 1 auto; border-left: none; border-top: 1px solid #333; }
-      .header { flex-wrap: wrap; gap: 8px; }
-      .header-btns { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-      .btn { font-size: 12px; padding: 6px 4px; text-align: center; }
-      .desktop-only { display: none !important; }
+      .nav-counter { display: none; }
 
       .nav-bar {
         position: fixed;
@@ -523,6 +648,7 @@
         -webkit-backdrop-filter: blur(8px);
         border-top: 1px solid #333;
       }
+      .nav-fab { max-width: none; flex: 1; }
       body { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
     }
     #cmdk { border: 1px solid #333; border-radius: 10px; padding: 0; width: min(520px, calc(100vw - 32px)); background: #1a1a1a; color: #eee; margin: 12vh auto auto; }
@@ -540,7 +666,8 @@
 <body>
   <div class="container">
     <div class="video-side">
-      <header class="header">
+      <header class="header" id="pageHeader">
+        <a href="/" class="btn back-btn" aria-label="Back" title="Back">←</a>
         <a href="/" class="logo">
           <svg viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
           ChromeScribe
@@ -561,6 +688,7 @@
           <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
           <button class="btn btn-danger" onclick="deleteTranscript()">🗑 Delete</button>
         </div>
+        <button class="btn menu-toggle" id="menuToggle" onclick="toggleHeaderMenu(event)" aria-label="More" title="More">⋯</button>
         <div id="readAloudPlayer"></div>
       </header>
       <div class="video-wrapper" id="videoWrapper" onclick="loadVideo()">
@@ -585,8 +713,13 @@
       </div>
     </div>
     
-    <div class="transcript-side">
+    <div class="transcript-side" id="transcriptSide" data-tab="summary">
+      <div class="mobile-tabs" id="mobileTabs">
+        <button class="mobile-tab active" data-tab="summary" onclick="setTab('summary')">Summary</button>
+        <button class="mobile-tab" data-tab="transcript" onclick="setTab('transcript')">Transcript</button>
+      </div>
       <div class="transcript-header">Transcript</div>
+      <div class="mobile-summary" id="mobileSummary"></div>
       <div class="transcript-content" id="content">
         <div class="loading">Loading...</div>
       </div>
@@ -599,6 +732,7 @@
       <span>Prev</span>
     </button>
     <div class="nav-counter" id="navCounter"></div>
+    <button class="nav-fab nav-chat" onclick="chatOnClaude(this)" title="Copy transcript and open claude.ai">Chat on Claude</button>
     <button class="nav-fab nav-next" onclick="goNext()" title="Next" disabled>
       <span>Next</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.59 16.59 10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
@@ -616,6 +750,9 @@
     let navIndex = -1;
     let readAloudAudio = null;
     window.addEventListener('pagehide', stopReadAloud);
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#pageHeader')) closeHeaderMenu();
+    });
 
     window.csThemeRender = function () {
       const btn = document.getElementById('themeToggle');
@@ -633,11 +770,43 @@
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
+    function toggleHeaderMenu(event) {
+      if (event) event.stopPropagation();
+      document.getElementById('pageHeader').classList.toggle('menu-open');
+    }
+
+    function closeHeaderMenu() {
+      document.getElementById('pageHeader').classList.remove('menu-open');
+    }
+
+    function setTab(name) {
+      document.getElementById('transcriptSide').setAttribute('data-tab', name);
+      document.querySelectorAll('.mobile-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.getAttribute('data-tab') === name);
+      });
+    }
+
+    function summarySection(text) {
+      const start = text.search(/^##\s+TL;DR\s*$/m);
+      if (start < 0) return '';
+      const rest = text.slice(start);
+      const end = rest.search(/^---\s*$/m);
+      return (end < 0 ? rest : rest.slice(0, end)).replace(/\n+##\s+Full[\s\S]*$/, '').trim();
+    }
+
+    function renderMobileSummary(text) {
+      const box = document.getElementById('mobileSummary');
+      const summary = summarySection(text);
+      box.innerHTML = summary ? parseMarkdown(summary) : '<p class="empty-summary">No summary yet.</p>';
+    }
+
     function setMetaLine(meta) {
       const words = meta.word_count.toLocaleString() + ' words';
+      const read = Math.max(1, Math.round((meta.word_count || 0) / 200)) + ' min read';
+      const line = words + ' • ' + read;
       const el = document.getElementById('meta');
-      if (!meta.channel) { el.textContent = words; return; }
-      el.innerHTML = '<a class="channel-link" href="/?channel=' + encodeURIComponent(meta.channel) + '">' + escapeHtml(meta.channel) + '</a> • ' + words;
+      if (!meta.channel) { el.textContent = line; return; }
+      el.innerHTML = '<a class="channel-link" href="/?channel=' + encodeURIComponent(meta.channel) + '">' + escapeHtml(meta.channel) + '</a> • ' + line;
     }
     
     async function init() {
@@ -657,6 +826,7 @@
         const contentRes = await fetch(API + '/transcript/' + id + '/content');
         if (!contentRes.ok) throw new Error('Content not found');
         markdown = await contentRes.text();
+        renderMobileSummary(markdown);
         
         const isArticle = meta.video_id.startsWith('article:');
 
