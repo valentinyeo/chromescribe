@@ -955,8 +955,10 @@
   <script>
     const API = '/api';
     let markdown = '';
-    let navList = null;
+    let navPrev = null;
+    let navNext = null;
     let navIndex = -1;
+    let navTotal = 0;
     let readAloudAudio = null;
     window.addEventListener('pagehide', stopReadAloud);
     document.addEventListener('click', e => {
@@ -1152,11 +1154,14 @@
 
     async function loadNav(currentId) {
       try {
-        const res = await fetch(API + '/transcripts');
+        const res = await fetch(API + '/transcripts?around=' + encodeURIComponent(currentId));
         if (!res.ok) return;
         const json = await res.json();
-        navList = (json.data || []).map(t => String(t.id));
-        navIndex = navList.indexOf(String(currentId));
+        const nav = json.data || {};
+        navPrev = nav.prev == null ? null : String(nav.prev);
+        navNext = nav.next == null ? null : String(nav.next);
+        navIndex = Number.isInteger(nav.index) ? nav.index : -1;
+        navTotal = Number.isInteger(nav.total) ? nav.total : 0;
         updateNavButtons();
       } catch {}
     }
@@ -1165,24 +1170,24 @@
       const prevs = document.querySelectorAll('.nav-prev');
       const nexts = document.querySelectorAll('.nav-next');
       const counter = document.getElementById('navCounter');
-      const noList = !navList || navIndex < 0;
-      const prevDisabled = noList || navIndex <= 0;
-      const nextDisabled = noList || navIndex >= navList.length - 1;
+      const noList = navIndex < 0;
+      const prevDisabled = noList || !navPrev;
+      const nextDisabled = noList || !navNext;
       prevs.forEach(b => b.disabled = prevDisabled);
       nexts.forEach(b => b.disabled = nextDisabled);
       if (counter) {
-        counter.textContent = noList ? '' : (navIndex + 1) + ' / ' + navList.length;
+        counter.textContent = noList ? '' : (navIndex + 1) + ' / ' + navTotal;
       }
     }
 
     function goPrev() {
-      if (!navList || navIndex <= 0) return;
-      window.location.search = '?id=' + navList[navIndex - 1];
+      if (!navPrev) return;
+      window.location.search = '?id=' + navPrev;
     }
 
     function goNext() {
-      if (!navList || navIndex < 0 || navIndex >= navList.length - 1) return;
-      window.location.search = '?id=' + navList[navIndex + 1];
+      if (!navNext) return;
+      window.location.search = '?id=' + navNext;
     }
 
     const COMMANDS = [
@@ -1495,7 +1500,7 @@
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || `HTTP ${res.status}`);
         }
-        const nextId = navList && navIndex >= 0 ? (navList[navIndex + 1] ?? navList[navIndex - 1]) : null;
+        const nextId = navNext ?? navPrev;
         window.location.href = nextId ? '/transcript.html?id=' + nextId : '/';
       } catch (err) {
         alert('Failed to delete: ' + err.message);

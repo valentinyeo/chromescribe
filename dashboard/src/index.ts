@@ -715,6 +715,31 @@ const handleApi = async (request: Request, env: Env): Promise<Response> => {
     }
 
     if (request.method === 'GET' && (path === 'transcripts' || path === '')) {
+      const around = url.searchParams.get('around');
+      if (around) {
+        const current = await env.DB
+          .prepare('SELECT id, created_at FROM transcripts WHERE id = ?')
+          .bind(Number.parseInt(around, 10))
+          .first<{ id: number; created_at: string }>();
+        if (!current) return handleError(new Error('Transcript not found'), 404);
+        const newerWhere = 'created_at > ? OR (created_at = ? AND id > ?)';
+        const olderWhere = 'created_at < ? OR (created_at = ? AND id < ?)';
+        const [prev, next, newer, total] = await Promise.all([
+          env.DB.prepare(`SELECT id FROM transcripts WHERE ${newerWhere} ORDER BY created_at ASC, id ASC LIMIT 1`)
+            .bind(current.created_at, current.created_at, current.id).first<{ id: number }>(),
+          env.DB.prepare(`SELECT id FROM transcripts WHERE ${olderWhere} ORDER BY created_at DESC, id DESC LIMIT 1`)
+            .bind(current.created_at, current.created_at, current.id).first<{ id: number }>(),
+          env.DB.prepare(`SELECT COUNT(*) AS n FROM transcripts WHERE ${newerWhere}`)
+            .bind(current.created_at, current.created_at, current.id).first<{ n: number }>(),
+          env.DB.prepare('SELECT COUNT(*) AS total FROM transcripts').first<{ total: number }>(),
+        ]);
+        return jsonResponse({
+          prev: prev?.id ?? null,
+          next: next?.id ?? null,
+          index: newer?.n ?? 0,
+          total: total?.total ?? 0,
+        });
+      }
       const requestedVideoId = url.searchParams.get('video_id');
       const page = requestedVideoId ? null : listPage(url.searchParams);
       const statement = requestedVideoId

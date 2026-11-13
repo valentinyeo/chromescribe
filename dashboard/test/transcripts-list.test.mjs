@@ -162,6 +162,39 @@ test('delete removes the row and its content and the list shrinks', async () => 
   assert.equal((await call(env, 'transcripts/3', { method: 'DELETE' })).status, 404);
 });
 
+test('the around call answers with only the two neighbours and the position', async () => {
+  const env = makeEnv(10);
+  const order = ids(await list(env, '?limit=20'));
+  const middle = (await (await call(env, 'transcripts?around=5')).json()).data;
+  const at = order.indexOf(5);
+  assert.deepEqual(Object.keys(middle).sort(), ['index', 'next', 'prev', 'total']);
+  assert.equal(middle.prev, order[at - 1]);
+  assert.equal(middle.next, order[at + 1]);
+  assert.equal(middle.index, at);
+  assert.equal(middle.total, 10);
+  const newest = (await (await call(env, 'transcripts?around=' + order[0])).json()).data;
+  assert.equal(newest.prev, null);
+  assert.equal(newest.next, order[1]);
+  assert.equal(newest.index, 0);
+  const oldest = (await (await call(env, 'transcripts?around=' + order.at(-1))).json()).data;
+  assert.equal(oldest.next, null);
+  assert.equal(oldest.prev, order.at(-2));
+  assert.equal(oldest.index, 9);
+  assert.equal((await call(env, 'transcripts?around=99')).status, 404);
+});
+
+test('the around call keeps its neighbour order when rows share a timestamp', async () => {
+  const env = makeEnv(6);
+  env.DB.raw.exec("UPDATE transcripts SET created_at = '2025-05-05 05:05:05'");
+  const order = ids(await list(env, '?limit=10'));
+  for (let at = 0; at < order.length; at++) {
+    const nav = (await (await call(env, 'transcripts?around=' + order[at])).json()).data;
+    assert.equal(nav.prev, order[at - 1] ?? null);
+    assert.equal(nav.next, order[at + 1] ?? null);
+    assert.equal(nav.index, at);
+  }
+});
+
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const pageCode = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)[1];
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -298,4 +331,56 @@ test('deleting a card drops it from the list without reloading the list', async 
   assert.equal(vm.runInContext('transcripts.length', context), 149);
   assert.equal(vm.runInContext('transcripts.some(t => t.id === 150)', context), false);
   assert.equal(elements.stats.textContent, '149 videos');
+});
+
+const videoPage = readFileSync(new URL('../public/transcript.html', import.meta.url), 'utf8');
+const navCode = 'let navPrev = null; let navNext = null; let navIndex = -1; let navTotal = 0;\n' + videoPage.slice(videoPage.indexOf('async function loadNav'), videoPage.indexOf('const COMMANDS'));
+
+function navSetup(nav) {
+  const calls = [];
+  const buttons = { prev: { disabled: false }, next: { disabled: false } };
+  const counter = { textContent: '' };
+  const location = { search: '' };
+  const context = vm.createContext({
+    API: '/api',
+    fetch: async url => {
+      calls.push(url);
+      return { ok: true, json: async () => ({ data: nav }) };
+    },
+    document: {
+      querySelectorAll: selector => selector === '.nav-prev' ? [buttons.prev] : [buttons.next],
+      getElementById: id => id === 'navCounter' ? counter : null,
+    },
+    window: { location },
+  });
+  vm.runInContext(navCode, context);
+  return { context, calls, buttons, counter, location };
+}
+
+test('the transcript page asks only for the two neighbours, not the full list', async () => {
+  const { context, calls, buttons, counter, location } = navSetup({ prev: 12, next: 10, index: 4, total: 3610 });
+  await context.loadNav('11');
+  assert.deepEqual(calls, ['/api/transcripts?around=11']);
+  assert.equal(videoPage.includes("fetch(API + '/transcripts')"), false);
+  assert.equal(buttons.prev.disabled, false);
+  assert.equal(buttons.next.disabled, false);
+  assert.equal(counter.textContent, '5 / 3610');
+  context.goPrev();
+  assert.equal(location.search, '?id=12');
+  context.goNext();
+  assert.equal(location.search, '?id=10');
+});
+
+test('the first video disables previous and the last disables next', async () => {
+  const first = navSetup({ prev: null, next: 9, index: 0, total: 10 });
+  await first.context.loadNav('10');
+  assert.equal(first.buttons.prev.disabled, true);
+  assert.equal(first.buttons.next.disabled, false);
+  assert.equal(first.counter.textContent, '1 / 10');
+  first.context.goPrev();
+  assert.equal(first.location.search, '');
+  const only = navSetup({ prev: null, next: null, index: 0, total: 1 });
+  await only.context.loadNav('7');
+  assert.equal(only.buttons.prev.disabled, true);
+  assert.equal(only.buttons.next.disabled, true);
 });
