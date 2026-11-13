@@ -275,6 +275,12 @@
       overflow: hidden;
       transition: all 0.2s ease;
     }
+
+    .card-link {
+      display: block;
+      color: inherit;
+      text-decoration: none;
+    }
     
     .card:hover {
       background: var(--card-hover);
@@ -476,6 +482,482 @@
     .mobile-menu,
     .fab {
       display: none;
+    }
+
+    .search-pill {
+      display: none;
+    }
+
+    .overflow {
+      position: relative;
+    }
+
+    .overflow > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .overflow > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .overflow-panel {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 70;
+      min-width: 210px;
+      padding: 6px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+
+    .overflow-panel a,
+    .overflow-panel button {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--foreground);
+      font-family: inherit;
+      font-size: 14px;
+      text-align: left;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .overflow-panel a:hover,
+    .overflow-panel button:hover {
+      background: var(--card-hover);
+    }
+
+    .overflow-panel hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 6px 4px;
+    }
+
+    .card-summary {
+      display: none;
+    }
+
+    .key-legend {
+      display: none;
+    }
+
+    .shortcuts-dialog {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0;
+      width: min(680px, calc(100vw - 32px));
+      background: #1b1b1b;
+      color: var(--foreground);
+      margin: 12vh auto auto;
+    }
+
+    .shortcuts-dialog::backdrop {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    .shortcuts-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px 8px;
+    }
+
+    .shortcuts-head h2 {
+      font-size: 20px;
+      font-weight: 500;
+    }
+
+    .shortcuts-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 32px;
+      padding: 8px 24px 20px;
+    }
+
+    .shortcuts-cols h3 {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 5px 0;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .shortcut-row kbd {
+      min-width: 34px;
+      padding: 3px 7px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--foreground);
+      font-family: 'SF Mono', 'Monaco', monospace;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .shortcuts-close {
+      margin-left: auto;
+      margin-right: 24px;
+      margin-bottom: 18px;
+      display: block;
+      border: none;
+      background: transparent;
+      color: var(--accent-soft-fg);
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    @media (min-width: 641px) {
+      .header-inner {
+        gap: 20px;
+        padding: 10px 24px;
+      }
+
+      .search-pill {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+        min-width: 0;
+        max-width: 760px;
+        height: 44px;
+        padding: 0 8px 0 16px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
+      }
+
+      .search-pill:focus-within {
+        border-color: var(--accent-soft-fg);
+        box-shadow: 0 0 0 2px var(--accent-soft-bg);
+      }
+
+      .search-pill svg {
+        width: 18px;
+        height: 18px;
+        flex: none;
+      }
+
+      .search-pill .search-input {
+        flex: 1;
+        min-width: 0;
+        height: 100%;
+        padding: 0;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        font-size: 14px;
+      }
+
+      .search-pill .search-input:focus-visible {
+        box-shadow: none;
+      }
+
+      .search-hint {
+        flex: none;
+        min-width: 26px;
+        padding: 3px 7px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--muted);
+        font-family: 'SF Mono', 'Monaco', monospace;
+        font-size: 12px;
+        text-align: center;
+      }
+
+      .header-actions {
+        gap: 10px;
+      }
+
+      .add-btn {
+        border-radius: 999px;
+        height: 40px;
+        padding: 0 18px;
+        background: #cfe0ff;
+        color: #001a41;
+        font-weight: 600;
+      }
+
+      .add-btn:hover {
+        background: #e2ecff;
+      }
+
+      .header-actions .overflow > summary {
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        color: var(--text);
+        font-size: 20px;
+      }
+
+      .header-actions .overflow > summary:hover {
+        background: var(--chip-bg);
+        color: var(--foreground);
+      }
+
+      .stats {
+        display: none;
+      }
+
+      .category-filters {
+        padding: 10px 24px 0;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .category-chips {
+        flex: 0 1 auto;
+        flex-wrap: nowrap;
+        overflow: hidden;
+        max-height: none;
+      }
+
+      .category-filters.expanded .category-chips {
+        flex-wrap: wrap;
+        overflow: visible;
+      }
+
+      .category-filters:not(.expanded) .category-chip:nth-child(n + 6) {
+        display: none;
+      }
+
+      .category-expand {
+        padding: 7px 14px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .category-chip .count { display: none; }
+
+      main {
+        padding: 20px 24px 96px;
+      }
+
+      .grid {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .card {
+        position: relative;
+        display: block;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 16px;
+        overflow: visible;
+      }
+
+      .card:hover {
+        background: var(--card-hover);
+        border-color: transparent;
+      }
+
+      .card > a,
+      .card-link {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 12px 56px 12px 12px;
+        text-decoration: none;
+      }
+
+      .card-thumb {
+        width: 148px;
+        flex: 0 0 148px;
+        aspect-ratio: 16 / 9;
+        border-radius: 12px;
+      }
+
+      .card-duration {
+        bottom: 4px;
+        right: 4px;
+        font-size: 10px;
+      }
+
+      .card-body {
+        flex: 1;
+        min-width: 0;
+        padding: 2px 0 0;
+      }
+
+      .card-title {
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 1.35;
+        margin-bottom: 6px;
+        -webkit-line-clamp: 1;
+      }
+
+      .card-channel {
+        display: none;
+      }
+
+      .card-meta {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0;
+        font-family: inherit;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .card-meta .card-channel-link {
+        color: var(--muted);
+      }
+
+      .card-tags {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+      }
+
+      .card-meta > .card-channel-link::before,
+      .card-meta > .card-age::before {
+        content: '·';
+        margin-right: 8px;
+        color: var(--muted);
+      }
+
+      .card-readtime::before {
+        content: '·';
+        margin-right: 8px;
+      }
+
+      .card-tags .category-pill {
+        font-size: 12px;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--accent-soft-fg);
+      }
+
+      .card-tags .tag-pill {
+        display: none;
+      }
+
+      .card-readtime {
+        display: inline;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .card-summary {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin-top: 6px;
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .card-actions {
+        position: absolute;
+        top: 16px;
+        right: 14px;
+        display: block;
+        padding: 0;
+        border: 0;
+      }
+
+      .card-actions > summary {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        color: var(--text);
+        font-size: 18px;
+        list-style: none;
+      }
+
+      .card-actions > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .card-actions > summary:hover {
+        background: var(--chip-bg);
+        color: var(--foreground);
+      }
+
+      .card-actions .overflow-panel {
+        top: 40px;
+        min-width: 180px;
+      }
+
+      .card.kb-selected {
+        border-color: var(--accent-soft-fg);
+        background: var(--card-hover);
+        box-shadow: none;
+      }
+
+      .card.kb-selected::after {
+        content: '↩ open';
+        position: absolute;
+        top: 18px;
+        right: 58px;
+        padding: 3px 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .key-legend {
+        position: fixed;
+        right: 24px;
+        bottom: 20px;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 8px 14px;
+        background: rgba(24, 24, 27, 0.9);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        color: var(--muted);
+        font-size: 12px;
+        backdrop-filter: blur(8px);
+      }
+
+      .key-legend kbd {
+        margin-right: 4px;
+        padding: 2px 6px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--card);
+        color: var(--text);
+        font-family: 'SF Mono', 'Monaco', monospace;
+        font-size: 11px;
+      }
     }
     
     .empty-state {
@@ -734,16 +1216,36 @@
         padding: 12px 16px 96px;
       }
 
-      .search-bar {
+      .search-pill {
         display: none;
-        flex-direction: row;
-        gap: 8px;
-        margin-bottom: 12px;
+        align-items: center;
+        gap: 10px;
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 58px;
+        z-index: 55;
+        height: 44px;
+        padding: 0 14px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
       }
 
-      body.search-open .search-bar { display: flex; }
-      body.search-open .search-bar select { display: none; }
-      .search-input { height: 44px; border-radius: 12px; }
+      body.search-open .search-pill { display: flex; }
+      .search-pill svg { width: 18px; height: 18px; flex: none; }
+      .search-pill .search-input {
+        flex: 1;
+        min-width: 0;
+        height: 100%;
+        padding: 0;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        font-size: 14px;
+      }
+      .search-hint { display: none; }
 
       .category-filters {
         padding: 8px 16px 0;
@@ -825,8 +1327,9 @@
         -webkit-line-clamp: 2;
       }
 
-      .card-channel,
-      .card-meta { display: none; }
+      .card-channel { display: none; }
+      .card-meta { display: block; }
+      .card-meta > :not(.card-tags) { display: none; }
 
       .card-tags {
         margin-bottom: 0;
@@ -900,25 +1403,28 @@
         ChromeScribe
       </a>
       
+      <label class="search-pill" for="searchInput">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search transcripts" oninput="handleSearch(this.value)">
+        <kbd class="search-hint">/</kbd>
+      </label>
+
       <div class="header-actions">
-        <span id="stats" class="stats"></span>
-        <button id="themeToggle" class="btn btn-secondary" onclick="csTheme.cycle()" title="Theme" aria-label="Theme">◐</button>
-        <a href="/subscriptions.html" class="btn btn-secondary">Subscriptions</a>
-        <a href="/queue.html" class="btn btn-secondary">Queue</a>
-        <a href="/reports.html" class="btn btn-secondary">Reports</a>
-        <a href="/stats.html" class="btn btn-secondary">Stats</a>
-        <a href="/settings.html" class="btn btn-secondary" title="Settings" aria-label="Settings">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-          </svg>
-        </a>
-        <button onclick="openAddModal()" class="btn btn-primary">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-          <span>Add Video</span>
-        </button>
+        <span id="stats" class="stats hidden" aria-live="polite"></span>
+        <button onclick="openAddModal()" class="btn btn-primary add-btn"><span aria-hidden="true">＋</span> Add</button>
+        <details class="overflow" id="headerMenu">
+          <summary aria-label="More" title="More">⋮</summary>
+          <div class="overflow-panel">
+            <a href="/subscriptions.html">Subscriptions</a>
+            <a href="/queue.html">Queue</a>
+            <a href="/reports.html">Reports</a>
+            <a href="/stats.html">Stats</a>
+            <a href="/settings.html">Settings</a>
+            <hr>
+            <button id="themeToggle" onclick="csTheme.cycle()" title="Theme" aria-label="Theme">◐ Theme</button>
+            <button onclick="openShortcuts()">Keyboard shortcuts</button>
+          </div>
+        </details>
       </div>
       <div class="mobile-actions">
         <button class="icon-btn" id="mobileSearchBtn" onclick="toggleMobileSearch()" aria-label="Search" title="Search">
@@ -943,22 +1449,10 @@
 
   <div id="categoryFilters" class="category-filters">
     <div class="category-chips" id="categoryChips"></div>
-    <button class="category-expand" id="categoryExpand" onclick="toggleCategories()" aria-expanded="false" title="Show all categories">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-    </button>
+    <button class="category-expand" id="categoryExpand" onclick="toggleCategories()" aria-expanded="false" title="Show all categories">More</button>
   </div>
 
   <main>
-    <div class="search-bar">
-      <input type="text" id="searchInput" class="search-input" placeholder="Search transcripts..." onkeyup="handleSearch(this.value)">
-      <select id="sortSelect" onchange="renderTranscripts()">
-        <option value="newest">Newest First</option>
-        <option value="oldest">Oldest First</option>
-        <option value="title">By Title</option>
-        <option value="duration">By Duration</option>
-      </select>
-    </div>
-
     <div id="videoGrid" class="grid"></div>
     <div id="gridSentinel"></div>
 
@@ -973,6 +1467,12 @@
 
 
   </main>
+
+  <div class="key-legend" aria-hidden="true">
+    <span><kbd>j</kbd><kbd>k</kbd> move</span>
+    <span><kbd>↩</kbd> open</span>
+    <span><kbd>?</kbd> all keys</span>
+  </div>
 
   <button class="fab" onclick="openAddModal()" aria-label="Add Video" title="Add Video">+</button>
 
@@ -1048,6 +1548,44 @@
     </div>
   </div>
 
+  <dialog id="shortcuts" class="shortcuts-dialog">
+    <div class="shortcuts-head"><h2>Keyboard shortcuts</h2></div>
+    <div class="shortcuts-cols">
+      <section>
+        <h3>List</h3>
+        <div class="shortcut-row"><kbd>j</kbd> Next video</div>
+        <div class="shortcut-row"><kbd>k</kbd> Previous video</div>
+        <div class="shortcut-row"><kbd>↩</kbd> Open</div>
+        <div class="shortcut-row"><kbd>o</kbd> Open on YouTube</div>
+        <div class="shortcut-row"><kbd>/</kbd> Search</div>
+        <div class="shortcut-row"><kbd>Esc</kbd> Clear search</div>
+        <div class="shortcut-row"><kbd>[</kbd><kbd>]</kbd> Change category</div>
+        <div class="shortcut-row"><kbd>a</kbd> Add video</div>
+        <div class="shortcut-row"><kbd>#</kbd> Delete</div>
+        <div class="shortcut-row"><kbd>g</kbd><kbd>q</kbd> Go to queue</div>
+        <div class="shortcut-row"><kbd>g</kbd><kbd>s</kbd> Subscriptions</div>
+        <div class="shortcut-row"><kbd>g</kbd><kbd>r</kbd> Reports</div>
+        <div class="shortcut-row"><kbd>?</kbd> This list</div>
+      </section>
+      <section>
+        <h3>Video page</h3>
+        <div class="shortcut-row"><kbd>j</kbd> Next video</div>
+        <div class="shortcut-row"><kbd>k</kbd> Previous video</div>
+        <div class="shortcut-row"><kbd>Esc</kbd> Back to list</div>
+        <div class="shortcut-row"><kbd>Space</kbd> Play or pause</div>
+        <div class="shortcut-row"><kbd>←</kbd><kbd>→</kbd> Skip 10s</div>
+        <div class="shortcut-row"><kbd>t</kbd> Summary or transcript</div>
+        <div class="shortcut-row"><kbd>c</kbd> Chat on Claude</div>
+        <div class="shortcut-row"><kbd>y</kbd> Copy</div>
+        <div class="shortcut-row"><kbd>r</kbd> Read aloud</div>
+        <div class="shortcut-row"><kbd>d</kbd> Download MD</div>
+        <div class="shortcut-row"><kbd>#</kbd> Delete</div>
+        <div class="shortcut-row"><kbd>?</kbd> This list</div>
+      </section>
+    </div>
+    <button class="shortcuts-close" onclick="document.getElementById('shortcuts').close()">Close</button>
+  </dialog>
+
   <dialog id="cmdk">
     <input id="cmdkInput" placeholder="Type a command…" autocomplete="off">
     <ul id="cmdkList"></ul>
@@ -1072,7 +1610,7 @@
     window.csThemeRender = function () {
       var btn = document.getElementById('themeToggle');
       if (!btn) return;
-      btn.textContent = csTheme.icon();
+      btn.textContent = csTheme.icon() + ' Theme';
       btn.title = csTheme.label();
       btn.setAttribute('aria-label', csTheme.label());
     };
@@ -1162,9 +1700,9 @@
     }
 
     const PINNED_CLUSTERS = [
-      { id: ALL_AI_CLUSTER, label: 'All AI', matches: isAiTech },
-      { id: RUSSIA_CLUSTER, label: 'Russia', matches: isRussia },
+      { id: ALL_AI_CLUSTER, label: 'AI', matches: isAiTech },
       { id: HEALTH_CLUSTER, label: 'Health', matches: isHealth },
+      { id: RUSSIA_CLUSTER, label: 'Russia', matches: isRussia },
       { id: SEO_CLUSTER, label: 'SEO', matches: isSeo },
     ];
 
@@ -1259,10 +1797,7 @@
       const expanded = localStorage.getItem('cs-categories-expanded') === '1';
       bar.classList.toggle('expanded', expanded);
       expandBtn.setAttribute('aria-expanded', String(expanded));
-
-      requestAnimationFrame(() => {
-        expandBtn.classList.toggle('hidden', chipsBox.scrollHeight <= 44);
-      });
+      expandBtn.textContent = expanded ? 'Less' : 'More';
     }
 
     function toggleCategories() {
@@ -1270,6 +1805,7 @@
       const btn = document.getElementById('categoryExpand');
       const open = bar.classList.toggle('expanded');
       btn.setAttribute('aria-expanded', String(open));
+      btn.textContent = open ? 'Less' : 'More';
       localStorage.setItem('cs-categories-expanded', open ? '1' : '0');
     }
 
@@ -1313,50 +1849,86 @@
         });
       }
 
-      const sort = document.getElementById('sortSelect').value;
-      return [...filtered].sort((a, b) => {
-        if (sort === 'newest') return new Date(b.created_at) - new Date(a.created_at);
-        if (sort === 'oldest') return new Date(a.created_at) - new Date(b.created_at);
-        if (sort === 'title') return a.title.localeCompare(b.title);
-        if (sort === 'duration') return b.duration - a.duration;
-        return 0;
-      });
+      return [...filtered].sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.id - a.id);
+    }
+
+    function relativeAge(value) {
+      const then = new Date(value).getTime();
+      if (!then) return '';
+      const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
+      if (minutes < 60) return minutes < 2 ? 'just now' : minutes + 'm ago';
+      const hours = Math.round(minutes / 60);
+      if (hours < 24) return hours + 'h ago';
+      const days = Math.round(hours / 24);
+      if (days < 7) return days + 'd ago';
+      return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
+    function sourceUrl(t) {
+      if (t.video_id.startsWith('article:')) return '/api/transcripts/' + t.id + '/source';
+      if (t.video_id.startsWith('tiktok:')) return 'https://www.tiktok.com/video/' + t.video_id.slice(7);
+      if (t.video_id.startsWith('x:')) return 'https://x.com/i/status/' + t.video_id.slice(2);
+      return 'https://youtube.com/watch?v=' + t.video_id;
     }
 
     function cardHtml(t) {
       return `<div class="card">
-          <a href="transcript.html?id=${t.id}" style="text-decoration: none; display: block;">
+          <a class="card-link" href="transcript.html?id=${t.id}">
             ${t.video_id.startsWith('article:') ? '' : `<div class="card-thumb">
-              <img src="${API_BASE}/thumb/${encodeURIComponent(t.video_id)}" alt="${escapeHtml(t.title)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.background='#111';this.style.objectFit='none'">
+              <img src="${API_BASE}/thumb/${encodeURIComponent(t.video_id)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.background='#111';this.style.objectFit='none'">
               <span class="card-duration">${t.duration_formatted}</span>
             </div>`}
             <div class="card-body">
               <h3 class="card-title">${escapeHtml(t.title)}</h3>
-              <p class="card-channel"><span class="card-channel-link" data-channel="${escapeHtml(t.channel || '')}" title="Show only this channel">${escapeHtml(t.channel)}</span></p>
-              ${renderCardTags(t)}
               <div class="card-meta">
-                <span>${t.word_count} words</span>
-                <span>${t.created_at_formatted}</span>
+                ${renderCardTags(t)}
+                <span class="card-channel-link" data-channel="${escapeHtml(t.channel || '')}" title="Show only this channel">${escapeHtml(t.channel || '')}</span>
+                <span class="card-age">${relativeAge(t.created_at)}</span>
               </div>
+              <p class="card-summary" data-summary-id="${t.id}"></p>
             </div>
           </a>
-          <div class="card-actions" style="padding: 12px 16px;">
-            <a href="transcript.html?id=${t.id}" class="btn btn-secondary" style="flex: 1; margin-right: 8px;">View</a>
-            <a href="${t.video_id.startsWith('article:') ? '/api/transcripts/' + t.id + '/source' : t.video_id.startsWith('tiktok:') ? 'https://www.tiktok.com/video/' + t.video_id.replace('tiktok:', '') : t.video_id.startsWith('x:') ? 'https://x.com/i/status/' + t.video_id.replace('x:', '') : 'https://youtube.com/watch?v=' + t.video_id}" target="_blank" class="btn btn-secondary" style="width: 100px;">
-              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-              </svg>
-              Open
-            </a>
-            <button type="button" class="btn btn-danger js-delete" data-id="${t.id}" data-title="${escapeHtml(t.title)}" style="width: 100px;">
-              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-              </svg>
-              Delete
-            </button>
-          </div>
+          <details class="card-actions">
+            <summary aria-label="Actions for ${escapeHtml(t.title)}">⋮</summary>
+            <div class="overflow-panel">
+              <a href="${sourceUrl(t)}" target="_blank" rel="noopener">Open original</a>
+              <button type="button" class="js-delete" data-id="${t.id}" data-title="${escapeHtml(t.title)}">Delete</button>
+            </div>
+          </details>
         </div>
       `;
+    }
+
+    function summaryLine(text) {
+      const start = text.search(/^##\s+TL;DR\s*$/m);
+      if (start < 0) return '';
+      const rest = text.slice(start).replace(/^##\s+TL;DR\s*$/m, '');
+      const first = rest.split(/\n\s*\n|\n(?=## )/)[0];
+      return first.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\[(?:\d+:)?\d+:\d+\]/g, '').replace(/<[^>]*>|[*_`]/g, '').replace(/\s+/g, ' ').trim();
+    }
+
+    const summaryCache = new Map();
+    let summaryObserver = null;
+    function watchSummaries() {
+      if (typeof IntersectionObserver !== 'function' || typeof document.querySelectorAll !== 'function') return;
+      if (!summaryObserver) {
+        summaryObserver = new IntersectionObserver(entries => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const el = entry.target;
+            summaryObserver.unobserve(el);
+            const id = el.dataset.summaryId;
+            if (!id) continue;
+            if (!summaryCache.has(id)) {
+              summaryCache.set(id, fetch(`${API_BASE}/transcript/${id}/content`).then(res => res.ok ? res.text() : '').then(summaryLine).catch(() => ''));
+            }
+            summaryCache.get(id).then(line => {
+              if (line) el.textContent = line;
+            });
+          }
+        }, { rootMargin: '200px' });
+      }
+      document.querySelectorAll('[data-summary-id]:empty').forEach(el => summaryObserver.observe(el));
     }
 
     function renderStats() {
@@ -1364,6 +1936,8 @@
       document.getElementById('stats').textContent = (activeCategory || activeChannel)
         ? `${view.length} of ${total} video${total !== 1 ? 's' : ''}`
         : `${total} video${total !== 1 ? 's' : ''}`;
+      const search = document.getElementById('searchInput');
+      search.placeholder = `Search ${total.toLocaleString()} transcripts`;
     }
 
     function renderMore() {
@@ -1371,6 +1945,7 @@
       const next = view.slice(renderedCount, renderedCount + RENDER_BATCH);
       document.getElementById('videoGrid').insertAdjacentHTML('beforeend', next.map(cardHtml).join(''));
       renderedCount += next.length;
+      watchSummaries();
       return true;
     }
 
@@ -1425,15 +2000,13 @@
     function renderCardTags(t) {
       const parts = [];
       if (t.category) parts.push(`<span class="category-pill">${escapeHtml(t.category)}</span>`);
-      let tags = [];
-      if (t.tags) {
-        try { tags = JSON.parse(t.tags); } catch { tags = []; }
-      }
-      tags.slice(0, 4).forEach(tag => {
-        parts.push(`<span class="tag-pill">${escapeHtml(tag)}</span>`);
-      });
       parts.push(`<span class="card-readtime">${readMinutes(t)} min read</span>`);
       return `<div class="card-tags">${parts.join('')}</div>`;
+    }
+
+    function openShortcuts() {
+      const dialog = document.getElementById('shortcuts');
+      if (dialog && typeof dialog.showModal === 'function') dialog.showModal();
     }
 
     function toggleMobileSearch() {
@@ -1611,8 +2184,9 @@
       { label: 'Open original of selected', key: 'O', run: kbOpenOriginal, ok: () => !!kbCard() },
       { label: 'Delete selected', key: '# / Del', run: kbDelete, ok: () => !!kbCard() },
       { label: 'Search', key: '/', run: focusSearch },
-      { label: 'Add video', key: 'C', run: openAddModal },
-      { label: 'Keyboard shortcuts', key: '?', run: () => openCmdk(true) },
+      { label: 'Add video', key: 'A', run: openAddModal },
+      { label: 'Change category', key: '[ ]', run: () => cycleCategory(1) },
+      { label: 'Keyboard shortcuts', key: '?', run: openShortcuts },
       { label: 'Command menu', key: 'Ctrl+K', run: () => openCmdk() },
       { label: 'Stats', run: () => { window.location.href = '/stats.html'; } },
       { label: 'Settings', key: '$', run: () => { window.location.href = '/settings.html'; } },
@@ -1649,23 +2223,41 @@
     cmdkList.addEventListener('click', e => { const li = e.target.closest('li'); if (li) runCmdk(+li.dataset.i); });
     cmdk.addEventListener('click', e => { if (e.target === cmdk) cmdk.close(); });
 
+    function cycleCategory(dir) {
+      const flow = [null, ...PINNED_CLUSTERS.map(cluster => cluster.id)];
+      const index = Math.max(0, flow.indexOf(activeCategory));
+      setCategory(flow[(index + dir + flow.length) % flow.length]);
+    }
+
+    let gPending = 0;
     document.addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); cmdk.open ? cmdk.close() : openCmdk(); return; }
       if (cmdk.open || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target.matches('input, textarea, select, [contenteditable]')) {
-        if (e.key === 'Escape') e.target.blur();
+        if (e.key === 'Escape') { e.target.blur(); if (searchQuery) { e.target.value = ''; handleSearch(''); } }
         return;
       }
       if (!document.getElementById('addModal').classList.contains('hidden')) return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (k === 'g') { gPending = Date.now(); return; }
+      if (gPending && Date.now() - gPending < 1000) {
+        gPending = 0;
+        if (k === 'q') window.location.href = '/queue.html';
+        else if (k === 's') window.location.href = '/subscriptions.html';
+        else if (k === 'r') window.location.href = '/reports.html';
+        return;
+      }
       if (k === 'j') { e.preventDefault(); kbSelect(kbIndex + 1); }
       else if (k === 'k') { e.preventDefault(); kbSelect(kbIndex - 1); }
       else if (k === 'Enter' && kbCard()) { e.preventDefault(); kbOpen(); }
       else if (k === 'o') { kbOpenOriginal(); }
       else if (k === '#' || k === 'Delete') { e.preventDefault(); kbDelete(); }
       else if (k === '/') { e.preventDefault(); focusSearch(); }
-      else if (k === 'c') { e.preventDefault(); openAddModal(); }
-      else if (k === '?') { e.preventDefault(); openCmdk(true); }
+      else if (k === 'a') { e.preventDefault(); openAddModal(); }
+      else if (k === '[') { e.preventDefault(); cycleCategory(-1); }
+      else if (k === ']') { e.preventDefault(); cycleCategory(1); }
+      else if (k === 'Escape') { if (searchQuery) { document.getElementById('searchInput').value = ''; handleSearch(''); } }
+      else if (k === '?') { e.preventDefault(); openShortcuts(); }
       else if (k === '$') { window.location.href = '/settings.html'; }
     });
 

@@ -18,7 +18,7 @@ test('phone home renders compact rows with a category and a read time', () => {
   const row = context.renderCardTags({ category: 'AI Agents', tags: '["retrieval"]', word_count: 830 });
   assert.match(row, /class="category-pill">AI Agents</);
   assert.match(row, /class="card-readtime">4 min read</);
-  assert.match(row, /class="tag-pill">retrieval</);
+  assert.doesNotMatch(row, /class="tag-pill">retrieval</);
   assert.match(context.renderCardTags({ category: 'AI', tags: '[]', word_count: 0 }), /1 min read/);
 });
 

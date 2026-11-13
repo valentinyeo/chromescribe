@@ -544,6 +544,18 @@
         box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
       }
       .header.menu-open .header-btns { display: grid; }
+      .header-btns .overflow { display: contents; }
+      .header-btns .overflow > .btn { display: none; }
+      .header-btns .overflow .overflow-panel {
+        display: contents;
+        position: static;
+        min-width: 0;
+        padding: 0;
+        border: none;
+        background: transparent;
+        box-shadow: none;
+      }
+      .header-btns .overflow-panel .btn { border-radius: 10px; }
       .menu-toggle {
         display: flex;
         align-items: center;
@@ -661,36 +673,214 @@
     [data-theme="light"] #cmdk { background: #fff; color: #111; border-color: #ddd; }
     [data-theme="light"] #cmdkInput { border-bottom-color: #ddd; }
     [data-theme="light"] #cmdkList li.active { background: #eee; }
+
+    .overflow { position: relative; }
+    .overflow-panel {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 70;
+      min-width: 220px;
+      padding: 6px;
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    }
+    .overflow.open .overflow-panel { display: block; }
+    .overflow-panel .btn {
+      display: block;
+      width: 100%;
+      margin: 2px 0;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      text-align: left;
+    }
+    .overflow-panel .btn:hover { background: #27272a; }
+
+    .shortcuts-dialog {
+      border: 1px solid #333;
+      border-radius: 20px;
+      padding: 0;
+      width: min(620px, calc(100vw - 32px));
+      background: #1b1b1b;
+      color: #fff;
+      margin: 12vh auto auto;
+    }
+    .shortcuts-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+    .shortcuts-head { padding: 20px 24px 8px; }
+    .shortcuts-head h2 { font-size: 20px; font-weight: 500; }
+    .shortcuts-cols { padding: 8px 24px 20px; }
+    .shortcuts-cols h3 { font-size: 12px; font-weight: 500; color: #888; margin-bottom: 10px; }
+    .shortcut-row { display: flex; align-items: center; gap: 12px; padding: 5px 0; font-size: 14px; color: #ccc; }
+    .shortcut-row kbd {
+      min-width: 34px;
+      padding: 3px 7px;
+      border: 1px solid #333;
+      border-radius: 6px;
+      background: #27272a;
+      color: #fff;
+      font-family: 'SF Mono', 'Monaco', monospace;
+      font-size: 12px;
+      text-align: center;
+    }
+    .shortcuts-close {
+      display: block;
+      margin: 0 24px 18px auto;
+      border: none;
+      background: transparent;
+      color: #6ea8ff;
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    @media (min-width: 769px) {
+      html, body { background: #030303; font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif; }
+      .header {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: #0b0b0b;
+        border-bottom: 1px solid #27272a;
+        padding: 10px 20px;
+        gap: 14px;
+        justify-content: flex-start;
+      }
+      .header-btns { margin-left: auto; }
+      .logo { font-size: 17px; }
+      .back-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        border: 1px solid #333;
+        border-radius: 999px;
+        background: transparent;
+        color: #fff;
+        font-size: 18px;
+        text-decoration: none;
+        flex: none;
+      }
+      .back-btn:hover { background: #1b1b1b; }
+      .header-btns { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+      .header-btns .btn {
+        background: transparent;
+        border: 1px solid #333;
+        border-radius: 999px;
+        padding: 7px 14px;
+        font-size: 13px;
+      }
+      .header-btns .btn:hover { background: #1b1b1b; }
+      .header-btns .btn-chat { background: #0057ff; border-color: #0057ff; color: #fff; }
+      .header-btns .btn-chat:hover { background: #0066ff; }
+      .header-btns .nav-prev,
+      .header-btns .nav-next { min-width: 38px; padding: 7px 10px; }
+      .header-btns .overflow > .btn { width: 38px; padding: 7px 0; font-size: 18px; }
+      .overflow-panel .btn { border: none; border-radius: 8px; }
+      .overflow-panel .btn-danger { background: transparent; color: #ef4444; }
+      .menu-toggle { display: none; }
+      .container { flex-direction: row; height: calc(100vh - 61px); min-height: 0; }
+      .video-side { flex: 1; min-width: 0; }
+      .video-wrapper { margin: 14px 20px 0; border-radius: 16px; overflow: hidden; }
+      .video-info { padding: 16px 20px; }
+      .video-title { font-size: 22px; }
+      .mobile-tabs {
+        display: flex;
+        gap: 0;
+        padding: 0;
+        background: transparent;
+        border-bottom: 1px solid #27272a;
+        position: static;
+      }
+      .mobile-tab {
+        flex: 1;
+        padding: 14px 12px;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: #888;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      .mobile-tab.active { color: #fff; border-bottom-color: #0057ff; }
+      .mobile-summary {
+        display: block;
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 18px 32px;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #ddd;
+      }
+      .mobile-summary h1,
+      .mobile-summary h2,
+      .mobile-summary h3 { font-size: 15px; margin: 14px 0 6px; color: #fff; }
+      .mobile-summary p { margin-bottom: 8px; }
+      .mobile-summary ul,
+      .mobile-summary ol { margin: 8px 0; padding-left: 20px; }
+      .mobile-summary li { margin-bottom: 4px; }
+      .mobile-summary strong { color: #fff; }
+      .mobile-summary a { color: #6ea8ff; text-decoration: none; }
+      .transcript-side {
+        width: 380px;
+        min-width: 320px;
+        background: #121212;
+        border-left: 1px solid #27272a;
+      }
+      .transcript-header { display: none; }
+      .transcript-side[data-tab="summary"] .transcript-content { display: none; }
+      .transcript-side[data-tab="transcript"] .mobile-summary { display: none; }
+      .transcript-side[data-tab="transcript"] .transcript-content { display: block; }
+      .nav-bar { display: none; }
+      body { padding-bottom: 0; }
+      #cmdk { background: #1b1b1b; border-color: #333; }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="video-side">
-      <header class="header" id="pageHeader">
-        <a href="/" class="btn back-btn" aria-label="Back" title="Back">←</a>
-        <a href="/" class="logo">
-          <svg viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
-          ChromeScribe
-        </a>
-        <div class="header-btns">
+  <header class="header" id="pageHeader">
+    <a href="/" class="btn back-btn" aria-label="Back" title="Back">←</a>
+    <a href="/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
+      ChromeScribe
+    </a>
+    <div class="header-btns">
+      <button class="btn nav-btn nav-prev desktop-only" onclick="goPrev()" title="Previous (k)" disabled>‹</button>
+      <button class="btn nav-btn nav-next desktop-only" onclick="goNext()" title="Next (j)" disabled>›</button>
+      <button class="btn btn-chat" onclick="chatOnClaude(this)" title="Copy transcript and open claude.ai">Chat on Claude</button>
+      <button class="btn" onclick="copyText(this)">Copy</button>
+      <div class="overflow" id="moreMenu">
+        <button class="btn" id="moreToggle" onclick="toggleMorePanel(event)" aria-label="More actions" title="More">⋮</button>
+        <div class="overflow-panel" id="morePanel">
           <a href="/subscriptions.html" class="btn">Subscriptions</a>
-        <a href="/queue.html" class="btn">Queue</a>
+          <a href="/queue.html" class="btn">Queue</a>
           <a href="/reports.html" class="btn">Reports</a>
-          <button class="btn nav-btn desktop-only nav-prev" onclick="goPrev()" title="Previous (←)" disabled>←</button>
-          <button class="btn nav-btn desktop-only nav-next" onclick="goNext()" title="Next (→)" disabled>→</button>
-          <button class="btn" id="themeToggle" onclick="csTheme.cycle()" title="Theme" aria-label="Theme">◐</button>
-          <a class="btn" href="/settings.html" title="Settings">⚙</a>
-          <button class="btn btn-chat" onclick="chatOnClaude(this)" title="Copy transcript and open claude.ai">💬 Chat on Claude</button>
-          <button class="btn" onclick="copyText(this)">Copy</button>
+          <a href="/settings.html" class="btn">Settings</a>
+          <button class="btn" id="themeToggle" onclick="csTheme.cycle()" title="Theme" aria-label="Theme">◐ Theme</button>
+          <button class="btn" onclick="openOriginal()">Open original</button>
           <button class="btn" onclick="downloadMd()">Download MD</button>
           <button class="btn" id="readAloudBtn" onclick="readAloud()">Read aloud</button>
-          <button class="btn btn-summarize" onclick="summarize()">✨ Summarize</button>
-          <button class="btn btn-retranscribe" onclick="retranscribe()">♻️ Retranscribe</button>
-          <button class="btn btn-danger" onclick="deleteTranscript()">🗑 Delete</button>
+          <button class="btn btn-summarize" onclick="summarize()">Summarize</button>
+          <button class="btn btn-retranscribe" onclick="retranscribe()">Retranscribe</button>
+          <button class="btn btn-danger" onclick="deleteTranscript()">Delete</button>
+          <button class="btn" onclick="openShortcuts()">Keyboard shortcuts</button>
         </div>
-        <button class="btn menu-toggle" id="menuToggle" onclick="toggleHeaderMenu(event)" aria-label="More" title="More">⋯</button>
-        <div id="readAloudPlayer"></div>
-      </header>
+      </div>
+    </div>
+    <button class="btn menu-toggle" id="menuToggle" onclick="toggleHeaderMenu(event)" aria-label="More" title="More">⋯</button>
+    <div id="readAloudPlayer"></div>
+  </header>
+
+  <div class="container">
+    <div class="video-side">
       <div class="video-wrapper" id="videoWrapper" onclick="loadVideo()">
         <img id="videoThumb" class="video-thumbnail" alt="Video thumbnail" style="display:none;">
         <div id="videoPlaceholder" class="video-placeholder" style="display:none;">
@@ -739,6 +929,25 @@
     </button>
   </nav>
   
+  <dialog id="shortcuts" class="shortcuts-dialog">
+    <div class="shortcuts-head"><h2>Keyboard shortcuts</h2></div>
+    <div class="shortcuts-cols">
+      <div class="shortcut-row"><kbd>j</kbd> Next video</div>
+      <div class="shortcut-row"><kbd>k</kbd> Previous video</div>
+      <div class="shortcut-row"><kbd>Esc</kbd> Back to list</div>
+      <div class="shortcut-row"><kbd>Space</kbd> Play or pause</div>
+      <div class="shortcut-row"><kbd>←</kbd><kbd>→</kbd> Skip 10s</div>
+      <div class="shortcut-row"><kbd>t</kbd> Summary or transcript</div>
+      <div class="shortcut-row"><kbd>c</kbd> Chat on Claude</div>
+      <div class="shortcut-row"><kbd>y</kbd> Copy</div>
+      <div class="shortcut-row"><kbd>r</kbd> Read aloud</div>
+      <div class="shortcut-row"><kbd>d</kbd> Download MD</div>
+      <div class="shortcut-row"><kbd>#</kbd> Delete</div>
+      <div class="shortcut-row"><kbd>?</kbd> This list</div>
+    </div>
+    <button class="shortcuts-close" onclick="document.getElementById('shortcuts').close()">Close</button>
+  </dialog>
+
   <dialog id="cmdk">
     <input id="cmdkInput" placeholder="Type a command…" autocomplete="off">
     <ul id="cmdkList"></ul>
@@ -757,7 +966,7 @@
     window.csThemeRender = function () {
       const btn = document.getElementById('themeToggle');
       if (!btn) return;
-      btn.textContent = csTheme.icon();
+      btn.textContent = csTheme.icon() + ' Theme';
       btn.title = csTheme.label();
       btn.setAttribute('aria-label', csTheme.label());
     };
@@ -777,6 +986,17 @@
 
     function closeHeaderMenu() {
       document.getElementById('pageHeader').classList.remove('menu-open');
+      document.getElementById('moreMenu').classList.remove('open');
+    }
+
+    function toggleMorePanel(event) {
+      if (event) event.stopPropagation();
+      document.getElementById('moreMenu').classList.toggle('open');
+    }
+
+    function openShortcuts() {
+      const dialog = document.getElementById('shortcuts');
+      if (dialog && typeof dialog.showModal === 'function') dialog.showModal();
     }
 
     function setTab(name) {
@@ -801,12 +1021,10 @@
     }
 
     function setMetaLine(meta) {
-      const words = meta.word_count.toLocaleString() + ' words';
       const read = Math.max(1, Math.round((meta.word_count || 0) / 200)) + ' min read';
-      const line = words + ' • ' + read;
       const el = document.getElementById('meta');
-      if (!meta.channel) { el.textContent = line; return; }
-      el.innerHTML = '<a class="channel-link" href="/?channel=' + encodeURIComponent(meta.channel) + '">' + escapeHtml(meta.channel) + '</a> • ' + line;
+      if (!meta.channel) { el.textContent = read; return; }
+      el.innerHTML = '<a class="channel-link" href="/?channel=' + encodeURIComponent(meta.channel) + '">' + escapeHtml(meta.channel) + '</a> • ' + read;
     }
     
     async function init() {
@@ -850,15 +1068,7 @@
           document.getElementById('title').textContent = displayTitle2;
           setMetaLine(meta);
 
-          const tagParts2 = [];
-          if (meta.category) tagParts2.push('<span class="category-pill">' + escapeHtml(meta.category) + '</span>');
-          if (meta.tags) {
-            try {
-              const tags = JSON.parse(meta.tags);
-              tags.forEach(t => tagParts2.push('<span class="tag-pill">' + escapeHtml(t) + '</span>'));
-            } catch {}
-          }
-          document.getElementById('videoTags').innerHTML = tagParts2.join('');
+          document.getElementById('videoTags').innerHTML = meta.category ? '<span class="category-pill">' + escapeHtml(meta.category) + '</span>' : '';
           if (sourceUrl) {
             const open = document.createElement('a');
             open.className = 'open-original';
@@ -928,15 +1138,7 @@
         document.getElementById('title').textContent = displayTitle;
         setMetaLine(meta);
 
-        const tagParts = [];
-        if (meta.category) tagParts.push('<span class="category-pill">' + escapeHtml(meta.category) + '</span>');
-        if (meta.tags) {
-          try {
-            const tags = JSON.parse(meta.tags);
-            tags.forEach(t => tagParts.push('<span class="tag-pill">' + escapeHtml(t) + '</span>'));
-          } catch {}
-        }
-        document.getElementById('videoTags').innerHTML = tagParts.join('');
+        document.getElementById('videoTags').innerHTML = meta.category ? '<span class="category-pill">' + escapeHtml(meta.category) + '</span>' : '';
 
         document.getElementById('content').innerHTML = parseMarkdown(markdown);
         applySummarizeState();
@@ -990,9 +1192,11 @@
       { label: 'Delete', key: '# / Del', run: deleteTranscript },
       { label: 'Home', key: 'Esc', run: () => { window.location.href = '/'; } },
       { label: 'Open original', key: 'O', run: openOriginal },
-      { label: 'Chat on Claude', run: () => chatOnClaude(document.querySelector('.btn-chat')) },
-      { label: 'Copy markdown', run: () => copyText([...document.querySelectorAll('.btn')].find(b => b.textContent.trim() === 'Copy')) },
-      { label: 'Download MD', run: downloadMd },
+      { label: 'Chat on Claude', key: 'C', run: () => chatOnClaude(document.querySelector('.btn-chat')) },
+      { label: 'Copy markdown', key: 'Y', run: () => copyText([...document.querySelectorAll('.btn')].find(b => b.textContent.trim() === 'Copy')) },
+      { label: 'Reading tab', key: 'T', run: () => setTab(document.getElementById('transcriptSide').getAttribute('data-tab') === 'summary' ? 'transcript' : 'summary') },
+      { label: 'Download MD', key: 'D', run: downloadMd },
+      { label: 'Read aloud', key: 'R', run: readAloud },
       { label: 'Re-summarize', run: summarize },
       { label: 'Retranscribe', run: retranscribe },
       { label: 'Toggle theme', run: toggleTheme },
@@ -1007,7 +1211,16 @@
     }
 
     let videoPlaying = false;
+    let videoTime = 0;
     let pendingSeek = 0;
+    function seekBy(seconds) {
+      const wrapper = document.getElementById('videoWrapper');
+      if (!wrapper.classList.contains('playing')) return;
+      const target = Math.max(0, videoTime + seconds);
+      videoTime = target;
+      if (isTikTok()) tiktokCommand('seekTo', target);
+      else document.getElementById('video').contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [target, true] }), '*');
+    }
     function tiktokCommand(type, value) {
       const msg = { 'x-tiktok-player': true, type };
       if (value !== undefined) msg.value = value;
@@ -1019,6 +1232,7 @@
       if (/youtube\.com$/.test(host)) {
         try {
           const d = JSON.parse(e.data);
+          if (d.info && typeof d.info.currentTime === 'number') videoTime = d.info.currentTime;
           if (d.info && d.info.playerState !== undefined) videoPlaying = d.info.playerState === 1;
         } catch {}
       } else if (host === 'www.tiktok.com') {
@@ -1089,13 +1303,24 @@
       if (cmdk.open || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target.matches('input, textarea, [contenteditable]')) return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (k === 'ArrowLeft' || k === 'k') { e.preventDefault(); goPrev(); }
-      else if (k === 'ArrowRight' || k === 'j') { e.preventDefault(); goNext(); }
+      if (k === 'ArrowLeft' || k === 'ArrowRight') {
+        e.preventDefault();
+        if (document.getElementById('videoWrapper').classList.contains('playing')) seekBy(k === 'ArrowRight' ? 10 : -10);
+        else if (k === 'ArrowLeft') goPrev();
+        else goNext();
+      }
+      else if (k === 'k') { e.preventDefault(); goPrev(); }
+      else if (k === 'j') { e.preventDefault(); goNext(); }
       else if (k === ' ' && window.videoSrc) { e.preventDefault(); togglePlay(); }
       else if (k === '#' || k === 'Delete') { e.preventDefault(); deleteTranscript(); }
       else if (k === 'Escape') { window.location.href = '/'; }
       else if (k === 'o') { openOriginal(); }
-      else if (k === '?') { e.preventDefault(); openCmdk(true); }
+      else if (k === 't') { setTab(document.getElementById('transcriptSide').getAttribute('data-tab') === 'summary' ? 'transcript' : 'summary'); }
+      else if (k === 'c') { chatOnClaude(document.querySelector('.btn-chat')); }
+      else if (k === 'y') { copyText([...document.querySelectorAll('.btn')].find(b => b.textContent.trim() === 'Copy')); }
+      else if (k === 'r') { readAloud(); }
+      else if (k === 'd') { downloadMd(); }
+      else if (k === '?') { e.preventDefault(); openShortcuts(); }
       else if (k === '$') { window.location.href = '/settings.html'; }
     });
 
