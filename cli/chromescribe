@@ -14,7 +14,8 @@ Usage:
   chromescribe list [-n N] [--channel <name>] [--json]          List transcripts (newest first)
   chromescribe search <query> [--json]       Search titles/channels/video_id
   chromescribe get <id> [--json]             Show metadata for one transcript
-  chromescribe cat <id>                      Print the full markdown to stdout
+  chromescribe cat <id|page-url>             Print the full markdown to stdout (a pasted
+                                             chromescribe.yeoux.net/transcript.html?id=N works)
   chromescribe url <source-url> [--json]     Find transcript by source URL
   chromescribe view <id>                     Print dashboard URL for browser
 
@@ -180,7 +181,11 @@ cmd_get() {
 
 cmd_cat() {
   local id="${1:-}"
-  [ -n "$id" ] || die "cat requires an id"
+  [ -n "$id" ] || die "cat requires an id or a chromescribe.yeoux.net page URL"
+  case "$id" in
+    http*) id=$(printf '%s' "$id" | sed -nE 's/.*[?&]id=([0-9]+).*/\1/p') ;;
+  esac
+  [[ "$id" =~ ^[0-9]+$ ]] || die "cat needs a numeric id or a page URL with ?id=<n>"
   api_curl "$API/api/transcript/$id/content" || die "failed to fetch content for id=$id"
 }
 

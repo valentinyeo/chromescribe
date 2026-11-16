@@ -176,6 +176,10 @@ test('existing list/search/get/cat/url/view commands still work and view uses th
     assert.ok(result.stdout.trim());
   }
   assert.equal((await call('view', '1')).stdout.trim(), 'https://chromescribe.yeoux.net/transcript.html?id=1');
+  const pasted = await call('cat', 'https://chromescribe.yeoux.net/transcript.html?id=2');
+  assert.equal(pasted.code, 0, pasted.stderr);
+  assert.equal(pasted.stdout, (await call('cat', '2')).stdout);
+  assert.notEqual((await call('cat', 'https://chromescribe.yeoux.net/transcript.html')).code, 0);
   const help = (await call('help')).stdout;
   for (const name of ['channels', 'subscribe', 'unsubscribe', 'pause', 'resume', 'learn', 'lens', '--no-queue', '--no-publish']) assert.ok(help.includes(name));
 });
