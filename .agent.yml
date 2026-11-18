@@ -11,7 +11,7 @@ trigger:
   frequency: every-4h
 status_check:
   type: log_mtime
-  path: /home/valentin/projects/chromescribe/monitor.log
+  path: monitor.log
   max_age_minutes: 480
 owner: valentin
 tags:

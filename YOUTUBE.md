@@ -143,7 +143,7 @@ provider in PowerShell, without configuring a proxy:
 
 No current monitor log or monitor timer was found on this VPS.
 The existing scheduled monitor is on the older VPS, at
-`/home/valentin/projects/chromescribe/monitor.log`, with cron at 07:00, 12:00,
+`monitor.log`, with cron at 07:00, 12:00,
 16:00 and 20:00 UTC (`Timezone=Etc/UTC`).
 
 The first recorded bot failure is 2026-05-01 20:00 (line 17530), following a
