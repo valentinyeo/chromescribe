@@ -9,13 +9,24 @@ const root = path.resolve(__dirname, '..');
 const script = path.join(__dirname, 'local-state-check.mjs');
 const run = (cwd, ...args) => spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
 
-test('master at b504747 fails on the nine dashboard/.wrangler files', () => {
-  const result = run(root, '--rev', 'b504747');
-  assert.equal(result.status, 1, result.stderr);
-  const lines = result.stderr.trim().split('\n').slice(0, -1);
-  assert.equal(lines.length, 9, result.stderr);
-  assert.ok(lines.every(line => line.startsWith('dashboard/.wrangler/')), result.stderr);
-  assert.doesNotMatch(result.stderr, /wrangler\.toml/);
+test('a committed dashboard/.wrangler state folder fails with --rev', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'local-state-rev-'));
+  const git = (...args) => execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' });
+  try {
+    git('init', '-q');
+    const state = path.join(dir, 'dashboard/.wrangler/state/v3/d1');
+    fs.mkdirSync(state, { recursive: true });
+    for (const name of ['db.sqlite', 'db.sqlite-shm', 'db.sqlite-wal']) fs.writeFileSync(path.join(state, name), 'x');
+    fs.writeFileSync(path.join(dir, 'dashboard/wrangler.toml'), 'name = "x"\n');
+    git('add', '-f', '.');
+    git('-c', 'user.name=T', '-c', 'user.email=1+t@users.noreply.github.com', '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '-m', 'state');
+    const result = run(dir, '--rev', 'HEAD');
+    assert.equal(result.status, 1, result.stderr);
+    const lines = result.stderr.trim().split('\n').slice(0, -1);
+    assert.equal(lines.length, 3, result.stderr);
+    assert.ok(lines.every(line => line.startsWith('dashboard/.wrangler/')), result.stderr);
+    assert.doesNotMatch(result.stderr, /wrangler\.toml/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('repository passes the local state check', () => {

@@ -9,8 +9,8 @@ const root = path.resolve(__dirname, '..');
 const script = path.join(__dirname, 'media-check.mjs');
 const run = (cwd, ...args) => spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
 
-test('master at 00e2623 fails on the ten downloaded media files, including the one without an extension', () => {
-  const result = run(root, '--rev', '00e2623');
+test('master at eab0c26 fails on the ten downloaded media files, including the one without an extension', () => {
+  const result = run(root, '--rev', 'eab0c26');
   assert.equal(result.status, 1, result.stderr);
   const lines = result.stderr.trim().split('\n').slice(0, -1);
   assert.equal(lines.length, 10, result.stderr);

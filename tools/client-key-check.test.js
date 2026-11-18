@@ -9,8 +9,8 @@ const root = path.resolve(__dirname, '..');
 const script = path.join(__dirname, 'client-key-check.mjs');
 const run = (cwd, ...args) => spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
 
-test('master at 278a5ca fails on the Android prototype that baked the Access key into the app', () => {
-  const result = run(root, '--rev', '278a5ca');
+test('master at 466d3b2 fails on the Android prototype that baked the Access key into the app', () => {
+  const result = run(root, '--rev', '466d3b2');
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /android\/app\/build\.gradle:\d+: mentions the Access client secret/);
   assert.match(result.stderr, /android\/app\/src\/main\/java\/org\/crolab\/chromescribe\/Api\.kt:\d+/);
