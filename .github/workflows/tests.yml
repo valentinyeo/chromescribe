@@ -2,10 +2,8 @@ name: Tests
 
 on:
   pull_request:
-  push:
-    branches-ignore:
+    branches:
       - master
-  workflow_call:
 
 permissions:
   contents: read
@@ -32,32 +30,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Comment checker tests
-        run: node --test tools/strip-comments.test.js
-      - name: No code comments
-        run: node tools/strip-comments.mjs --check .
-      - name: Encoding checker tests
-        run: node --test tools/encoding-check.test.js
-      - name: UTF-8 encoding
-        run: node tools/encoding-check.mjs
-      - name: Media checker tests
-        run: node --test tools/media-check.test.js
-      - name: No downloaded media
-        run: node tools/media-check.mjs
-      - name: Local state checker tests
-        run: node --test tools/local-state-check.test.js
-      - name: No local test databases
-        run: node tools/local-state-check.mjs
-      - name: Client key checker tests
-        run: node --test tools/client-key-check.test.js
-      - name: No Access key in apps people install
-        run: node tools/client-key-check.mjs
-      - name: Live check tests
-        run: node --test tools/live-check.test.js
-      - name: Telegram switch tests
-        run: node --test tools/telegram-switch.test.js
-      - name: CLI tests
-        run: node --test cli/test/*.test.mjs
-      - name: Dashboard tests
-        working-directory: dashboard
-        run: node --test test/*.test.mjs
+      - name: All checks in parallel
+        run: bash tools/run-checks.sh
