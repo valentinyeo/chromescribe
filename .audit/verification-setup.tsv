@@ -35,3 +35,5 @@ ts	phase	decision	why	evidence	result
 2026-11-19T15:18:10Z	14	merged bot PR 15 (map 18 of 18); revived waiting product PR 4 (SOFT-2503 cat link), closed PR 3 as superseded	a real waiting user fix gives the first release proof honestly instead of a made-up change	PR 4 tests 19/19	verifier pending
 2026-11-19T15:36:31Z	14	merged PR 4 (SOFT-2503); deploy ran release proof for cli-channels, cli-learn, cli-lens, cli-query, 4/4, artifact release-proof-e293582	first feature-changing deploy	deploy run 44555708531	item 14 proven
 2026-11-19T15:36:31Z	audit	final verification-check	goal predicate	facts at e293582	24 of 24
+2026-11-19T15:43:00Z	advisor	second review found item 15 over budget (22.2m), item 14 cancelled-deploy bypass, item 5 API routes unchecked; fixed all three in PR 21	my 24 of 24 was premature	jobs API durations; deploy a996264 cancelled	PR 21 open
+2026-11-19T15:59:22Z	2790	merged PR 21 on PASS+NOTES (8m14s); notes: route substring match, 137 kill code loses the budget note but still FAILs	minor, verdict stays fail-closed	PR 21	merged b244d61
