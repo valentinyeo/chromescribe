@@ -1,0 +1,1078 @@
+#!/usr/bin/env node
+import { createRequire } from 'node:module';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, appendFileSync, openSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
+
+const SELF_DIR = fileURLToPath(new URL('.', import.meta.url));
+const SKILL_DIR = resolve(SELF_DIR, '..');
+const FEATURES_DIR = join(SKILL_DIR, 'features');
+const ROOT = execFileSync('git', ['-C', SELF_DIR, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
+const RUN = process.env.CS_VERIFY_DIR || '/tmp/cs-verify';
+const DEFAULT_PORT = Number(process.env.CS_VERIFY_PORT || 8799);
+const DASHBOARD = join(ROOT, 'dashboard');
+const BUCKET = 'chromescribe-transcripts';
+
+const COMMANDS = ['launch', 'doctor', 'journey', 'select', 'shot', 'cleanup'];
+
+const HELP = {
+  tool: {
+    usage: 'cs-verify <command> [options]',
+    description:
+      'Drive the real ChromeScribe app locally and print one JSON object. Launches the Worker with local D1 and R2, no AI binding, seeds a real-scale library, and runs scripted user journeys in headless Chromium or against the local API.',
+    commands: [
+      { name: 'launch', summary: 'Start the local Worker, seeded and ready.' },
+      { name: 'doctor', summary: 'Read-only readiness check of the running instance.' },
+      { name: 'journey', summary: 'Run one feature journey, or every journey.' },
+      { name: 'select', summary: 'List the features touched by a git range.' },
+      { name: 'shot', summary: 'Screenshot one page at one viewport.' },
+      { name: 'cleanup', summary: 'Stop the instance and remove its state, keep proof.' },
+    ],
+    output: 'Every command prints a single JSON object on stdout. Exit 0 means the command succeeded, 1 means a check failed, 2 means bad usage.',
+    examples: [
+      'cs-verify launch',
+      'cs-verify launch --seed small --port 8800',
+      'cs-verify journey all --video',
+      'cs-verify select --base origin/master',
+      'cs-verify shot / home 390 844',
+      'cs-verify cleanup --dry-run',
+    ],
+    notes: [
+      'Needs Node 22, global wrangler and global playwright with Chromium in ~/.cache/ms-playwright.',
+      'Set CS_VERIFY_DIR and CS_VERIFY_PORT to run a second instance beside the first.',
+      'The local config always drops the [ai] block, so no call can reach Workers AI or bill the account.',
+    ],
+  },
+  launch: {
+    usage: 'cs-verify launch [--port N] [--seed small|real]',
+    description:
+      'Copies dashboard/wrangler.toml without the [ai] block, applies schema.sql and seed rows to a fresh local D1, uploads the dashboard pages and transcript markdown to local R2, starts wrangler dev, and waits until GET /api/transcripts answers success.',
+    options: [
+      { flag: '--port', value: 'N', default: String(DEFAULT_PORT), description: 'Local port. Also CS_VERIFY_PORT.' },
+      { flag: '--seed', value: 'small|real', default: 'real', description: 'small seeds 6 transcripts for a quick smoke; real seeds 4000 transcripts, 82 categories, 76 channels and 157 queue rows.' },
+    ],
+    output: 'url, pid, port, seed, seconds, and the seeded row counts.',
+    examples: ['cs-verify launch', 'cs-verify launch --seed small --port 8800'],
+    notes: [
+      'Refuses to start when its own instance is running or the port belongs to someone else.',
+      'A second launch replaces local state only after the first instance is cleaned up.',
+      'Ready means GET /api/transcripts returns "success":true and one transcript body reads back from R2.',
+    ],
+  },
+  doctor: {
+    usage: 'cs-verify doctor',
+    description: 'Read-only check that the instance is worth driving: recorded pid alive, no AI binding, API answering, home page 200, transcript body readable from R2, row counts, commit.',
+    options: [],
+    output: 'ok plus a checks array; every failed check carries the command that fixes it.',
+    examples: ['cs-verify doctor'],
+    notes: ['Run it first whenever a journey looks wrong.', 'It writes nothing and starts nothing.'],
+  },
+  journey: {
+    usage: 'cs-verify journey <feature|all> [--video]',
+    description:
+      'Runs the scripted user journey declared by each feature file. Browser journeys drive the launched pages in headless Chromium; CLI and shell journeys drive the real commands against the same instance or the repo stubs. Each journey asserts user-visible end state and written side effects, and saves screenshots under proof/<feature>/.',
+    options: [
+      { flag: '--video', type: 'boolean', description: 'Record a .webm of browser journeys.' },
+    ],
+    output: 'ok, passed, failed, and per-feature checks with proof paths and timings.',
+    examples: ['cs-verify journey home', 'cs-verify journey all', 'cs-verify journey queue --video'],
+    notes: [
+      'Feature names come from .claude/skills/verify-chromescribe/features/*.md.',
+      'A journey that cannot reach its precondition fails and says why; it is never reported as skipped.',
+      'Journeys run one at a time against the one instance, and clean up rows they created.',
+    ],
+  },
+  select: {
+    usage: 'cs-verify select --base <git-ref>',
+    description:
+      'Reads the paths: globs from every feature file and prints the features whose files changed between the base ref and HEAD. An unmatched change under dashboard/src or dashboard/public selects every feature; docs-only changes select none.',
+    options: [
+      { flag: '--base', value: '<git-ref>', required: true, description: 'Ref to diff against, for example origin/master.' },
+    ],
+    output: 'base, changed files, matched features, unmatched files, and all: true when the change is app-wide.',
+    examples: ['cs-verify select --base origin/master', 'cs-verify select --base HEAD~1'],
+    notes: ['Use it to pick the journeys a branch needs before opening a PR.'],
+  },
+  shot: {
+    usage: 'cs-verify shot <path> <name> [--width N] [--height N]',
+    description: 'Opens one page in headless Chromium, waits for network idle, saves proof/<name>-<width>.png, and prints the /api/ calls with status plus console errors.',
+    options: [
+      { flag: '--width', value: 'N', default: '390', description: 'Viewport width in pixels.' },
+      { flag: '--height', value: 'N', default: '844', description: 'Viewport height in pixels.' },
+    ],
+    output: 'file, title, api calls and console errors.',
+    examples: ['cs-verify shot / home', 'cs-verify shot / home-desktop home --width 1280 --height 800', 'cs-verify shot "/transcript.html?id=1" video'],
+    notes: ['Thumbnails 404 locally because seed rows have no stored thumbnail; that console error is expected.'],
+  },
+  cleanup: {
+    usage: 'cs-verify cleanup [--dry-run]',
+    description: 'Stops only the pid this tool recorded, then removes local D1 and R2 state, the generated config and seed SQL. Proof under proof/ survives.',
+    options: [
+      { flag: '--dry-run', type: 'boolean', description: 'Print what would be stopped and removed, change nothing.' },
+    ],
+    output: 'stopped pid, removed paths, kept proof directory and its file count.',
+    examples: ['cs-verify cleanup', 'cs-verify cleanup --dry-run'],
+    notes: ['Never kills processes by name.', 'Run it after every local run, failed runs included.'],
+  },
+};
+
+class UsageError extends Error {}
+
+const out = (value, code = 0) => {
+  process.stdout.write(JSON.stringify(value, null, 2) + '\n');
+  process.exit(code);
+};
+
+const fail = (error, hint, code = 1) => {
+  out({ ok: false, error: String(error && error.message ? error.message : error), hint }, code);
+};
+
+const npmRoot = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
+const WRANGLER = join(npmRoot, 'wrangler', 'bin', 'wrangler.js');
+
+function parseOptions(args, allowed) {
+  const options = {};
+  const positional = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith('--')) {
+      positional.push(arg);
+      continue;
+    }
+    const [flag, inline] = arg.split('=');
+    const spec = allowed[flag];
+    if (!spec) throw new UsageError(`Unknown option ${flag}. Run cs-verify <command> --help.`);
+    if (spec.type === 'boolean') {
+      options[flag] = true;
+      continue;
+    }
+    const value = inline ?? args[++i];
+    if (value === undefined || value === '') throw new UsageError(`${flag} needs a value`);
+    options[flag] = spec.type === 'number' ? Number(value) : value;
+    if (spec.type === 'number' && (!Number.isFinite(options[flag]) || options[flag] <= 0)) {
+      throw new UsageError(`${flag} must be a positive number, got ${value}`);
+    }
+  }
+  return { options, positional };
+}
+
+function requireWrangler() {
+  if (!existsSync(WRANGLER)) {
+    throw new Error(`Global wrangler not found at ${WRANGLER}. Install it with: npm i -g wrangler`);
+  }
+}
+
+function playwright() {
+  try {
+    const require = createRequire(join(npmRoot, 'noop.js'));
+    return require('playwright');
+  } catch {
+    throw new Error(`Global playwright not found under ${npmRoot}. Install it with: npm i -g playwright && npx playwright install chromium`);
+  }
+}
+
+function readIf(path) {
+  return existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
+}
+
+function writeLog(path, text) {
+  appendFileSync(path, text + '\n');
+}
+
+function git(args) {
+  return execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8' }).trim();
+}
+
+function wrangler(args, { logPath, timeout = 240000 } = {}) {
+  const result = spawnSync(process.execPath, [WRANGLER, ...args], {
+    cwd: DASHBOARD,
+    encoding: 'utf8',
+    maxBuffer: 128 * 1024 * 1024,
+    timeout,
+    env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
+  });
+  const text = `${result.stdout || ''}${result.stderr || ''}`.trim();
+  if (logPath) writeLog(logPath, text);
+  if (result.status !== 0) {
+    throw new Error(`wrangler ${args.slice(0, 2).join(' ')} failed. ${text.split('\n').slice(-6).join(' ')}`);
+  }
+  return text;
+}
+
+function port(meta) {
+  return Number((meta && meta.port) || readIf(join(RUN, 'port')) || DEFAULT_PORT);
+}
+
+function readMeta() {
+  const text = readIf(join(RUN, 'meta.json'));
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+function instancePid() {
+  const pid = Number(readIf(join(RUN, 'dev.pid')));
+  if (!pid) return 0;
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    return 0;
+  }
+}
+
+function instanceUrl(meta) {
+  return `http://127.0.0.1:${port(meta)}`;
+}
+
+async function apiGet(base, path) {
+  const response = await fetch(base + path, { signal: AbortSignal.timeout(15000) });
+  const text = await response.text();
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+  return { status: response.status, text, json };
+}
+
+async function waitReady(base, seconds) {
+  const deadline = Date.now() + seconds * 1000;
+  let last = '';
+  while (Date.now() < deadline) {
+    try {
+      const response = await apiGet(base, '/api/transcripts?limit=1');
+      if (response.status === 200 && response.text.includes('"success":true')) return true;
+      last = `HTTP ${response.status}`;
+    } catch (error) {
+      last = error.message;
+    }
+    await new Promise(done => setTimeout(done, 500));
+  }
+  throw new Error(`API was not ready after ${seconds}s (${last}). See ${join(RUN, 'dev.log')}`);
+}
+
+function portFree(value) {
+  const probe = spawnSync(process.execPath, [
+    '-e',
+    `const s=require('node:net').connect(${value},'127.0.0.1');s.on('connect',()=>{s.destroy();process.exit(0)});s.on('error',()=>process.exit(1))`,
+  ], { timeout: 5000 });
+  return probe.status !== 0;
+}
+
+function categories() {
+  const base = [
+    'AI Agents', 'AI Coding', 'AI Research', 'Machine Learning', 'LLM Evaluation', 'Prompt Engineering',
+    'Vector Databases', 'RAG', 'Fine-tuning', 'Inference', 'GPU Hardware', 'Open Source AI', 'Startups',
+    'Product Management', 'Design', 'UX Research', 'Marketing', 'SEO', 'Content Strategy', 'Copywriting',
+    'Newsletter Growth', 'Audience Building', 'Sales', 'Cold Outreach', 'Negotiation', 'Pricing',
+    'Bootstrapping', 'Fundraising', 'Venture Capital', 'Hiring', 'Remote Work', 'Productivity',
+    'Time Management', 'Deep Work', 'Note Taking', 'Knowledge Management', 'Personal Finance', 'Investing',
+    'Index Funds', 'Real Estate', 'Tax', 'Accounting', 'Legal', 'Health', 'Nutrition', 'Sleep', 'Fitness',
+    'Running', 'Strength Training', 'Longevity', 'Mental Health', 'Meditation', 'Habits', 'Psychology',
+    'Neuroscience', 'Learning', 'Language Learning', 'Reading', 'Writing', 'Publishing', 'Journalism',
+    'Video Production', 'YouTube Growth', 'TikTok Growth', 'Podcasting', 'Audio', 'Photography',
+    'Filmmaking', 'Animation', '3D Design', 'Game Design', 'Web Development', 'TypeScript', 'Rust', 'Go',
+    'Python', 'Databases', 'Distributed Systems', 'Cloud Infrastructure', 'Russia', 'Geopolitics', 'History',
+  ];
+  while (base.length < 82) base.push(`Specialty ${base.length + 1}`);
+  return base.slice(0, 82);
+}
+
+function channelNames() {
+  const base = [
+    'Jake Trinder', 'Ali Abdaal', 'Fireship', 'ThePrimeTime', 'Lenny Podcast', 'Greg Isenberg',
+    'Greg Isenberg Clips', 'AI Jason', 'IndyDevDan', 'Matt Pocock', 'Better Stack', 'Chase AI',
+    'NeetCode', 'AI Code King', 'Nate Herk', 'In the World of AI', 'Dr Berg', 'Siim Land', 'T3 Dot GG',
+    'Income Stream Surfers', 'AI Engineer', 'Claude Log', 'AI Explained', 'Jimmy Reilly', 'Atmoio',
+    'Rey Su', 'Karpathy Notes', 'Lex Clips', 'Founders Podcast', 'My First Million', 'Acquired',
+    'Invest Like the Best', 'Huberman Clips', 'Peter Attia Clips', 'Andrew Huberman Lab', 'Deep Dive',
+    'The Bootstrapped Founder', 'Indie Hackers', 'Starter Story', 'Sahil Lavingia', 'Paul Graham Reads',
+    'Y Combinator', 'Sequoia Capital', 'Andreessen Horowitz', 'South Park Commons', 'SaaStr', 'OpenView',
+    'Product Compass', 'Reforge', 'Marty Cagan', 'SVPG', 'Nielsen Norman Group', 'UX Tools', 'Design Boat',
+    'Juxtopposed', 'Figma Config', 'Dive Club', 'Marketing Examples', 'Corey Haines', 'Tim Scheuer',
+    'Demand Curve', 'Growth in Reverse', 'Newsletter Operator', 'ConvertKit', 'Ahrefs', 'Backlinko',
+    'Wes Bos', 'Kent C Dodds', 'Theo', 'Web Dev Simplified', 'Ben Awad', 'Hussein Nasser', 'Arpit Bhayani',
+    'ByteByteGo', 'Martin Fowler Notes', 'Rust Lang', 'Go Time', 'Julia Evans', 'Simon Willison',
+    'Journey Lens Channel',
+  ];
+  while (base.length < 75) base.push(`Channel ${base.length + 1}`);
+  return [...base.slice(0, 75), 'Journey Lens Channel'];
+}
+
+const LEADS = [
+  'The complete guide to', 'What nobody tells you about', 'A practical system for', 'Field notes on',
+  'How to get better at', 'Five lessons from', 'The hidden cost of', 'Working notes on', 'An honest look at',
+  'Building a business around',
+];
+
+function sqlText(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function pad(value, length) {
+  return String(value).padStart(length, '0');
+}
+
+function transcriptRows(size) {
+  const cats = categories();
+  const names = channelNames();
+  const rows = [];
+  if (size === 'small') {
+    const small = [
+      ['Seed video one about agents', 'AI Agents', 'Jake Trinder'],
+      ['Seed video two about pricing', 'Pricing', 'Lenny Podcast'],
+      ['Seed video three about search', 'SEO', 'Ahrefs'],
+      ['Seed video four about sleep', 'Sleep', 'Huberman Clips'],
+    ];
+    expectSmall(small);
+    for (let i = 0; i < 4; i++) {
+      rows.push(row(i + 1, small[i][0], small[i][1], small[i][2], 4600, 'video'));
+    }
+  } else {
+    for (let i = 1; i <= 3998; i++) {
+      const category = cats[(i - 1) % cats.length];
+      const channel = names[(i - 1) % (names.length - 1)];
+      const title = `${LEADS[(i - 1) % LEADS.length]} ${category.toLowerCase()} (part ${i})`;
+      const kind = i % 10 === 0 ? 'article' : 'video';
+      rows.push(row(i, title, category, channel, 4302 + ((i * 37) % 601), kind));
+    }
+  }
+  const lensIndex = rows.length + 1;
+  rows.push(row(lensIndex, 'Journey lens source one', cats[0], 'Journey Lens Channel', 500, 'video'));
+  rows.push(row(lensIndex + 1, 'Journey lens source two', cats[1], 'Journey Lens Channel', 520, 'video'));
+  return rows;
+}
+
+function expectSmall(list) {
+  if (list.length !== 4) throw new Error('small seed rows are missing');
+}
+
+function row(index, title, category, channel, wordCount, kind) {
+  const videoId = kind === 'article' ? `article:seed${pad(index, 4)}` : `V${pad(index, 10)}`;
+  return {
+    id: index,
+    videoId,
+    title,
+    category,
+    channel,
+    wordCount,
+    kind,
+    srtPath: `content/${videoId.replace(':', '-')}.md`,
+    createdAt: new Date(Date.UTC(2024, 0, 1) + index * 3600000).toISOString().slice(0, 19).replace('T', ' '),
+  };
+}
+
+function seedChannels() {
+  const names = channelNames();
+  const statements = [];
+  names.forEach((name, index) => {
+    const tiktok = index >= names.length - 10 && name !== 'Journey Lens Channel';
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    if (tiktok) {
+      statements.push(`INSERT INTO channels (id, platform, handle, name, paused) VALUES (${sqlText(`tiktok:@${slug}`)}, 'tiktok', ${sqlText(`@${slug}`)}, ${sqlText(name)}, ${index % 2});`);
+    } else {
+      statements.push(`INSERT INTO channels (id, platform, handle, name, paused) VALUES (${sqlText(`UC${pad(index, 3)}${'x'.repeat(19)}`)}, 'youtube', ${sqlText(`@${slug}`)}, ${sqlText(name)}, ${index % 7 === 0 ? 1 : 0});`);
+    }
+  });
+  return statements;
+}
+
+function seedQueue(rows) {
+  const statements = [];
+  const transcriptIds = rows.filter(item => item.kind === 'video').slice(0, 400).map(item => item.id);
+  for (let i = 1; i <= 60; i++) {
+    statements.push(`INSERT INTO queue (url, video_id, status, created_at) VALUES (${sqlText(`https://www.youtube.com/watch?v=Q${pad(i, 10)}`)}, ${sqlText(`Q${pad(i, 10)}`)}, 'pending', '2026-02-01 10:00:00');`);
+  }
+  for (let i = 1; i <= 12; i++) {
+    statements.push(`INSERT INTO queue (url, video_id, status, created_at, started_at, attempts) VALUES (${sqlText(`https://www.youtube.com/watch?v=R${pad(i, 10)}`)}, ${sqlText(`R${pad(i, 10)}`)}, 'processing', '2026-02-01 09:00:00', '2026-02-01 09:01:00', 1);`);
+  }
+  for (let i = 1; i <= 45; i++) {
+    statements.push(`INSERT INTO queue (url, video_id, status, created_at, started_at, finished_at, error, attempts) VALUES (${sqlText(`https://www.youtube.com/watch?v=S${pad(i, 10)}`)}, ${sqlText(`S${pad(i, 10)}`)}, 'failed', '2026-01-30 08:00:00', '2026-01-30 08:01:00', '2026-01-30 08:02:00', ${sqlText(`Seed download failed for row ${i}`)}, 2);`);
+  }
+  for (let i = 0; i < 40; i++) {
+    const id = transcriptIds[i % transcriptIds.length];
+    statements.push(`INSERT INTO queue (url, video_id, status, created_at, started_at, finished_at, attempts, transcript_id) VALUES (${sqlText(`https://www.youtube.com/watch?v=T${pad(i + 1, 10)}`)}, ${sqlText(rows.find(item => item.id === id).videoId)}, 'done', '2026-01-20 08:00:00', '2026-01-20 08:01:00', '2026-01-20 08:05:00', 1, ${id});`);
+  }
+  return statements;
+}
+
+function buildSeed(size) {
+  const rows = transcriptRows(size);
+  const schema = readFileSync(join(DASHBOARD, 'schema.sql'), 'utf8');
+  const parts = [schema, `CREATE TABLE IF NOT EXISTS channels (
+    id TEXT PRIMARY KEY, platform TEXT NOT NULL CHECK (platform IN ('youtube', 'tiktok')),
+    handle TEXT NOT NULL, name TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );`];
+  for (const item of rows) {
+    parts.push(`INSERT INTO transcripts (id, video_id, title, channel, duration, srt_path, word_count, category, tags, created_at) VALUES (${item.id}, ${sqlText(item.videoId)}, ${sqlText(item.title)}, ${sqlText(item.channel)}, ${Math.round(item.wordCount / 2.5)}, ${sqlText(item.srtPath)}, ${item.wordCount}, ${sqlText(item.category)}, '[]', ${sqlText(item.createdAt)});`);
+  }
+  parts.push(...seedChannels());
+  parts.push(...seedQueue(rows));
+  const cats = new Set(rows.map(item => item.category));
+  const names = new Set(rows.map(item => item.channel));
+  return {
+    sql: parts.join('\n') + '\n',
+    rows,
+    counts: {
+      transcripts: rows.length,
+      categories: size === 'small' ? cats.size : 82,
+      channels: 76,
+      queue: 157,
+      average_words: Math.round(rows.reduce((sum, item) => sum + item.wordCount, 0) / rows.length),
+      seeded_channels: names.size,
+    },
+  };
+}
+
+function transcriptMarkdown(item) {
+  const pool = [
+    'The speaker walks through a concrete example and names the tradeoff plainly',
+    'A useful rule here is to check the evidence before repeating the claim',
+    'Most teams get this wrong because they optimise the visible step and miss the downstream cost',
+    'The practical advice is to write the process down and test it on a small batch first',
+    'This matters because attention is finite and every extra choice slows the next decision',
+    'Numbers from the case study are specific and the speaker separates measured results from estimates',
+    'The failure mode is drift, where the written plan and the actual work stop matching',
+    'A short checklist beats a long document when the work happens under time pressure',
+    'The counterexample shows a team that grew fast and still lost the audience they cared about',
+    'What follows is a worked routine that takes about twenty minutes a day',
+  ];
+  const target = Math.max(80, Math.round(item.wordCount / 10));
+  const lines = [
+    `# ${item.title}`,
+    '',
+    `**Source:** ${item.kind === 'article' ? 'https://example.com/' + item.id : 'https://www.youtube.com/watch?v=' + item.videoId}`,
+    '**Date:** 2026-01-01',
+    '**Type:** Video Transcription',
+    '',
+    '---',
+    '',
+    '## TL;DR',
+    `Seed lead line for ${item.videoId}: the main claim is that ${item.category.toLowerCase()} rewards a written, testable routine.`,
+    '',
+    '## Summary',
+    `**Bottom line:** ${item.title} gives one routine you can run this week and one metric to watch.`,
+    '',
+    '### Key points',
+    `- Start with a small batch and keep the notes short. [transcript:${item.id}]`,
+    `- Measure the outcome, not the activity. [transcript:${item.id}]`,
+    '',
+    '---',
+    '',
+    '## Full Transcript',
+    '',
+    '<details><summary>Expand</summary>',
+    '',
+  ];
+  const sentences = [];
+  for (let i = 0; i < target; i++) {
+    const minutes = Math.floor(i / 12);
+    const seconds = (i * 5) % 60;
+    const stamp = `[${pad(minutes, 2)}:${pad(seconds, 2)}]`;
+    sentences.push(`${stamp} ${pool[i % pool.length]} in the ${item.category.toLowerCase()} example, point ${i + 1}.`);
+  }
+  for (let i = 0; i < sentences.length; i += 6) lines.push(sentences.slice(i, i + 6).join(' '), '');
+  lines.push('</details>', '');
+  return lines.join('\n');
+}
+
+function r2Store() {
+  const base = join(RUN, 'state', 'v3', 'r2');
+  const dbDir = join(base, 'miniflare-R2BucketObject');
+  const dbs = existsSync(dbDir) ? readdirSync(dbDir).filter(name => name.endsWith('.sqlite') && name !== 'metadata.sqlite') : [];
+  const blobDir = join(base, BUCKET, 'blobs');
+  if (dbs.length !== 1) {
+    throw new Error(`Local R2 store not found under ${dbDir}. Run cs-verify cleanup then launch again. If this repeats, the installed wrangler changed its storage layout and cs-verify needs updating.`);
+  }
+  return { dbFile: join(dbDir, dbs[0]), blobDir };
+}
+
+function* allObjects(rows) {
+  yield* pageObjects();
+  for (const item of rows) {
+    yield { key: item.srtPath, body: transcriptMarkdown(item), contentType: 'text/markdown; charset=utf-8' };
+  }
+}
+
+function writeR2Objects(objects) {
+  const store = r2Store();
+  mkdirSync(store.blobDir, { recursive: true });
+  const db = new DatabaseSync(store.dbFile);
+  const insert = db.prepare('INSERT OR REPLACE INTO _mf_objects (key, blob_id, version, size, etag, uploaded, checksums, http_metadata, custom_metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const now = Date.now();
+  let count = 0;
+  db.exec('BEGIN');
+  try {
+    for (const object of objects) {
+      const body = Buffer.from(object.body);
+      const blobId = createHash('sha256').update(body).digest('hex') + randomHex(8);
+      writeFileSync(join(store.blobDir, blobId), body);
+      insert.run(object.key, blobId, randomHex(16), body.length, createHash('md5').update(body).digest('hex'), now, '{}', JSON.stringify({ contentType: object.contentType || 'text/markdown; charset=utf-8' }), '{}');
+      count += 1;
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    db.close();
+  }
+  return count;
+}
+
+function randomHex(bytes) {
+  const values = new Uint8Array(bytes);
+  for (let i = 0; i < bytes; i++) values[i] = Math.floor(Math.random() * 256);
+  return Buffer.from(values).toString('hex');
+}
+
+function writeWranglerConfig() {
+  const source = readFileSync(join(DASHBOARD, 'wrangler.toml'), 'utf8');
+  const lines = source.split('\n');
+  const kept = [];
+  let skip = false;
+  for (const line of lines) {
+    if (/^\[ai\]/.test(line)) {
+      skip = true;
+      continue;
+    }
+    if (/^\[/.test(line)) skip = false;
+    if (!skip) kept.push(line);
+  }
+  const text = kept.join('\n').replace(/^main = .*$/m, `main = ${JSON.stringify(join(DASHBOARD, 'src', 'index.ts'))}`);
+  if (/^\[ai\]/m.test(text)) throw new Error('AI binding still present in the generated config; refusing to start');
+  writeFileSync(join(RUN, 'wrangler.toml'), text);
+}
+
+function pageObjects() {
+  return readdirSync(join(DASHBOARD, 'public')).filter(name => name.endsWith('.html')).map(name => ({
+    key: name,
+    body: readFileSync(join(DASHBOARD, 'public', name)),
+    contentType: 'text/html; charset=utf-8',
+  }));
+}
+
+async function launch(args) {
+  const { options } = parseOptions(args, { '--port': { type: 'number' }, '--seed': { type: 'string' } });
+  const chosenPort = options['--port'] || DEFAULT_PORT;
+  const seedSize = options['--seed'] || 'real';
+  if (!['small', 'real'].includes(seedSize)) throw new UsageError(`--seed must be small or real, got ${seedSize}`);
+  requireWrangler();
+  const running = instancePid();
+  if (running) throw new Error(`An instance started by cs-verify is already running (pid ${running}). Run cs-verify cleanup first, or set CS_VERIFY_DIR to a second directory.`);
+  if (!portFree(chosenPort)) throw new Error(`Port ${chosenPort} is taken by another process. Run cs-verify launch --port 8800, or stop that process.`);
+
+  const started = Date.now();
+  mkdirSync(RUN, { recursive: true });
+  mkdirSync(join(RUN, 'proof'), { recursive: true });
+  rmSync(join(RUN, 'state'), { recursive: true, force: true });
+  for (const name of ['wrangler.toml', 'seed.sql', 'seed.log', 'dev.log', 'dev.pid', 'port', 'meta.json']) {
+    rmSync(join(RUN, name), { force: true });
+  }
+  const logPath = join(RUN, 'seed.log');
+  writeWranglerConfig();
+  const seed = buildSeed(seedSize);
+  writeFileSync(join(RUN, 'seed.sql'), seed.sql);
+  writeFileSync(logPath, `seed ${seedSize}\n`);
+  wrangler(['d1', 'execute', 'chromescribe', '--local', '--config', join(RUN, 'wrangler.toml'), '--persist-to', join(RUN, 'state'), '--file', join(RUN, 'seed.sql')], { logPath });
+  const firstPage = pageObjects()[0];
+  writeFileSync(join(RUN, 'bootstrap.html'), firstPage.body);
+  wrangler(['r2', 'object', 'put', `${BUCKET}/${firstPage.key}`, '--file', join(RUN, 'bootstrap.html'), '--local', '--config', join(RUN, 'wrangler.toml'), '--persist-to', join(RUN, 'state'), '--content-type', 'text/html; charset=utf-8'], { logPath });
+  rmSync(join(RUN, 'bootstrap.html'), { force: true });
+  const objectCount = writeR2Objects(allObjects(seed.rows));
+
+  const devLog = openSync(join(RUN, 'dev.log'), 'a');
+  const child = spawn(process.execPath, [
+    WRANGLER, 'dev', '--local',
+    '--config', join(RUN, 'wrangler.toml'),
+    '--port', String(chosenPort),
+    '--ip', '127.0.0.1',
+    '--persist-to', join(RUN, 'state'),
+    '--var', 'CHRO10_API_GATE:0',
+    '--var', 'ENVIRONMENT:local',
+  ], { cwd: DASHBOARD, detached: true, stdio: ['ignore', devLog, devLog], env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+  child.unref();
+  writeFileSync(join(RUN, 'dev.pid'), String(child.pid));
+  writeFileSync(join(RUN, 'port'), String(chosenPort));
+  const base = `http://127.0.0.1:${chosenPort}`;
+  try {
+    await waitReady(base, 90);
+    const sample = seed.rows[0];
+    const content = await apiGet(base, `/api/transcript/${sample.id}/content`);
+    if (content.status !== 200 || !content.text.includes(sample.videoId)) {
+      throw new Error(`Seeded transcript ${sample.id} did not read back from local R2 (HTTP ${content.status}). The wrangler storage layout may have changed; run cs-verify cleanup and launch again.`);
+    }
+  } catch (error) {
+    stopProcess(instancePid());
+    rmSync(join(RUN, 'dev.pid'), { force: true });
+    throw error;
+  }
+  const meta = {
+    seed: seedSize,
+    port: chosenPort,
+    commit: git(['rev-parse', '--short', 'HEAD']),
+    started_at: new Date(started).toISOString(),
+    seconds: Number(((Date.now() - started) / 1000).toFixed(1)),
+    counts: { ...seed.counts, r2_objects: objectCount },
+  };
+  writeFileSync(join(RUN, 'meta.json'), JSON.stringify(meta, null, 2));
+  out({ ok: true, url: base, pid: child.pid, ...meta });
+}
+
+function stopProcess(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(-pid, 'SIGTERM');
+  } catch {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      return false;
+    }
+  }
+  const deadline = Date.now() + 5000;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return true;
+    }
+    Atomics.wait(pause, 0, 0, 200);
+  }
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {}
+  return true;
+}
+
+function d1File() {
+  const base = join(RUN, 'state', 'v3', 'd1', 'miniflare-D1DatabaseObject');
+  const files = existsSync(base) ? readdirSync(base).filter(name => name.endsWith('.sqlite') && name !== 'metadata.sqlite') : [];
+  if (files.length !== 1) throw new Error(`Local D1 database not found under ${base}. Run cs-verify launch first.`);
+  return join(base, files[0]);
+}
+
+function d1Query(sql) {
+  const db = new DatabaseSync(d1File(), { readOnly: true });
+  try {
+    return db.prepare(sql).all();
+  } finally {
+    db.close();
+  }
+}
+
+async function doctor() {
+  const meta = readMeta();
+  const pid = instancePid();
+  const base = instanceUrl(meta);
+  const checks = [];
+  const add = (name, ok, detail, fix) => checks.push({ name, ok: Boolean(ok), detail: String(detail ?? ''), ...(ok ? {} : { fix }) });
+  add('instance pid', pid, pid ? `pid ${pid}` : 'no pid recorded or the process exited', 'Run cs-verify launch.');
+  const config = readIf(join(RUN, 'wrangler.toml'));
+  add('no AI binding', config && !/^\[ai\]/m.test(config), config ? 'local config has no [ai] block' : 'local config missing', 'Run cs-verify launch to regenerate the config.');
+  let list = { status: 0, json: null, text: '' };
+  let home = { status: 0 };
+  if (pid) {
+    try {
+      list = await apiGet(base, '/api/transcripts?limit=5');
+    } catch (error) {
+      list = { status: 0, text: error.message, json: null };
+    }
+    try {
+      home = await apiGet(base, '/');
+    } catch {}
+  }
+  const apiOk = list.status === 200 && list.text.includes('"success":true');
+  add('API answers', apiOk, apiOk ? `${base}/api/transcripts total ${list.json?.total ?? '?'}` : `HTTP ${list.status || 'none'}`, 'Run cs-verify cleanup then launch.');
+  add('home page', home.status === 200, `HTTP ${home.status || 'none'}`, 'Run cs-verify cleanup then launch.');
+  let sampleOk = false;
+  let sampleId = 0;
+  if (apiOk && Array.isArray(list.json?.data) && list.json.data.length) {
+    sampleId = list.json.data[0].id;
+    try {
+      const content = await apiGet(base, `/api/transcript/${sampleId}/content`);
+      sampleOk = content.status === 200 && content.text.length > 100;
+      add('R2 content', sampleOk, content.status === 200 ? `${content.text.length} bytes for transcript ${sampleId}` : `HTTP ${content.status} for transcript ${sampleId}`, 'Local R2 seeding failed; run cs-verify cleanup then launch.');
+    } catch (error) {
+      add('R2 content', false, error.message, 'Run cs-verify cleanup then launch.');
+    }
+  } else {
+    add('R2 content', false, 'no transcripts to read', 'Run cs-verify launch with seed data.');
+  }
+  let counts = {};
+  if (pid && existsSync(d1File())) {
+    try {
+      counts = {
+        transcripts: d1Query('SELECT COUNT(*) AS n FROM transcripts')[0].n,
+        categories: d1Query("SELECT COUNT(DISTINCT category) AS n FROM transcripts WHERE category IS NOT NULL AND category != ''")[0].n,
+        channels: d1Query('SELECT COUNT(*) AS n FROM channels')[0].n,
+        queue: d1Query('SELECT COUNT(*) AS n FROM queue')[0].n,
+        average_words: Math.round(d1Query('SELECT AVG(word_count) AS n FROM transcripts')[0].n || 0),
+      };
+      add('row counts', counts.transcripts > 0, `${counts.transcripts} transcripts, ${counts.categories} categories, ${counts.channels} channels, ${counts.queue} queue rows, average ${counts.average_words} words`, 'Run cs-verify launch.');
+    } catch (error) {
+      add('row counts', false, error.message, 'Run cs-verify cleanup then launch.');
+    }
+  }
+  const ok = checks.every(check => check.ok);
+  out({
+    ok,
+    url: base,
+    pid: pid || null,
+    seed: meta.seed || null,
+    commit: git(['rev-parse', '--short', 'HEAD']),
+    counts,
+    checks,
+  }, ok ? 0 : 1);
+}
+
+function globToRegExp(glob) {
+  let pattern = '';
+  for (let i = 0; i < glob.length; i++) {
+    const char = glob[i];
+    if (char === '*') {
+      if (glob[i + 1] === '*') {
+        pattern += '.*';
+        i += 1;
+        if (glob[i + 1] === '/') i += 1;
+      } else {
+        pattern += '[^/]*';
+      }
+    } else if (char === '?') {
+      pattern += '[^/]';
+    } else {
+      pattern += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  return new RegExp(`^${pattern}$`);
+}
+
+function matchGlob(glob, file) {
+  if (matchGlobExact(glob, file)) return true;
+  if (!glob.includes('/')) return file.split('/').some(part => matchGlobExact(glob, part));
+  return false;
+}
+
+function matchGlobExact(glob, file) {
+  return globToRegExp(glob).test(file);
+}
+
+function parseFrontMatter(text) {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(text);
+  if (!match) return { data: {}, body: text };
+  const data = {};
+  let list = null;
+  for (const line of match[1].split('\n')) {
+    const item = /^\s*-\s+(.*)$/.exec(line);
+    if (item && list) {
+      data[list].push(item[1].trim().replace(/^['"]|['"]$/g, ''));
+      continue;
+    }
+    const pair = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (!pair) continue;
+    const [, key, raw] = pair;
+    if (!raw) {
+      data[key] = [];
+      list = key;
+      continue;
+    }
+    list = null;
+    const value = raw.trim().replace(/^['"]|['"]$/g, '');
+    data[key] = value.startsWith('[') ? value.slice(1, -1).split(',').map(part => part.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean) : value;
+  }
+  return { data, body: text.slice(match[0].length) };
+}
+
+function loadFeatures() {
+  return readdirSync(FEATURES_DIR)
+    .filter(name => name.endsWith('.md') && name !== 'README.md')
+    .sort()
+    .map(name => {
+      const text = readFileSync(join(FEATURES_DIR, name), 'utf8');
+      const { data, body } = parseFrontMatter(text);
+      return {
+        file: name,
+        name: data.name || name.replace(/\.md$/, ''),
+        journey: data.journey || '',
+        paths: Array.isArray(data.paths) ? data.paths : data.paths ? [data.paths] : [],
+        body,
+      };
+    });
+}
+
+function select(args) {
+  const { options } = parseOptions(args, { '--base': { type: 'string' } });
+  if (!options['--base']) throw new UsageError('select needs --base <git-ref>');
+  let base;
+  try {
+    base = git(['rev-parse', '--verify', options['--base']]);
+  } catch {
+    throw new UsageError(`Unknown git ref ${options['--base']}. Fetch it first, for example git fetch origin master.`);
+  }
+  const changed = git(['diff', '--name-only', base, 'HEAD']).split('\n').filter(Boolean);
+  const features = loadFeatures();
+  const matched = new Set();
+  const unmatched = [];
+  for (const file of changed) {
+    const owners = features.filter(feature => feature.paths.some(glob => matchGlob(glob, file)));
+    if (!owners.length) {
+      unmatched.push(file);
+      continue;
+    }
+    for (const owner of owners) matched.add(owner.name);
+  }
+  const appChange = unmatched.some(file => file.startsWith('dashboard/src/') || file.startsWith('dashboard/public/'));
+  const selected = appChange ? features.map(feature => feature.name) : [...matched].sort();
+  out({
+    ok: true,
+    base: options['--base'],
+    base_commit: base.slice(0, 12),
+    changed,
+    features: selected,
+    matched: [...matched].sort(),
+    unmatched,
+    all: appChange,
+    note: appChange
+      ? 'Files under dashboard/src or dashboard/public match no feature paths; every feature is selected.'
+      : selected.length
+        ? 'Only the listed features changed.'
+        : 'No feature files changed; docs-only or tooling-only change.',
+  });
+}
+
+async function shot(args) {
+  const { options, positional } = parseOptions(args, { '--width': { type: 'number' }, '--height': { type: 'number' } });
+  const [path = '/', name = 'home'] = positional;
+  const width = options['--width'] || 390;
+  const height = options['--height'] || 844;
+  const meta = readMeta();
+  if (!instancePid()) throw new Error('No instance is running. Run cs-verify launch first.');
+  const { chromium } = playwright();
+  mkdirSync(join(RUN, 'proof'), { recursive: true });
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width, height } });
+  const errors = [];
+  const api = [];
+  page.on('pageerror', error => errors.push(String(error)));
+  page.on('console', message => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  page.on('response', response => {
+    if (response.url().includes('/api/')) api.push(`${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`);
+  });
+  await page.goto(instanceUrl(meta) + path, { waitUntil: 'networkidle' });
+  const file = join(RUN, 'proof', `${name}-${width}.png`);
+  await page.screenshot({ path: file });
+  const result = { ok: true, file, title: await page.title(), url: page.url(), api, errors };
+  await browser.close();
+  out(result);
+}
+
+async function cleanup(args) {
+  const { options } = parseOptions(args, { '--dry-run': { type: 'boolean' } });
+  const pid = instancePid();
+  const recorded = Number(readIf(join(RUN, 'dev.pid')));
+  const targets = ['dev.pid', 'port', 'wrangler.toml', 'seed.sql', 'meta.json', 'state'];
+  const planned = { stop_pid: recorded || null, pid_alive: Boolean(pid), remove: targets.map(name => join(RUN, name)).filter(path => existsSync(path)) };
+  if (options['--dry-run']) {
+    out({ ok: true, dry_run: true, ...planned, proof: join(RUN, 'proof') });
+    return;
+  }
+  if (pid) stopProcess(pid);
+  for (const name of targets) rmSync(join(RUN, name), { recursive: true, force: true });
+  rmSync(join(RUN, 'bootstrap.html'), { force: true });
+  const proofDir = join(RUN, 'proof');
+  const proofCount = existsSync(proofDir) ? readdirSync(proofDir).length : 0;
+  out({ ok: true, stopped_pid: pid || null, removed: planned.remove, proof: proofDir, proof_entries: proofCount });
+}
+
+async function journey(args) {
+  const { options, positional } = parseOptions(args, { '--video': { type: 'boolean' } });
+  const wanted = positional[0] || 'all';
+  const meta = readMeta();
+  if (!instancePid()) throw new Error('No instance is running. Run cs-verify launch first.');
+  await waitReady(instanceUrl(meta), 5).catch(() => {
+    throw new Error(`The recorded instance is not answering. Run cs-verify doctor, fix what it reports, then retry.`);
+  });
+  const features = loadFeatures();
+  let chosen = features;
+  if (wanted !== 'all') {
+    chosen = features.filter(feature => feature.name === wanted || feature.file === wanted);
+    if (!chosen.length) throw new UsageError(`Unknown feature ${wanted}. Known features: ${features.map(feature => feature.name).join(', ')}.`);
+  }
+  const { journeys } = await import(pathToFileURL(join(SELF_DIR, 'journeys.mjs')).href);
+  const { chromium } = playwright();
+  const browser = await chromium.launch();
+  const results = [];
+  try {
+    for (const feature of chosen) {
+      results.push(await runOneJourney({ feature, browser, record: Boolean(options['--video']), journeys, base: instanceUrl(meta) }));
+    }
+  } finally {
+    await browser.close();
+  }
+  const failed = results.filter(result => !result.ok).length;
+  out({ ok: failed === 0, total: results.length, passed: results.length - failed, failed, features: results }, failed ? 1 : 0);
+}
+
+async function runOneJourney({ feature, browser, record, journeys, base }) {
+  const started = Date.now();
+  const proofDir = join(RUN, 'proof', feature.name);
+  mkdirSync(proofDir, { recursive: true });
+  const checks = [];
+  const proof = [];
+  let context = null;
+  let page = null;
+  let video = null;
+  const api = async (path, options = {}) => {
+    const response = await fetch(base + path, {
+      method: options.method || 'GET',
+      headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: AbortSignal.timeout(30000),
+    });
+    const text = await response.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {}
+    return { status: response.status, text, json };
+  };
+  const j = {
+    feature: feature.name,
+    base,
+    url: path => base + (path || '/'),
+    proofDir,
+    checks,
+    proof,
+    check(name, ok, detail) {
+      checks.push({ check: name, ok: Boolean(ok), detail: detail === undefined ? '' : String(detail) });
+    },
+    async open(path = '/') {
+      if (!context) {
+        context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...(record ? { recordVideo: { dir: proofDir, size: { width: 390, height: 844 } } } : {}) });
+        await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+        page = await context.newPage();
+        page.setDefaultTimeout(20000);
+        j.pageErrors = [];
+        j.apiCalls = [];
+        page.on('pageerror', error => j.pageErrors.push(String(error)));
+        page.on('console', message => {
+          if (message.type() === 'error') j.pageErrors.push(message.text());
+        });
+        page.on('response', response => {
+          if (response.url().includes('/api/')) j.apiCalls.push(`${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`);
+        });
+      }
+      await page.goto(base + path, { waitUntil: 'networkidle' });
+      return page;
+    },
+    async shot(name) {
+      if (!page) throw new Error('No browser page is open');
+      const file = join(proofDir, `${name}.png`);
+      await page.screenshot({ path: file, fullPage: false });
+      proof.push(file);
+      return file;
+    },
+    api,
+    d1: d1Query,
+    run: (file, runArgs, runOptions = {}) => runCommand(file, runArgs, runOptions),
+    sleep: milliseconds => new Promise(done => setTimeout(done, milliseconds)),
+  };
+  j.journey = journeys[feature.journey];
+  let error = null;
+  try {
+    if (typeof journeys[feature.journey] !== 'function') {
+      throw new Error(`No journey named ${feature.journey || '(missing)'} in journeys.mjs. Add it or fix journey: in ${feature.file}.`);
+    }
+    await withTimeout(journeys[feature.journey](j), 240000, feature.name);
+  } catch (caught) {
+    error = caught.message;
+    j.check('journey completed', false, caught.message);
+    if (page) {
+      try {
+        await j.shot('failure');
+      } catch {}
+    }
+  }
+  if (page) {
+    video = page.video();
+  }
+  if (context) {
+    const pageVideo = video;
+    await context.close().catch(() => {});
+    if (record && pageVideo) {
+      try {
+        const source = await pageVideo.path();
+        const target = join(proofDir, 'journey.webm');
+        renameSync(source, target);
+        proof.push(target);
+      } catch {}
+    }
+  }
+  const failed = checks.filter(check => !check.ok);
+  return {
+    feature: feature.name,
+    file: feature.file,
+    journey: feature.journey,
+    ok: failed.length === 0 && !error,
+    seconds: Number(((Date.now() - started) / 1000).toFixed(1)),
+    checks,
+    proof,
+    ...(error ? { error } : {}),
+  };
+}
+
+function withTimeout(promise, milliseconds, label) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} journey timed out after ${milliseconds / 1000}s`)), milliseconds);
+    }),
+  ]);
+}
+
+function runCommand(file, args, options = {}) {
+  const result = spawnSync(file, args, {
+    encoding: 'utf8',
+    timeout: options.timeout || 120000,
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, ...(options.env || {}) },
+    cwd: options.cwd || ROOT,
+  });
+  return { code: result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  if (!argv.length || argv[0] === '--help' || argv[0] === '-h' || argv[0] === 'help') {
+    out({ ok: true, ...HELP.tool });
+    return;
+  }
+  const command = argv[0];
+  const rest = argv.slice(1);
+  if (!COMMANDS.includes(command)) throw new UsageError(`Unknown command ${command}. Known commands: ${COMMANDS.join(', ')}.`);
+  if (rest.includes('--help') || rest.includes('-h')) {
+    out({ ok: true, command, ...HELP[command] });
+    return;
+  }
+  const handlers = { launch, doctor, journey, select, shot, cleanup };
+  await handlers[command](rest);
+}
+
+main().catch(error => {
+  if (error instanceof UsageError) {
+    fail(error.message, 'Run cs-verify --help, or cs-verify <command> --help.', 2);
+    return;
+  }
+  fail(error, 'Run cs-verify doctor if an instance is already running.');
+});
