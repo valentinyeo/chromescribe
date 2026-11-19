@@ -1,4 +1,5 @@
 .superpowers/
+.cache/
 tmp/
 output/
 docs/
