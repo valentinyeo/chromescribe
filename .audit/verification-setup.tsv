@@ -1,0 +1,37 @@
+ts	phase	decision	why	evidence	result
+2026-11-19T10:56:36Z	frame	goal: verification-check 24 of 24 for chromescribe	user asked for full pstack verification setup, unattended	verification-check run 2026-11-19: 3 of 24	open
+2026-11-19T10:57:50Z	ship	merged PR 1 faster CI	green tests and secret-scan; user allowed merging green PRs	valentinyeo/chromescribe#1, deploy run 49s	deploy 82s to 49s
+2026-11-19T10:57:50Z	ship	merged PR 2 browser verify skill	green; base for cs-verify tool	valentinyeo/chromescribe#2	merged
+2026-11-19T11:02:25Z	tickets	filed six gap tickets SOFT-2789..2794	user asked one ticket per gap	https://app.hypertask.ai/project?id=2060	open
+2026-11-19T11:02:25Z	2794	concurrency on all workflows plus revert-first rule, with a workflow test	items 19 and 20; encode the rule as a test	valentinyeo/chromescribe#5	checks green locally
+2026-11-19T11:02:25Z	2794	email check scans HEAD, not --all	local clones keep pre-rewrite branches; CI checkout already scopes it	PR #5 second commit	fixed
+2026-11-19T11:02:25Z	2792	formal worker moved DeepSeek to Cursor Grok	DeepSeek 429 with two runs; Cursor GPT-5.6 outside weekly plan	<scratch path>	running
+2026-11-19T11:02:25Z	2790	OPENCODE_API_KEY set on repo from the key vault	verifier runner login; CI plan logins are allowed	gh secret list	done
+2026-11-19T11:15:43Z	2790	built verify.yml with pstack-verifier job, vendored picker	item 13; reuse vstack picker rather than new code	valentinyeo/chromescribe#6	running
+2026-11-19T11:15:43Z	2792	formal TLA+ queue model landed as PR, found stuck-claim bug	worker Grok via Cursor; broken variants each fail	valentinyeo/chromescribe#7, <scratch path>	pass + 1 finding
+2026-11-19T11:15:43Z	2800	filed stuck-claim bug as its own ticket, live queue has 0 stuck rows	finding stays a finding; fix gets repro-first PR	SOFT-2800, D1 status counts	open
+2026-11-19T11:44:22Z	2789	independently reran cs-verify launch, doctor, journey all --video	never trust a worker self-report	<scratch path>, <scratch path>	17 of 17 pass, launch 36s at 4000 rows
+2026-11-19T11:58:58Z	2791	one run-journeys.sh shared by nightly, release and PR scope; map upkeep runs pi DeepSeek Flash on GitHub and dispatches verify.yml	GITHUB_TOKEN PRs skip pull_request workflows; dispatch still fires	branch soft-2791-nightly, local scoped run stats 1/1 with journey.webm	pushed, waits on PR 6 and 8
+2026-11-19T12:15:55Z	2790	verifier run on edc4ca3 died in apt (Ubuntu mirror outage) and posted nothing; added Playwright fallback and empty-trace FAIL post	a broken setup must still post FAIL, never silence	run 44518987156 step logs	pushed 1d73f95
+2026-11-19T12:37:31Z	2790	merged PR 6 on PASS+NOTES	verifier rerun on 1d73f95 passed in 7m37s	run 44522262186	merged 7b5e3b5
+2026-11-19T12:37:31Z	2800	accepted DeepSeek fix after own rerun	parent 3 fail, head 60/60, formal check ok	PR 9 stacked on PR 7	waits on PR 7
+2026-11-19T12:37:31Z	2791	verify.yml gains workflow_dispatch pr input; Actions PR-approval setting would not flip via API	bot PRs need a verdict too	PR 10	open, stacked on PR 8
+2026-11-19T12:59:53Z	merge	merged PR 8, 5, 7 on verifier PASS/PASS+NOTES; PR 5 note on cancelling deploy accepted since deploy.sh redeploys everything	verdicts posted with break attempts	12cce95 1ad03f9 fec1fad	merged
+2026-11-19T12:59:53Z	2790	ruleset now requires only pstack-verifier; PR 11 deletes tests.yml and PR gitleaks	verifier already runs run-checks, skip markers, gitleaks and forces FAIL	ruleset 27589137, PR 11	open
+2026-11-19T12:59:53Z	2800	PR 9 rebased on master, coverage sync_commit moved to rebased fix; merge with a merge commit so sync stays reachable	squash would orphan sync_commit	PR 9	open
+2026-11-19T12:59:54Z	2793	planted case-sensitive search bug in two draft PRs, authors anthropic and deepseek so verifiers are deepseek and glm	verdict must FAIL across two families; PRs 9, 10, 11 give clean PASS cases	PR 12, 13	running
+2026-11-19T13:18:08Z	2793	planted bug FAILed by deepseek (PR 12) and glm (PR 13); closed both; record in evals/planted-bug.md	two families must fail it	PR 12, 13 comments; PR 14	pass
+2026-11-19T13:18:08Z	2791	fixed verifier note: select error now fails the deploy gate closed	deploy gate must never pass silently	PR 10 commit	re-verifying
+2026-11-19T13:18:08Z	merge	merged PR 9 (merge commit) and 11; deploy of a996264 cancelled by 9dd2b48 which deployed everything	cancel-in-progress by design	deploy runs	live
+2026-11-19T13:40:47Z	2791	merged PR 10 on PASS+NOTES; note 1 already solved by PR 11; note 2 (Author line in fence) fixed in follow-up branch soft-2791-body; dispatched journeys and map upkeep	proof needs real runs	8c412c0	runs in flight
+2026-11-19T13:51:31Z	2791	nightly journeys dispatch proven; release step ran on PR 10 deploy and correctly selected none	real runs, not claims	run 44535794746 17/17 9 webm 16 png; deploy 44535775436 features: none	map run in progress
+2026-11-19T14:02:30Z	2791	map upkeep run succeeded end to end: found missing android-updates feature, opened PR 15 with Actions token, dispatched verify	Actions PR setting fear was wrong; creation worked	run 44535800460, PR 15, verify run 44537715282	awaiting verdict
+2026-11-19T14:21:44Z	2791	PR 15 blocked: dispatched check runs are left out of the PR rollup; PR 17 posts a pstack-verifier commit status on dispatch	bot PRs must merge on their verdict alone	PR 15 rollup empty, merge refused; PR 17	in review
+2026-11-19T14:21:44Z	2800	dropped NULL started_at reclaim follow-up	no live rows in that state, and an existing test treats it as normal; doing it for a release video would be scope creep	D1 157 rows all done; queue-api test 9	not shipped
+2026-11-19T14:23:15Z	audit	verification-check 19 of 24; gaps 4,13,14,18,21 each have a PR or need one real run	audit before declaring done	facts at e0908a4	PR 17, 18, then PR 15
+2026-11-19T14:37:34Z	2790	PR 17/18 got FAIL with no verdict: DeepSeek 429 rate_limit_error; PR 19 adds family fallback on rate limit only; reran 17/18	fail closed worked; a provider limit should not block every PR, but a real FAIL must never be retried away	trace of run 44543122298	PR 19 open
+2026-11-19T14:51:21Z	2791	merged PR 17 and 18; updated PR 15 branch and dispatched verify to prove the commit-status path for bot PRs	dispatched workflow uses the ref's own workflow file, so the branch needed master first	dispatch run on 56f9f5b	running
+2026-11-19T15:03:45Z	2791	dispatch posted pstack-verifier status success on 56f9f5b (github-actions bot) but merge blocked by the cancelled same-name check run my dispatch caused; reran the PR run; merged PR 19	a natural bot PR has no check run, so tomorrow's map run is the clean proof	status API, rollup	PR 15 rerun pending
+2026-11-19T15:18:10Z	14	merged bot PR 15 (map 18 of 18); revived waiting product PR 4 (SOFT-2503 cat link), closed PR 3 as superseded	a real waiting user fix gives the first release proof honestly instead of a made-up change	PR 4 tests 19/19	verifier pending
+2026-11-19T15:36:31Z	14	merged PR 4 (SOFT-2503); deploy ran release proof for cli-channels, cli-learn, cli-lens, cli-query, 4/4, artifact release-proof-e293582	first feature-changing deploy	deploy run 44555708531	item 14 proven
+2026-11-19T15:36:31Z	audit	final verification-check	goal predicate	facts at e293582	24 of 24
