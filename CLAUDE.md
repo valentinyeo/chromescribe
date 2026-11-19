@@ -35,6 +35,7 @@ cd dashboard && node --test test/*.test.mjs
 ## Ship
 
 - Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs `tools/run-checks.sh` (every check from "Test" plus the no-paid-AI grep, in parallel) in the same job, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker, then `tools/live-check.mjs --require-login`, which fails the run unless every page on https://chromescribe.yeoux.net matches `dashboard/public`, the API refuses calls without a login, the service key gets in, and `/reports/<id>` stays open. A failed check stops the job, so the deploy steps never run. It reads the service key from the repo secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`.
+- Emergency: a live break is fixed by reverting the change that caused it first (`git revert <sha>`, PR, merge once the required check passes). The real fix follows as a normal PR with the same verification. There is no skip lane: no bypass actors on the ruleset, no skip markers, no direct pushes to `master`.
 - Local `wrangler` deploys get 403: the shell's `CLOUDFLARE_API_TOKEN` belongs to the Hypertask account, not Yeo UX.
 - Read-only D1 queries: `cd dashboard && wrangler d1 execute chromescribe --remote --command "<SQL>"`.
 
@@ -65,6 +66,8 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | Every deploy is checked on the live site | `tools/live-check.mjs` in `deploy.yml`, tested by `tools/live-check.test.js` |
 | With the gate on, `/api/*` refuses calls without a valid Access login; no CORS headers | `dashboard/test/access-gate.test.mjs`, `dashboard/test/channels-api.test.mjs` |
 | A PR merges only when `tests` (from GitHub Actions) and `secret-scan` pass | GitHub ruleset "secret-scan and tests required" on master |
+| Every workflow cancels its superseded runs | `tools/workflows.test.js` |
+| Emergencies revert first; the fix gets normal verification, no skip lane | GitHub ruleset on master with no bypass actors; `tests.yml` skip-marker step |
 | Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |
 | No real email in any commit reachable from the tested head (the repo is public; CI checks out only that head) | `tools/run-checks.sh` |
 | Every PR gets an independent verdict from a model family no author used, PASS, PASS+NOTES or FAIL, posted on the PR | `pstack-verifier` job in `.github/workflows/verify.yml`, model from `scripts/pick-verifier-model` run from the base commit; `tools/verifier/verdict.test.mjs` |
