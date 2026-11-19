@@ -6,7 +6,7 @@ if git grep -n -I -i -E "$pattern" -- . ':!tools/run-checks.sh'; then
   echo "::error::No OpenRouter or Z.ai API use. Helpers run on the Codex or Claude subscriptions." >&2
   exit 1
 fi
-bad_mail=$(git log --all --format='%ae%n%ce%n%(trailers:key=Co-authored-by,valueonly)' | sed -E 's/.*<([^>]*)>.*/\1/' | grep -E '@' | grep -vE '@users\.noreply\.github\.com$|^noreply@github\.com$|^noreply@anthropic\.com$' | sort -u)
+bad_mail=$(git log HEAD --format='%ae%n%ce%n%(trailers:key=Co-authored-by,valueonly)' | sed -E 's/.*<([^>]*)>.*/\1/' | grep -E '@' | grep -vE '@users\.noreply\.github\.com$|^noreply@github\.com$|^noreply@anthropic\.com$' | sort -u)
 if [ -n "$bad_mail" ]; then
   echo "::error::A commit carries a real email and this repo is public. Commit with your id+login@users.noreply.github.com address. Domains found:" >&2
   echo "$bad_mail" | sed -E 's/^[^@]*//' >&2
@@ -34,6 +34,8 @@ check "Client key checker tests" "node --test tools/client-key-check.test.js"
 check "No Access key in apps people install" "node tools/client-key-check.mjs"
 check "Live check tests" "node --test tools/live-check.test.js"
 check "Telegram switch tests" "node --test tools/telegram-switch.test.js"
+check "Verifier verdict tests" "node --test tools/verifier/verdict.test.mjs"
+check "Verifier model picker self-test" "python3 -I scripts/pick-verifier-model --self-test"
 check "Process blocked tests" "node --test tools/process-blocked.test.js"
 check "CLI tests" "node --test cli/test/*.test.mjs"
 check "Dashboard tests" "cd dashboard && node --test test/*.test.mjs"

@@ -66,5 +66,7 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | With the gate on, `/api/*` refuses calls without a valid Access login; no CORS headers | `dashboard/test/access-gate.test.mjs`, `dashboard/test/channels-api.test.mjs` |
 | A PR merges only when `tests` (from GitHub Actions) and `secret-scan` pass | GitHub ruleset "secret-scan and tests required" on master |
 | Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |
-| No real email in any commit (the repo is public) | `tools/run-checks.sh` |
+| No real email in any commit reachable from the tested head (the repo is public; CI checks out only that head) | `tools/run-checks.sh` |
+| Every PR gets an independent verdict from a model family no author used, PASS, PASS+NOTES or FAIL, posted on the PR | `pstack-verifier` job in `.github/workflows/verify.yml`, model from `scripts/pick-verifier-model` run from the base commit; `tools/verifier/verdict.test.mjs` |
+| Every PR body declares its authors as `Author model: <family>/<model>` lines | `scripts/pick-verifier-model` fails the verifier without them |
 | No OpenRouter or Z.ai API use | `tools/run-checks.sh`, run by `tests.yml` on PRs and `deploy.yml` before deploy |

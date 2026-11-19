@@ -1,0 +1,140 @@
+name: Verify
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches:
+      - master
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pstack-verifier:
+    name: pstack-verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .verify-base
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: cursor/plugins
+          ref: e58dd043600587dbaf58ba315e7f2b38373eeb43
+          path: .verify-pstack
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Pick a verifier from another model family
+        run: |
+          picker=.verify-base/scripts/pick-verifier-model
+          [ -f "$picker" ] || picker=scripts/pick-verifier-model
+          model=$(python3 -I "$picker")
+          echo "VERIFIER_MODEL=$model" >> "$GITHUB_ENV"
+          echo "Verifier model: $model"
+      - name: No skip markers in commits or title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if { echo "$TITLE"; git log --format=%B "$BASE..$HEAD"; } | grep -niE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]'; then
+            echo "Remove the skip marker above: a squash merge carries it to master and the deploy never runs."
+            exit 1
+          fi
+      - name: Cheap checks
+        run: |
+          set +e
+          bash tools/run-checks.sh > "$RUNNER_TEMP/checks.log" 2>&1
+          echo "CHECKS_EXIT=$?" >> "$GITHUB_ENV"
+          tail -40 "$RUNNER_TEMP/checks.log"
+      - name: Secret scan on this change
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set +e
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar -xz -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" detect --no-banner --source . --redact --log-opts "$BASE..$HEAD" > "$RUNNER_TEMP/leaks.log" 2>&1
+          echo "LEAKS_EXIT=$?" >> "$GITHUB_ENV"
+          tail -20 "$RUNNER_TEMP/leaks.log"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.65.0
+      - name: Install wrangler, Playwright and pi
+        run: |
+          npm install -g wrangler@4.82.2 playwright@1.65.0 @earendil-works/pi-coding-agent@1.5.0
+          npx -y playwright@1.65.0 install --with-deps chromium || npx -y playwright@1.65.0 install chromium
+      - name: Independent verification
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          test -n "$OPENCODE_API_KEY" || { echo "OPENCODE_API_KEY is missing: fork pull requests cannot run the verifier"; exit 1; }
+          meta="$RUNNER_TEMP/pr.md"
+          printf '%s\n\n%s\n' "$TITLE" "$BODY" > "$meta"
+          sed -e "s|__PSTACK__|$GITHUB_WORKSPACE/.verify-pstack|g" -e "s|__PR__|$PR|g" -e "s|__HEAD__|$HEAD|g" -e "s|__BASE__|$BASE|g" \
+            -e "s|__BASEDIR__|$GITHUB_WORKSPACE/.verify-base|g" -e "s|__META__|$meta|g" \
+            -e "s|__CHECKS__|$RUNNER_TEMP/checks.log|g" -e "s|__CHECKS_EXIT__|$CHECKS_EXIT|g" \
+            -e "s|__LEAKS__|$RUNNER_TEMP/leaks.log|g" -e "s|__LEAKS_EXIT__|$LEAKS_EXIT|g" \
+            tools/verifier/brief.md > "$RUNNER_TEMP/brief.md"
+          pi --provider opencode-go --model "$VERIFIER_MODEL" --thinking medium \
+            --no-extensions --no-mcp --no-skills --no-context-files --no-prompt-templates --no-themes \
+            --tools read,bash --no-session --mode json -p "$(cat "$RUNNER_TEMP/brief.md")" > "$RUNNER_TEMP/verifier.jsonl"
+      - name: Post the verdict
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          touch "$RUNNER_TEMP/verifier.jsonl"
+          node tools/verifier/verdict.mjs "$RUNNER_TEMP/verifier.jsonl" > "$RUNNER_TEMP/verdict.json"
+          verdict=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).verdict||'')" "$RUNNER_TEMP/verdict.json")
+          [ "$CHECKS_EXIT" = 0 ] || verdict=FAIL
+          [ "$LEAKS_EXIT" = 0 ] || verdict=FAIL
+          node -e "
+            const fs = require('fs');
+            const r = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+            const v = process.argv[2] || 'FAIL';
+            const notes = [];
+            if (process.env.CHECKS_EXIT !== '0') notes.push('Cheap checks failed (tools/run-checks.sh exit ' + process.env.CHECKS_EXIT + ').');
+            if (process.env.LEAKS_EXIT !== '0') notes.push('Secret scan found a leak in this change.');
+            if (!process.argv[2]) notes.push('The verifier returned no verdict.');
+            const body = [v, '', ...notes, r.text.slice(0, 60000), '', 'Verifier: opencode-go/' + process.env.VERIFIER_MODEL + '. Head ' + process.env.HEAD + '.', 'Trace: ' + process.env.RUN_URL].join('\n');
+            fs.writeFileSync(process.argv[3], body);
+          " "$RUNNER_TEMP/verdict.json" "$verdict" "$RUNNER_TEMP/comment.md"
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md" || { echo "Could not post the verdict comment; a verdict nobody can read does not count."; exit 1; }
+          echo "Verdict: ${verdict:-none}"
+          case "$verdict" in PASS|PASS+NOTES) exit 0 ;; *) exit 1 ;; esac
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: verifier-trace
+          path: |
+            ${{ runner.temp }}/verifier.jsonl
+            ${{ runner.temp }}/checks.log
+            ${{ runner.temp }}/comment.md
+            /tmp/cs-verify/proof
+          retention-days: 14
