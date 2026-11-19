@@ -38,6 +38,7 @@ check "Verifier verdict tests" "node --test tools/verifier/verdict.test.mjs"
 check "Verifier model picker self-test" "python3 -I scripts/pick-verifier-model --self-test"
 check "Process blocked tests" "node --test tools/process-blocked.test.js"
 check "CLI tests" "node --test cli/test/*.test.mjs"
+check "Feature map tests" "node --test tools/feature-map.test.js"
 check "Dashboard tests" "cd dashboard && node --test test/*.test.mjs"
 failed=0
 for i in "${!pids[@]}"; do

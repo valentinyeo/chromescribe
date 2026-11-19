@@ -1,60 +1,67 @@
 ---
 name: verify-chromescribe
-description: Verify ChromeScribe changes. Runs the real Worker and pages locally (wrangler dev, local D1 and R2, seeded videos, no AI) and drives them in headless Chromium for screenshots, plus the Node checks and the CLI against a stub API. Use after any change to cli/, dashboard/, tools/, process.sh, queue.sh or monitor.sh, and for screenshot proof of any page change before a PR.
+description: Verify ChromeScribe changes with cs-verify. Launches the real Worker and pages locally against seeded D1 and R2 with no AI binding, checks readiness, drives every user feature in headless Chromium or through the real CLI and shell pipelines, saves proof, and reports one JSON object per command. Use after any change to dashboard/, cli/, tools/, process.sh, queue.sh, monitor.sh or extension/, and for screenshot or journey proof before a PR.
 ---
 
 # Verify ChromeScribe
 
-Surfaces: the web app (Cloudflare Worker plus static pages in `dashboard/`, primary), a Bash CLI (`cli/chromescribe`), shell pipelines (`process.sh`, `queue.sh`, `monitor.sh`) and a Chrome extension. The web app runs locally with `wrangler dev` against local D1 and R2 and is driven in headless Chromium. Never deploy, never call the live API with the service key, and never print keys.
-
-## Local web app
-
-Needs global `wrangler` and `playwright` (`npm root -g` must hold both) plus its Chromium in `~/.cache/ms-playwright`. Scripts live in `.claude/skills/verify-chromescribe/scripts/`; run them from the repo root.
+ChromeScribe has four surfaces: the web app (Cloudflare Worker plus static pages in `dashboard/`, primary), a Bash CLI (`cli/chromescribe`), shell pipelines (`process.sh`, `queue.sh`, `monitor.sh`) and a Chrome extension. One tool drives all of them.
 
 ```bash
 S=.claude/skills/verify-chromescribe/scripts
-bash $S/launch.sh
-bash $S/doctor.sh
-node $S/shot.mjs / home 390 844
-node $S/shot.mjs "/transcript.html?id=1" video 390 844
-node $S/shot.mjs / home-desktop 1280 800
-bash $S/cleanup.sh
+$S/cs-verify launch
+$S/cs-verify doctor
+$S/cs-verify journey all
+$S/cs-verify select --base origin/master
+$S/cs-verify cleanup
 ```
 
-- `launch.sh` copies `dashboard/wrangler.toml` to `/tmp/cs-verify/wrangler.toml` with the `[ai]` block removed, so no call can reach Workers AI or bill the account. It applies `dashboard/schema.sql` to a fresh local D1, uploads every `dashboard/public/*.html` to local R2 (the Worker serves pages from R2), runs `seed.sh` (six transcripts `seedvideo01`..`06` with TL;DR and Summary), and starts the Worker on `127.0.0.1:8799` with `CHRO10_API_GATE=0`. Ready means `GET /api/transcripts` returns `"success":true`, about 15 s. It refuses to start if its own instance is running or the port is taken; set `CS_VERIFY_PORT` and `CS_VERIFY_DIR` to run a second one side by side.
-- `doctor.sh` is read-only: our pid alive, no AI binding, API answers, home page 200, prints transcript count and commit. Run it first whenever anything looks off.
-- `shot.mjs <path> <name> [width] [height]` opens the page, waits for network idle, saves `/tmp/cs-verify/proof/<name>-<width>.png`, and prints the `/api/` calls with status plus console errors. 390 x 844 is the phone frame; 1280 x 800 is desktop.
-- `cleanup.sh` stops only the pid that `launch.sh` started and deletes local D1, R2 and seed files. `/tmp/cs-verify/proof` stays.
+Every subcommand prints one JSON object on stdout. Exit 0 means the command worked, 1 means a check failed, 2 means bad usage. `--help` on the tool or any subcommand prints the usage, options, output shape, examples and notes as JSON.
 
-Routes that call AI (`/api/whisper`, `/api/transcribe`, `/api/transcripts/:id/analyze`, `/summarize`, `/classify`) fail locally by design. Never put `[ai]` back to drive them: Workers AI always runs remote and bills. Prove those with the Worker tests in `dashboard/test/`.
+Rules that do not change:
 
-Use the browser for anything a user sees. Use the test suites below for logic, the CLI and the shell pipelines.
+- Never deploy. Deploys run from `master` through `.github/workflows/deploy.yml`.
+- Never call the live API with the service key, and never print a key.
+- The local config always drops the `[ai]` block. Never put it back to drive an AI route: Workers AI runs remote and bills.
 
-## Test suites
+## Launch
 
-Needs Node 22 or newer, `bash`, `curl`, `jq`, `python3`. No install, no build, no package.json.
+`$S/cs-verify launch [--port N] [--seed small|real]` from the repo root.
 
-```bash
-cd <repo root>
-node --version
-```
+It copies `dashboard/wrangler.toml` without the `[ai]` block into `$CS_VERIFY_DIR` (default `/tmp/cs-verify`), applies `dashboard/schema.sql` and the seed rows to a fresh local D1, writes every `dashboard/public/*.html` page and every transcript body to local R2, then starts `wrangler dev` on `127.0.0.1:8799` with `CHRO10_API_GATE=0`.
 
-The test suites start nothing long-lived. The CLI tests start their own stub HTTP server on a random port and tear it down. The Worker tests call `worker.fetch` directly with an in-memory SQLite D1 (`node:sqlite`).
+Ready means `GET /api/transcripts` returns `"success":true` and one seeded transcript body reads back from R2. A full real seed takes about 35 seconds.
+
+- `--seed real` (default) seeds 4000 transcripts across 82 categories and 76 channels, 157 queue rows in mixed states, and an average of 4600 words per transcript.
+- `--seed small` seeds 6 transcripts for a quick smoke. Every journey still runs.
+- The tool refuses to start when its own instance is running or the port belongs to another process. Set `CS_VERIFY_PORT` and `CS_VERIFY_DIR` to run a second instance beside the first.
+- Needs Node 22, global `wrangler` and global `playwright` with Chromium in `~/.cache/ms-playwright`. A missing tool fails with the install command.
 
 ## Doctor
 
-Read-only, a few seconds:
+`$S/cs-verify doctor` is read-only and takes a few seconds. It checks the recorded pid is alive, the local config has no `[ai]` block, the API answers, the home page is 200, a transcript body reads back from R2, and prints the D1 counts and the commit. Every failed check carries the command that fixes it.
 
-```bash
-node --version && command -v curl jq python3 && git status --short
-node tools/strip-comments.mjs --check . && node tools/encoding-check.mjs && node tools/media-check.mjs && node tools/client-key-check.mjs
-```
-
-All four checkers must exit 0. Node below 22 or a missing `jq` means results are not trustworthy.
+Run it before the first journey and whenever anything looks off.
 
 ## Drive
 
-Run the suite that matches the change, then the full set before a PR. These are the commands of CI's `tests` job.
+`$S/cs-verify journey <feature|all> [--video]` runs the scripted journeys declared by the feature files. Journeys run one at a time against the one instance.
+
+- Browser journeys open the real pages in headless Chromium at 390 by 844, or 1280 by 800 where the layout differs.
+- CLI and shell journeys run the real `cli/chromescribe`, `process.sh`, `queue.sh`, `monitor.sh` or extension popup with the repo's existing stubs.
+- Each journey asserts user-visible end state plus the side effect where the feature writes data: the API response, a read-only D1 row, a file on disk.
+- `--video` records a `.webm` of each browser journey.
+- A failed journey still lets the rest run, so one command reports every failure.
+
+Pick journeys by hand or let `select` pick:
+
+```bash
+$S/cs-verify select --base origin/master
+```
+
+It reads the `paths:` globs in each feature file and lists the features whose files changed. An unmatched change under `dashboard/src` or `dashboard/public` selects every feature; docs-only changes select none.
+
+Use the browser for anything a user sees. Use the Node test suites for logic, and the CLI and shell journeys for the pipelines. The suites are the commands of CI's `tests` job:
 
 ```bash
 node --test tools/*.test.js
@@ -62,50 +69,54 @@ node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
 ```
 
-Pick by surface:
-
-| Changed | Run |
-| --- | --- |
-| `cli/chromescribe`, `cli/lenses.py` | `node --test cli/test/*.test.mjs` (about 50 s, drives the real CLI against a stub API and checks the requests it sent) |
-| `dashboard/src/*` API, queue, channels, reports | `cd dashboard && node --test test/<area>-api.test.mjs` |
-| `dashboard/public/*.html` | `cd dashboard && node --test test/static-pages.test.mjs test/<page>-ui.test.mjs` |
-| `process.sh`, `queue.sh`, `monitor.sh`, `lib/` | `cd dashboard && node --test test/process-shell.test.mjs test/queue-shell.test.mjs test/monitor-*.test.mjs` |
-| `tools/*` | `node --test tools/<name>.test.js` |
-
-To drive the CLI by hand, copy the stub server from `setup()` in `cli/test/cli.test.mjs`, point the `CHROMESCRIBE_API` variable at it, give the CLI throwaway Access values for the two `CF_ACCESS_CLIENT_*` variables, set `CHROMESCRIBE_YEO_KEY` to empty (turns off the 1Password lookup), then run `cli/chromescribe list --json`. A change with no matching test needs a new test in the same folder before it counts as verified.
-
-Assert on requests the stub received and files written, not on printed text alone.
+Routes that call AI (`/api/whisper`, `/api/transcribe` audio, `/api/transcripts/:id/analyze`, `/summarize`, `/classify`) fail locally by design. Prove them with the repo stubs in the journeys and the Worker tests in `dashboard/test/`.
 
 ## Evidence
 
-For a page change, proof is a 390 px screenshot from `shot.mjs` before and after the change (run `launch.sh` on master, then on the branch), plus its printed API calls with no unexpected errors. Thumbnails 404 locally because seed rows have no thumbnail; that console error is expected. For an action, capture the request, the response body, the D1 row it wrote, and the page showing it (see `features/queue.md`). Attach screenshots to the ticket, never commit them.
+- Journeys save screenshots under `/tmp/cs-verify/proof/<feature>/` and return every check with its pass state and detail.
+- `$S/cs-verify shot <path> <name> [--width N] [--height N]` saves one page to `proof/<name>-<width>.png` and prints its `/api/` calls with status plus console errors. 390 by 844 is the phone frame; 1280 by 800 is desktop.
+- Thumbnails 404 locally because seed rows have no stored thumbnail. That console error is expected.
+- For a page change, proof is a phone screenshot from `shot` before and after the change, plus the journey that covers the changed control.
+- For an action, the proof is the request, the response, the written row or file, and the page showing it.
 
-For tests, proof is the command, its exit code, and the tail of the TAP summary (`# tests N`, `# pass N`, `# fail 0`). Save it:
+Save proof outside the repo:
 
 ```bash
-mkdir -p /tmp/chromescribe-proof && node --test cli/test/*.test.mjs 2>&1 | tail -12 | tee /tmp/chromescribe-proof/cli.txt
+mkdir -p /tmp/chromescribe-proof
+$S/cs-verify journey all > /tmp/chromescribe-proof/journeys.json
 ```
 
-For a page change, name the `dashboard/test/*-ui.test.mjs` file that covers the changed element. The live site is checked by `tools/live-check.mjs` in `deploy.yml` after a merge to master; do not run it by hand without the repo secrets.
-
-A skipped test, a deleted test, or a comment added to dodge a check is a failure.
+Attach screenshots to the ticket. Never commit them. A skipped journey, a deleted assertion, or a weaker check is a failure.
 
 ## Cleanup
 
-Run `bash .claude/skills/verify-chromescribe/scripts/cleanup.sh` after every local web app run, failed runs included. Tests remove their own temp directories and servers. Check nothing leaked:
+`$S/cs-verify cleanup [--dry-run]` stops only the pid this tool recorded, then removes local D1 and R2 state, the generated config and the seed SQL. It never kills processes by name. Proof under `proof/` survives.
+
+Run it after every local run, failed runs included. Check nothing leaked:
 
 ```bash
 git status --short
 ```
 
-Only your intended changes may appear. Proof under `/tmp/cs-verify/proof` and `/tmp/chromescribe-proof` stays. Never kill processes by name.
+## Helpers
+
+`scripts/cs-verify` is the whole harness: launch, doctor, journey, select, shot and cleanup. `scripts/journeys.mjs` holds one journey function per feature. There is no package.json and no build step; the tool finds global `wrangler` and `playwright` through `npm root -g`.
 
 ## Features
 
-`features/README.md` lists journeys: home and video pages, queue lifecycle, transcripts and reports, CLI channels.
+`features/README.md` indexes 17 mapped features, and each file carries its own `paths:` globs and `journey:` id:
+
+home and video pages, add video, queue, subscriptions, reports and the public report page, stats, settings, the CLI query and channel commands, CLI learn and lens, `process.sh`, `queue.sh`, `monitor.sh`, the extension, and the phone share API.
+
+`tools/feature-map.test.js` fails when a page route, a `dashboard/public/*.html` file, or a `cli/chromescribe` subcommand is missing from the map, when a feature file lacks front matter or the four H2 sections, or when the README index drifts.
 
 ## Gotchas
 
-- Master is protected: push a branch, open a PR, wait for `tests` and `secret-scan`.
-- No code comments in any file, YAML and shell included; `node tools/strip-comments.mjs .` removes them.
-- TikTok and live YouTube downloads do not work from a datacenter host; the pipelines are tested with stubs only.
+- Master is protected: push a branch, open a PR, wait for `tests` and `secret-scan`. Never merge without both.
+- No code comments in any file, YAML and shell included. `node tools/strip-comments.mjs .` removes them.
+- TikTok and live YouTube downloads do not work from a datacenter host. The shell journeys use stubs, and the real paths run on the Windows box.
+- `queue.sh` and `process.sh` hardcode the workers.dev API base. Their journeys use stubs; the local instance is for the web, CLI and share journeys.
+- A second instance needs its own `CS_VERIFY_DIR` and `CS_VERIFY_PORT`. Two runs sharing one state directory corrupt each other.
+- The real seed writes about 120 MB of transcript markdown into the state directory. `cleanup` removes it.
+
+pstack: 0.15.44

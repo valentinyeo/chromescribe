@@ -1,8 +1,60 @@
-# ChromeScribe features
+# ChromeScribe verification map
 
-Each file: what it is, how a user reaches it, how to drive it, what proves it.
+This directory is the maintained source for proving user-facing ChromeScribe behavior. Read this index before driving the app, then use one feature file as the recipe. `../scripts/cs-verify` is the only harness.
 
-- `home-video.md`: phone and desktop home list and video page, driven in headless Chromium.
-- `cli-channels.md`: subscribe, pause, list channels from the CLI.
-- `queue.md`: share queue lifecycle used by the phone app and `queue.sh`.
-- `transcripts-reports.md`: transcript list, search and public reports.
+## Baseline preconditions
+
+- Launch the app with `cs-verify launch` from the repo root. It starts `wrangler dev` on `127.0.0.1:8799` with local D1 and R2, no `[ai]` binding, and the dashboard pages served from local R2.
+- `--seed real` (the default) seeds 4000 transcripts across 82 categories, 76 channels, 157 queue rows in mixed states, and an average of 4600 words per transcript. `--seed small` seeds 6 transcripts for a quick smoke; every journey still runs on it.
+- Set `CS_VERIFY_DIR` and `CS_VERIFY_PORT` to run a second instance beside the first.
+- Run `cs-verify doctor` before the first journey. It is read-only and names the fix for every failed check.
+- Never drive an instance this tool did not start.
+- Proof lives under `/tmp/cs-verify/proof/<feature>/` and survives cleanup.
+
+## Driving conventions
+
+- Every journey is `cs-verify journey <feature>`, or `cs-verify journey all`.
+- Journeys start from the seeded state. A journey that needs extra rows creates them through the API or the repo stubs and removes them at the end.
+- Prefer stable handles: ids, `aria-label`, role and visible text. Never click coordinates.
+- A journey asserts user-visible end state and, where the feature writes data, the side effect through the API or a read-only D1 query.
+- AI, live YouTube and live TikTok are off locally. Those features are driven with the repo's stubs and say so in their Gotchas.
+- `--video` records a `.webm` of each browser journey beside its screenshots.
+
+## Proof and reporting
+
+- Each journey writes screenshots under `proof/<feature>/` and prints one JSON object with every check, its pass state and its detail.
+- Capture the action and the resulting state, not only the final screen.
+- A failed check must name the unmet precondition and the command that attempted it.
+- Never report a skipped path as verified through a different one.
+- Never commit screenshots or videos.
+
+## Feature entry contract
+
+Each feature file starts with YAML front matter carrying `name`, `journey` and a `paths` glob list, then an H1 title with one paragraph. It then uses exactly four H2 sections in this order: `Sub-features`, `How to get to it (user POV)`, `Driving it with cs-verify`, `Gotchas`.
+
+- `Sub-features` lists short ids with one line each.
+- `How to get to it (user POV)` lists every user entry point.
+- `Driving it with cs-verify` starts with `Preconditions:` and pairs each user action with the journey step and the observable result.
+- `Gotchas` lists traps that can waste or invalidate a run.
+
+## Features
+
+Coverage: 17 of 17 features mapped.
+
+- [Home list, search and categories](./home.md) covers `/` and `/index.html`, search, category chips, channel filtering and card delete.
+- [Video page](./video.md) covers `/transcript.html?id=<id>`, summary and transcript tabs, neighbour navigation, More actions and the missing-id error.
+- [Add video](./add-video.md) covers the home Add modal and the transcribe endpoint.
+- [Queue page](./queue.md) covers `/queue.html`, the four columns, Retry and Remove.
+- [Subscriptions page](./subscriptions.md) covers `/subscriptions.html`, filter, subscribe, pause, resume and remove.
+- [Reports and public report pages](./reports.md) covers `/reports.html` and the public `/reports/<id>` page.
+- [Stats page](./stats.md) covers `/stats.html` storage, media, transcript and category counts.
+- [Settings page](./settings.md) covers `/settings.html` docs and copy buttons.
+- [CLI query commands](./cli-query.md) covers `chromescribe list`, `search`, `get`, `cat`, `url` and `view`.
+- [CLI channel commands](./cli-channels.md) covers `channels`, `subscribe`, `unsubscribe`, `pause` and `resume`.
+- [CLI learn](./cli-learn.md) covers `chromescribe learn`.
+- [CLI lens reports](./cli-lens.md) covers `chromescribe lens`.
+- [process.sh pipeline](./process.md) covers the video and article transcription pipeline.
+- [queue.sh drain loop](./queue-drain.md) covers the share queue lifecycle.
+- [monitor.sh](./monitor.md) covers channel polling, force mode and Telegram gating.
+- [Chrome extension](./extension.md) covers the popup, the local terminal wiring and TikTok saves.
+- [Phone share API](./phone-share.md) covers `POST /api/queue` for the Android app.

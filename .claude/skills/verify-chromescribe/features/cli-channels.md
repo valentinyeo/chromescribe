@@ -1,19 +1,44 @@
-# CLI channels
+---
+name: cli-channels
+journey: cli-channels
+paths:
+  - cli/chromescribe
+  - cli/lenses.py
+---
+
+# CLI channel commands
+
+The CLI manages channel subscriptions from a shell: `channels`, `subscribe`, `unsubscribe`, `pause` and `resume`.
 
 ## Sub-features
 
-- `channels`, `channels --json`, `channels --refresh`
-- `subscribe`, `unsubscribe`, `pause`, `resume` with name, handle, UC id or URL selectors
+- `channels [--json | --refresh]` lists subscriptions; `--refresh` repairs YouTube names and handles.
+- `` `subscribe <url|@handle|UC id>` `` adds a channel.
+- `` `unsubscribe <channel>` `` removes it and keeps transcripts.
+- `` `pause <channel>` `` and `` `resume <channel>` `` toggle monitoring.
+- Selectors accept a case-insensitive name, an `@handle`, a UC id or a channel URL.
 
 ## How to get to it (user POV)
 
-A user runs `chromescribe channels` in a shell with the Access login in the environment. See `cli/README.md`.
+- Run `chromescribe channels` to see what is monitored.
+- Run `chromescribe subscribe https://www.tiktok.com/@someone` to add a channel.
+- Run `chromescribe pause "Jake Trinder"` to stop monitoring one.
 
-## Driving it with the stub API
+## Driving it with cs-verify
 
-`node --test cli/test/cli.test.mjs`. The test starts a stub server, points `CHROMESCRIBE_API` at it, runs `cli/chromescribe`, and asserts on stdout and on the requests the stub recorded.
+Preconditions:
+
+- `cs-verify launch` is ok.
+- The journey points `CHROMESCRIBE_API` at the local instance and blanks the vault lookup.
+
+- **List.** Run `cs-verify journey cli-channels`. `channels --json` must return the same channel count as `GET /api/channels`.
+- **Subscribe.** `subscribe https://www.tiktok.com/@<handle>` must exit 0 and create the channel.
+- **Pause and resume.** `pause <handle>` then `resume <HANDLE>` must exit 0 and flip `paused` in `GET /api/channels`.
+- **Unsubscribe.** `unsubscribe <handle>` must remove the row.
+- **Unknown channel.** `pause definitely-not-a-channel` must exit non-zero with `Channel not found` and write nothing.
 
 ## Gotchas
 
-- Ambiguous selectors must fail, not pick one.
-- Set `CHROMESCRIBE_YEO_KEY` to empty so no 1Password lookup runs.
+- `channels --refresh` and subscribing a YouTube selector call YouTube to resolve the channel. The journey never uses them.
+- An ambiguous name must fail instead of picking a row. The CLI tests cover that case; the journey only proves the single-match path.
+- `unsubscribe` keeps the transcripts. Do not expect the transcript rows to disappear.
