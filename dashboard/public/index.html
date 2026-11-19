@@ -1834,11 +1834,9 @@
         });
       }
       if (searchQuery) {
-        const q = searchQuery.toLowerCase();
         filtered = filtered.filter(t => {
-          if ((t.title || '').toLowerCase().includes(q)) return true;
-          if ((t.channel || '').toLowerCase().includes(q)) return true;
-          if ((t.category || '').toLowerCase().includes(q)) return true;
+          if ([t.title, t.channel, t.category].some(f => (f || '').toLowerCase().includes(searchQuery))) return true;
+          const q = searchQuery.toLowerCase();
           if (t.tags) {
             try {
               const tags = JSON.parse(t.tags);
