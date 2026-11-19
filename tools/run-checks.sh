@@ -39,6 +39,24 @@ check "Verifier model picker self-test" "python3 -I scripts/pick-verifier-model 
 check "Process blocked tests" "node --test tools/process-blocked.test.js"
 check "CLI tests" "node --test cli/test/*.test.mjs"
 check "Dashboard tests" "cd dashboard && node --test test/*.test.mjs"
+formal_needed=0
+if [ "${FORMAL:-}" = "all" ]; then
+  formal_needed=1
+elif [ -f formal/queue/coverage.json ]; then
+  formal_files=$(node -e 'const c=require("./formal/queue/coverage.json"); const s=new Set(c.covered.map(x=>x.file)); s.add("formal/queue/Queue.tla"); s.add("formal/queue/check.sh"); s.add("formal/queue/coverage.json"); process.stdout.write([...s].join("\n"))')
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if ! git diff --quiet origin/master -- "$f" 2>/dev/null; then
+      formal_needed=1
+      break
+    fi
+  done <<EOF
+$formal_files
+EOF
+fi
+if [ "$formal_needed" = 1 ]; then
+  check "Share queue formal" "bash formal/queue/check.sh"
+fi
 failed=0
 for i in "${!pids[@]}"; do
   wait "${pids[$i]}"
