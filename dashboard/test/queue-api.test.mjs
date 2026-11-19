@@ -205,3 +205,66 @@ test('legacy drainer can mark done or failed without processing first', async ()
   assert.equal(row(db).attempts, 0);
   assert.ok(row(db).finished_at);
 });
+
+function backdateClaim(db, id, seconds) {
+  db.raw.prepare("UPDATE queue SET started_at = datetime('now', ?) WHERE id = ?").run(`-${seconds} seconds`, id);
+}
+
+test('a row stuck in processing past the lease is listed again and can be claimed', async () => {
+  const db = makeD1();
+  insert(db);
+  assert.equal((await api(db, 'queue/1', 'PUT', { status: 'processing' })).status, 200);
+  backdateClaim(db, 1, 31 * 60);
+  const listed = (await (await api(db, 'queue')).json()).data;
+  assert.deepEqual(listed.map(item => item.id), [1]);
+  assert.equal(row(db).status, 'pending');
+  assert.equal(row(db).attempts, 2);
+  assert.equal((await api(db, 'queue/1', 'PUT', { status: 'processing' })).status, 200);
+  assert.equal(row(db).status, 'processing');
+  assert.equal(row(db).attempts, 3);
+});
+
+test('a processing row inside the lease stays out of the pending feed', async () => {
+  const db = makeD1();
+  insert(db);
+  assert.equal((await api(db, 'queue/1', 'PUT', { status: 'processing' })).status, 200);
+  backdateClaim(db, 1, 60);
+  assert.deepEqual((await (await api(db, 'queue')).json()).data, []);
+  assert.equal(row(db).status, 'processing');
+  assert.equal(row(db).attempts, 1);
+});
+
+test('concurrent listings reclaim one stale row exactly once', async () => {
+  const db = makeD1();
+  insert(db);
+  assert.equal((await api(db, 'queue/1', 'PUT', { status: 'processing' })).status, 200);
+  backdateClaim(db, 1, 31 * 60);
+  const lists = await Promise.all([api(db, 'queue'), api(db, 'queue')]);
+  assert.ok(lists.every(response => response.status === 200));
+  assert.equal(row(db).status, 'pending');
+  assert.equal(row(db).attempts, 2);
+});
+
+test('a stale row past the attempt limit fails for the operator instead of listing', async () => {
+  const db = makeD1();
+  insert(db);
+  assert.equal((await api(db, 'queue/1', 'PUT', { status: 'processing' })).status, 200);
+  db.raw.prepare('UPDATE queue SET attempts = 2 WHERE id = 1').run();
+  backdateClaim(db, 1, 31 * 60);
+  assert.deepEqual((await (await api(db, 'queue')).json()).data, []);
+  assert.equal(row(db).status, 'failed');
+  assert.match(row(db).error, /drainer stopped before finishing/i);
+  assert.ok(row(db).finished_at);
+});
+
+test('a stale row never becomes a second pending row for the same video', async () => {
+  const db = makeD1();
+  insert(db);
+  assert.equal((await api(db, 'queue/1', 'PUT', { status: 'processing' })).status, 200);
+  insert(db);
+  backdateClaim(db, 1, 31 * 60);
+  const response = await api(db, 'queue');
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data.map(item => item.id), [2]);
+  assert.equal(row(db, 1).status, 'processing');
+});

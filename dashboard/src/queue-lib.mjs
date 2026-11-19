@@ -119,12 +119,42 @@ export function parseSharedUrl(rawUrl) {
   return { platform: 'article', prefixedId: `article:${hashUrl(url)}`, url };
 }
 
+const QUEUE_LEASE_SECONDS = 30 * 60;
+const QUEUE_MAX_ATTEMPTS = 2;
+const DRAINER_STOPPED_ERROR = 'Drainer stopped before finishing';
+const STALE_CLAIM = "status = 'processing' AND started_at IS NOT NULL AND " +
+  `started_at <= datetime('now', '-${QUEUE_LEASE_SECONDS} seconds')`;
+const RECLAIM_CLAIM = "UPDATE queue SET status = 'pending', attempts = COALESCE(attempts, 0) + 1, " +
+  'finished_at = NULL, error = NULL ' +
+  "WHERE id = ? AND status = 'processing' AND started_at = ? " +
+  'AND NOT EXISTS (SELECT 1 FROM queue other ' +
+  "WHERE other.video_id = queue.video_id AND other.status = 'pending')";
+const FAIL_CLAIM = "UPDATE queue SET status = 'failed', finished_at = CURRENT_TIMESTAMP, error = ? " +
+  "WHERE id = ? AND status = 'processing' AND started_at = ?";
+
+async function recoverStaleClaims(db) {
+  const { results } = await db
+    .prepare(`SELECT id, started_at, COALESCE(attempts, 0) AS attempts FROM queue WHERE ${STALE_CLAIM} LIMIT 25`)
+    .all();
+  for (const claim of results) {
+    if (claim.attempts >= QUEUE_MAX_ATTEMPTS) {
+      await db.prepare(FAIL_CLAIM)
+        .bind(`${DRAINER_STOPPED_ERROR} (attempt ${claim.attempts} of ${QUEUE_MAX_ATTEMPTS})`, claim.id, claim.started_at)
+        .run();
+    } else {
+      await db.prepare(RECLAIM_CLAIM).bind(claim.id, claim.started_at).run();
+    }
+  }
+}
+
 export async function listPendingQueue(db, params) {
   const values = params.getAll('platforms');
   const platforms = values.length ? values[0].split(',') : null;
   if (values.length > 1 || platforms?.some(p => !['youtube', 'article', 'tiktok'].includes(p))) {
     return { status: 400, error: 'Invalid platforms parameter' };
   }
+  await ensureQueue(db);
+  await recoverStaleClaims(db);
   const platformSql = "CASE WHEN video_id GLOB 'tiktok:*' OR video_id GLOB 'tiktok-short:*' THEN 'tiktok' WHEN video_id GLOB 'article:*' THEN 'article' ELSE 'youtube' END";
   let query = db.prepare("SELECT id, url, video_id FROM queue WHERE status = 'pending'" +
     (platforms ? ` AND (${platformSql}) IN (${platforms.map(() => '?').join(',')})` : '') +

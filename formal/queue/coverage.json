@@ -1,11 +1,12 @@
 {
-  "sync_commit": "d0395116c5b82ddae05c3597f9ebab4dcbfb1154",
+  "sync_commit": "798c4b3130dd884fdd8c1a9adead4f5aba157a76",
   "tool": "tla+/tlc",
   "tool_version": "1.7.4",
   "tool_sha256_parts": ["936a262061c914694dfd669a543be245", "73c45d5aa0ff20a8b96b23d01e050e88"],
   "covered": [
     {"file": "dashboard/src/queue-lib.mjs", "function": "enqueueSharedUrl"},
     {"file": "dashboard/src/queue-lib.mjs", "function": "listPendingQueue"},
+    {"file": "dashboard/src/queue-lib.mjs", "function": "recoverStaleClaims"},
     {"file": "dashboard/src/queue-lib.mjs", "function": "updateQueue"},
     {"file": "dashboard/src/queue-lib.mjs", "function": "deleteQueue"},
     {"file": "dashboard/src/index.ts", "function": "PUT /api/queue/:id"},
