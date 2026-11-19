@@ -71,5 +71,7 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | Never put a CI skip marker in a commit message or PR title | skip-marker step in `verify.yml`; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |
 | No real email in any commit reachable from the tested head (the repo is public; CI checks out only that head) | `tools/run-checks.sh` |
 | Every PR gets an independent verdict from a model family no author used, PASS, PASS+NOTES or FAIL, posted on the PR | `pstack-verifier` job in `.github/workflows/verify.yml`, model from `scripts/pick-verifier-model` run from the base commit; `tools/verifier/verdict.test.mjs` |
+| Every user journey runs nightly on master with video; a deploy first runs the journeys of the features it changed, with video kept 90 days | `.github/workflows/journeys.yml`, release proof step in `deploy.yml`, both through `tools/run-journeys.sh` |
+| The feature map is checked against the app daily; corrections arrive as one PR that the same verifier judges | `.github/workflows/map-maintenance.yml`, which dispatches `verify.yml` |
 | Every PR body declares its authors as `Author model: <family>/<model>` lines | `scripts/pick-verifier-model` fails the verifier without them |
 | No OpenRouter or Z.ai API use | `tools/run-checks.sh`, run by `verify.yml` on PRs and `deploy.yml` before deploy |
