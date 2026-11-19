@@ -5,13 +5,18 @@ on:
     types: [opened, synchronize, reopened, edited]
     branches:
       - master
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: verify-${{ github.event.pull_request.number }}
+  group: verify-${{ github.event.pull_request.number || inputs.pr }}
   cancel-in-progress: true
 
 jobs:
@@ -20,14 +25,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Resolve the pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PR: ${{ inputs.pr }}
+        run: |
+          event="$RUNNER_TEMP/event.json"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            cp "$GITHUB_EVENT_PATH" "$event"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR" | jq '{pull_request: .}' > "$event"
+            [ "$(jq -r .pull_request.head.sha "$event")" = "$GITHUB_SHA" ] || { echo "Dispatch on the pull request's head branch"; exit 1; }
+          fi
+          delim="EOF_$(openssl rand -hex 8)"
+          {
+            echo "EVENT_FILE=$event"
+            echo "PR=$(jq -r .pull_request.number "$event")"
+            echo "HEAD=$(jq -r .pull_request.head.sha "$event")"
+            echo "BASE=$(jq -r .pull_request.base.sha "$event")"
+            echo "TITLE<<$delim"; jq -r .pull_request.title "$event"; echo "$delim"
+            echo "BODY<<$delim"; jq -r '.pull_request.body // ""' "$event"; echo "$delim"
+          } >> "$GITHUB_ENV"
+          echo "head=$(jq -r .pull_request.head.sha "$event")" >> "$GITHUB_OUTPUT"
+          echo "base=$(jq -r .pull_request.base.sha "$event")" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ steps.pr.outputs.base }}
           path: .verify-base
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -43,14 +72,10 @@ jobs:
         run: |
           picker=.verify-base/scripts/pick-verifier-model
           [ -f "$picker" ] || picker=scripts/pick-verifier-model
-          model=$(python3 -I "$picker")
+          model=$(python3 -I "$picker" --event "$EVENT_FILE")
           echo "VERIFIER_MODEL=$model" >> "$GITHUB_ENV"
           echo "Verifier model: $model"
       - name: No skip markers in commits or title
-        env:
-          TITLE: ${{ github.event.pull_request.title }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           if { echo "$TITLE"; git log --format=%B "$BASE..$HEAD"; } | grep -niE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]'; then
             echo "Remove the skip marker above: a squash merge carries it to master and the deploy never runs."
@@ -63,9 +88,6 @@ jobs:
           echo "CHECKS_EXIT=$?" >> "$GITHUB_ENV"
           tail -40 "$RUNNER_TEMP/checks.log"
       - name: Secret scan on this change
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set +e
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar -xz -C "$RUNNER_TEMP" gitleaks
@@ -83,11 +105,6 @@ jobs:
       - name: Independent verification
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          PR: ${{ github.event.pull_request.number }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          TITLE: ${{ github.event.pull_request.title }}
-          BODY: ${{ github.event.pull_request.body }}
         run: |
           test -n "$OPENCODE_API_KEY" || { echo "OPENCODE_API_KEY is missing: fork pull requests cannot run the verifier"; exit 1; }
           meta="$RUNNER_TEMP/pr.md"
@@ -104,8 +121,6 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set +e
