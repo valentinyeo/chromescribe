@@ -30,7 +30,7 @@ node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
 ```
 
-`bash tools/run-checks.sh` runs all of these in parallel, as CI does. No package.json and no build step. Every PR runs these in CI as the `tests` job, and a PR cannot merge until it passes. No code comments: CI fails on any; `node tools/strip-comments.mjs .` removes them. Do not deploy as part of local verification unless explicitly authorized.
+`bash tools/run-checks.sh` runs all of these in parallel, as CI does. No package.json and no build step. Every PR runs them inside the `pstack-verifier` job (`.github/workflows/verify.yml`), whose verdict is the only check a PR needs to merge. No code comments: CI fails on any; `node tools/strip-comments.mjs .` removes them. Do not deploy as part of local verification unless explicitly authorized.
 
 ## Ship
 
@@ -43,7 +43,7 @@ cd dashboard && node --test test/*.test.mjs
 
 - Cloudflare account Yeo UX `7865043d9ae730882b77f3d5d670c158`; D1 `chromescribe` (`08532531-b2b5-4922-9e88-7cfdd074928a`); R2 `chromescribe-transcripts`.
 - Only show users https://chromescribe.yeoux.net; never show or link the workers.dev host.
-- API calls send `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keys live only in 1Password: the CLI reads `yeo-key "Chromescribe Access"` first (`CHROMESCRIBE_YEO_KEY=` turns that off), then the environment; scripts (`lib/cf_access.sh`, `cf_access.py`) read env, then yeo-key, then the plain file. `secret-scan` is a required check on master; `.github/workflows/secret-rescan.yml` scans all history weekly and stays red while a working key sits in it. Zero Trust app "ChromeScribe Dashboard" covers both hosts; the bypass app "ChromeScribe public reports" keeps `chromescribe.yeoux.net/reports/*` open.
+- API calls send `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Keys live only in 1Password: the CLI reads `yeo-key "Chromescribe Access"` first (`CHROMESCRIBE_YEO_KEY=` turns that off), then the environment; scripts (`lib/cf_access.sh`, `cf_access.py`) read env, then yeo-key, then the plain file. The verifier scans each PR's commits with gitleaks and fails on a leak; `.github/workflows/gitleaks.yml` scans every push to master; `.github/workflows/secret-rescan.yml` scans all history weekly and stays red while a working key sits in it. Zero Trust app "ChromeScribe Dashboard" covers both hosts; the bypass app "ChromeScribe public reports" keeps `chromescribe.yeoux.net/reports/*` open.
 - `/api/*` also verifies the Access login itself when `CHRO10_API_GATE = "1"` in `dashboard/wrangler.toml` (`dashboard/src/access-gate.mjs`), checking the audience tag in the Worker secret `ACCESS_AUD` (refuses everyone when it is missing; the deploy live check then fails). It is on; setting it to `"0"` turns the Worker check off while Zero Trust still guards both hosts.
 - The API sends no CORS headers: only same-origin pages may call it.
 - TikTok blocks datacenter IPs: list and download TikTok only from the Windows box, never this VPS. First monitor run for a TikTok channel only seeds the backlog.
@@ -65,11 +65,11 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | No Access service key in the extension, Android sources or public pages | `tools/client-key-check.mjs` in CI |
 | Every deploy is checked on the live site | `tools/live-check.mjs` in `deploy.yml`, tested by `tools/live-check.test.js` |
 | With the gate on, `/api/*` refuses calls without a valid Access login; no CORS headers | `dashboard/test/access-gate.test.mjs`, `dashboard/test/channels-api.test.mjs` |
-| A PR merges only when `tests` (from GitHub Actions) and `secret-scan` pass | GitHub ruleset "secret-scan and tests required" on master |
+| A PR merges only on a `pstack-verifier` PASS or PASS+NOTES; it is the only required check | GitHub ruleset "pstack-verifier required" on master |
 | Every workflow cancels its superseded runs | `tools/workflows.test.js` |
-| Emergencies revert first; the fix gets normal verification, no skip lane | GitHub ruleset on master with no bypass actors; `tests.yml` skip-marker step |
-| Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |
+| Emergencies revert first; the fix gets normal verification, no skip lane | GitHub ruleset on master with no bypass actors; skip-marker step in `verify.yml` |
+| Never put a CI skip marker in a commit message or PR title | skip-marker step in `verify.yml`; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |
 | No real email in any commit reachable from the tested head (the repo is public; CI checks out only that head) | `tools/run-checks.sh` |
 | Every PR gets an independent verdict from a model family no author used, PASS, PASS+NOTES or FAIL, posted on the PR | `pstack-verifier` job in `.github/workflows/verify.yml`, model from `scripts/pick-verifier-model` run from the base commit; `tools/verifier/verdict.test.mjs` |
 | Every PR body declares its authors as `Author model: <family>/<model>` lines | `scripts/pick-verifier-model` fails the verifier without them |
-| No OpenRouter or Z.ai API use | `tools/run-checks.sh`, run by `tests.yml` on PRs and `deploy.yml` before deploy |
+| No OpenRouter or Z.ai API use | `tools/run-checks.sh`, run by `verify.yml` on PRs and `deploy.yml` before deploy |
