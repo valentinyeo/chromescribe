@@ -3,6 +3,7 @@ name: settings
 journey: settings
 paths:
   - dashboard/public/settings.html
+  - dashboard/src/index.ts
 ---
 
 # Settings page

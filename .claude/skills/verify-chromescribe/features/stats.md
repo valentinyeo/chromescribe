@@ -3,6 +3,7 @@ name: stats
 journey: stats
 paths:
   - dashboard/public/stats.html
+  - dashboard/src/index.ts
 ---
 
 # Stats page

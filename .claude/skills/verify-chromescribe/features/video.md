@@ -3,6 +3,7 @@ name: video
 journey: video
 paths:
   - dashboard/public/transcript.html
+  - dashboard/src/index.ts
 ---
 
 # Video page
@@ -14,7 +15,7 @@ The video page shows one transcript: media player or article reader, summary wit
 - `video-summary` renders the TL;DR and Summary sections on the Summary tab.
 - `video-transcript` switches between Summary and Transcript on a phone.
 - `video-nav` moves to the previous or newer transcript and shows the position.
-- `video-actions` opens the More panel with Copy, Chat on Claude, Download MD, Summarize, Retranscribe and Delete.
+- `video-actions` offers Copy and Chat on Claude in the header plus Open original, Download MD, Read aloud, Summarize, Retranscribe and Delete in the More panel.
 - `video-missing` explains a missing or unknown `id`.
 
 ## How to get to it (user POV)

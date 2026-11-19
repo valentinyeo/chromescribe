@@ -57,8 +57,48 @@ function cliCommands() {
   return [...commands].sort();
 }
 
+function namedIn(text, command) {
+  return new RegExp('`' + command + '\\b|chromescribe ' + command + '\\b').test(text);
+}
+
 function named(command) {
-  return new RegExp('`' + command + '\\b|chromescribe ' + command + '\\b').test(all);
+  return namedIn(all, command);
+}
+
+function featurePaths(feature) {
+  const data = parseFrontMatter(feature.text);
+  return data && Array.isArray(data.paths) ? data.paths : [];
+}
+
+function globToRegExp(glob) {
+  let pattern = '';
+  for (let i = 0; i < glob.length; i++) {
+    const char = glob[i];
+    if (char === '*') {
+      if (glob[i + 1] === '*') {
+        pattern += '.*';
+        i += 1;
+        if (glob[i + 1] === '/') i += 1;
+      } else {
+        pattern += '[^/]*';
+      }
+    } else if (char === '?') {
+      pattern += '[^/]';
+    } else {
+      pattern += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  return new RegExp(`^${pattern}$`);
+}
+
+function owns(feature, file) {
+  return featurePaths(feature).some(glob => globToRegExp(glob).test(file));
+}
+
+function pageForRoute(route) {
+  if (route === '/') return 'index.html';
+  if (route === '/reports/<id>') return 'reports.html';
+  return route.slice(1);
 }
 
 test('every feature file declares front matter with paths and a journey', async () => {
@@ -90,6 +130,35 @@ test('every feature file has the four H2 sections in order', () => {
   assert.deepEqual(problems, []);
 });
 
+test('every public HTML page belongs to a feature file through paths', () => {
+  const pages = readdirSync(join(repo, 'dashboard/public')).filter(name => name.endsWith('.html'));
+  const problems = pages.filter(page => !features.some(feature => owns(feature, `dashboard/public/${page}`)));
+  assert.deepEqual(problems, [], `pages with no owning feature paths: ${problems.join(', ')}`);
+});
+
+test('every page route is named by a feature that owns its page', () => {
+  const { routes, reportRoute } = runnerRoutes();
+  const allRoutes = [...routes, ...(reportRoute ? [reportRoute] : [])];
+  const problems = allRoutes.filter(route => {
+    const page = `dashboard/public/${pageForRoute(route)}`;
+    return !features.some(feature => owns(feature, page) && feature.text.includes('`' + route + '`'));
+  });
+  assert.deepEqual(problems, [], `routes with no owning feature paths: ${problems.join(', ')}`);
+});
+
+test('every dashboard API module belongs to a feature file through paths', () => {
+  const modules = readdirSync(join(repo, 'dashboard/src'))
+    .filter(name => name.endsWith('.mjs') && read(`dashboard/src/${name}`).includes('/api/'));
+  const problems = modules.filter(name => !features.some(feature => owns(feature, `dashboard/src/${name}`)));
+  assert.deepEqual(problems, [], `API modules with no owning feature paths: ${problems.join(', ')}`);
+});
+
+test('every shell pipeline belongs to a feature file through paths', () => {
+  const pipelines = ['process.sh', 'queue.sh', 'monitor.sh'];
+  const problems = pipelines.filter(file => !features.some(feature => owns(feature, file)));
+  assert.deepEqual(problems, [], `pipelines with no owning feature paths: ${problems.join(', ')}`);
+});
+
 test('every dashboard page route is named in the feature map', () => {
   const { routes, reportRoute } = runnerRoutes();
   const expected = routes.filter(route => route !== '/');
@@ -110,6 +179,13 @@ test('every CLI subcommand is named in the feature map', () => {
   assert.ok(commands.length >= 10, `parsed ${commands.length} CLI commands; the case block moved`);
   const problems = commands.filter(command => !named(command));
   assert.deepEqual(problems, [], `unnamed CLI commands: ${problems.join(', ')}`);
+});
+
+test('every CLI subcommand is named by a feature that owns the CLI', () => {
+  const commands = cliCommands();
+  const owners = features.filter(feature => owns(feature, 'cli/chromescribe'));
+  const problems = commands.filter(command => !owners.some(feature => namedIn(feature.text, command)));
+  assert.deepEqual(problems, [], `CLI commands with no owning feature paths: ${problems.join(', ')}`);
 });
 
 test('the feature README indexes every feature file and states coverage', () => {

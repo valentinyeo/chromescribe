@@ -39,7 +39,7 @@ Each feature file starts with YAML front matter carrying `name`, `journey` and a
 
 ## Features
 
-Coverage: 17 of 17 features mapped.
+Coverage: 18 of 18 features mapped.
 
 - [Home list, search and categories](./home.md) covers `/` and `/index.html`, search, category chips, channel filtering and card delete.
 - [Video page](./video.md) covers `/transcript.html?id=<id>`, summary and transcript tabs, neighbour navigation, More actions and the missing-id error.
@@ -58,3 +58,4 @@ Coverage: 17 of 17 features mapped.
 - [monitor.sh](./monitor.md) covers channel polling, force mode and Telegram gating.
 - [Chrome extension](./extension.md) covers the popup, the local terminal wiring and TikTok saves.
 - [Phone share API](./phone-share.md) covers `POST /api/queue` for the Android app.
+- [Android app updates](./android-updates.md) covers `/api/android/latest` and `/api/android/releases/<versionCode>/app.apk`.
