@@ -153,6 +153,16 @@ test('every dashboard API module belongs to a feature file through paths', () =>
   assert.deepEqual(problems, [], `API modules with no owning feature paths: ${problems.join(', ')}`);
 });
 
+const OPERATOR_ONLY_API = new Set(['debug']);
+
+test('every literal API route is named by a feature file', () => {
+  const source = read('dashboard/src/index.ts');
+  const routes = [...new Set([...source.matchAll(/\bpath === ['"]([^'"]+)['"]/g)].map(match => match[1]))];
+  assert.ok(routes.length > 5, 'API route scan found too few routes');
+  const problems = routes.filter(route => !OPERATOR_ONLY_API.has(route) && !features.some(feature => feature.text.includes(`/api/${route}`)));
+  assert.deepEqual(problems, [], `API routes no feature file names as /api/<route>: ${problems.join(', ')}`);
+});
+
 test('every shell pipeline belongs to a feature file through paths', () => {
   const pipelines = ['process.sh', 'queue.sh', 'monitor.sh'];
   const problems = pipelines.filter(file => !features.some(feature => owns(feature, file)));

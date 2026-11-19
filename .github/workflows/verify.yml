@@ -117,11 +117,16 @@ jobs:
             -e "s|__CHECKS__|$RUNNER_TEMP/checks.log|g" -e "s|__CHECKS_EXIT__|$CHECKS_EXIT|g" \
             -e "s|__LEAKS__|$RUNNER_TEMP/leaks.log|g" -e "s|__LEAKS_EXIT__|$LEAKS_EXIT|g" \
             tools/verifier/brief.md > "$RUNNER_TEMP/brief.md"
+          deadline=$(( $(date +%s) + 900 ))
           for model in $VERIFIER_MODELS; do
+            left=$(( deadline - $(date +%s) ))
+            [ "$left" -gt 90 ] || { echo "VERIFIER_TIMED_OUT=1" >> "$GITHUB_ENV"; break; }
             echo "VERIFIER_MODEL=$model" >> "$GITHUB_ENV"
-            pi --provider opencode-go --model "$model" --thinking medium \
+            code=0
+            timeout --kill-after=20 "$left" pi --provider opencode-go --model "$model" --thinking medium \
               --no-extensions --no-mcp --no-skills --no-context-files --no-prompt-templates --no-themes \
-              --tools read,bash --no-session --mode json -p "$(cat "$RUNNER_TEMP/brief.md")" > "$RUNNER_TEMP/verifier.jsonl"
+              --tools read,bash --no-session --mode json -p "$(cat "$RUNNER_TEMP/brief.md")" > "$RUNNER_TEMP/verifier.jsonl" || code=$?
+            [ "$code" -ne 124 ] || { echo "VERIFIER_TIMED_OUT=1" >> "$GITHUB_ENV"; echo "$model ran out of the 15 minute budget"; break; }
             node tools/verifier/verdict.mjs "$RUNNER_TEMP/verifier.jsonl" > /dev/null && break
             tail -n 5 "$RUNNER_TEMP/verifier.jsonl" | grep -q 'rate_limit_error' || break
             echo "$model is rate limited; trying the next verifier family"
@@ -146,6 +151,7 @@ jobs:
             if (process.env.CHECKS_EXIT !== '0') notes.push('Cheap checks failed (tools/run-checks.sh exit ' + process.env.CHECKS_EXIT + ').');
             if (process.env.LEAKS_EXIT !== '0') notes.push('Secret scan found a leak in this change.');
             if (!process.argv[2]) notes.push('The verifier returned no verdict.');
+            if (process.env.VERIFIER_TIMED_OUT === '1') notes.push('The verifier ran out of its 15 minute budget, so a verdict arrives within 20 minutes or fails.');
             const body = [v, '', ...notes, r.text.slice(0, 60000), '', 'Verifier: opencode-go/' + process.env.VERIFIER_MODEL + '. Head ' + process.env.HEAD + '.', 'Trace: ' + process.env.RUN_URL].join('\n');
             fs.writeFileSync(process.argv[3], body);
           " "$RUNNER_TEMP/verdict.json" "$verdict" "$RUNNER_TEMP/comment.md"
