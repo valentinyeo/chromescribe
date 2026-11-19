@@ -112,7 +112,7 @@ home and video pages, add video, queue, subscriptions, reports and the public re
 
 ## Gotchas
 
-- Master is protected: push a branch, open a PR, wait for `tests` and `secret-scan`. Never merge without both.
+- Master is protected: push a branch, open a PR with `Author model:` lines, and wait for the `pstack-verifier` verdict. It is the only required check. Never merge on FAIL.
 - No code comments in any file, YAML and shell included. `node tools/strip-comments.mjs .` removes them.
 - TikTok and live YouTube downloads do not work from a datacenter host. The shell journeys use stubs, and the real paths run on the Windows box.
 - `queue.sh` and `process.sh` hardcode the workers.dev API base. Their journeys use stubs; the local instance is for the web, CLI and share journeys.
@@ -120,3 +120,7 @@ home and video pages, add video, queue, subscriptions, reports and the public re
 - The real seed writes about 120 MB of transcript markdown into the state directory. `cleanup` removes it.
 
 pstack: 0.15.44
+
+## Evals
+
+`evals/planted-bug.md` records the verifier catching a planted bug with two model families and passing clean PRs, with the steps to rerun it.
