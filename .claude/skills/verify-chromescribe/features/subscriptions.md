@@ -3,6 +3,7 @@ name: subscriptions
 journey: subscriptions
 paths:
   - dashboard/public/subscriptions.html
+  - dashboard/src/index.ts
   - dashboard/src/channels-lib.mjs
 ---
 

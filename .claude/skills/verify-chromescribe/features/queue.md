@@ -3,16 +3,18 @@ name: queue
 journey: queue
 paths:
   - dashboard/public/queue.html
+  - dashboard/src/index.ts
   - dashboard/src/queue-lib.mjs
 ---
 
 # Queue page
 
-The queue page shows the share queue in four columns: Waiting, Processing, Failed and Done. A failed row offers Retry and Remove.
+The queue page shows the share queue in four columns: In progress, Waiting, Failed and Done recently. A failed row offers Retry and Remove.
 
 ## Sub-features
 
-- `queue-columns` lists processing, waiting, failed and the last 30 done rows.
+- `queue-columns` lists In progress, Waiting, Failed and the last 30 Done recently rows.
+- `queue-routing` marks each waiting row as running on the server or on the laptop.
 - `queue-retry` moves a failed row back to Waiting.
 - `queue-remove` deletes a failed row after a confirm.
 - `queue-live` refreshes every 15 seconds while the tab is visible.
@@ -32,6 +34,7 @@ Preconditions:
 
 - **Create two rows.** Run `cs-verify journey queue`. The journey posts two YouTube links to `POST /api/queue`, then marks the second `failed` with reason `Journey failure reason` through `PUT /api/queue/<id>`.
 - **Columns render.** The journey opens `/queue.html` and compares `#count` with `GET /api/queue/all?limit=200`. The Waiting column shows the first link and the Failed column shows the reason.
+- **Routing label.** The waiting YouTube row carries `runs on the server`; a TikTok row would carry `runs on the laptop`.
 - **Retry writes.** The journey accepts the confirm dialog, clicks the row's Retry button and waits for the link in `#pending`. `GET /api/queue/all` then reports `status: pending` for that row.
 - **Proof.** `proof/queue/queue-phone.png` shows all four columns and `queue-after-retry.png` shows the row back in Waiting.
 

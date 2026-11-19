@@ -496,6 +496,8 @@ function r2Store() {
 
 function* allObjects(rows) {
   yield* pageObjects();
+  yield { key: 'android/latest.json', body: JSON.stringify({ versionCode: 7, versionName: '1.5.1', apkUrl: 'https://chromescribe.yeoux.net/api/android/releases/7/app.apk' }), contentType: 'application/json; charset=utf-8' };
+  yield { key: 'android/releases/7/app.apk', body: 'CS-VERIFY-APK-7', contentType: 'application/vnd.android.package-archive' };
   for (const item of rows) {
     yield { key: item.srtPath, body: transcriptMarkdown(item), contentType: 'text/markdown; charset=utf-8' };
   }
@@ -944,7 +946,7 @@ async function runOneJourney({ feature, browser, record, journeys, base }) {
     try {
       json = JSON.parse(text);
     } catch {}
-    return { status: response.status, text, json };
+    return { status: response.status, text, json, headers: Object.fromEntries(response.headers) };
   };
   const j = {
     feature: feature.name,

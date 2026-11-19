@@ -264,6 +264,7 @@ async function queue(j) {
     const shown = Number((await page.textContent('#count')).replace(/[^0-9]/g, ''));
     j.check('queue page lists every row from the API', shown === all.length, `${shown} shown, ${all.length} in the API`);
     j.check('waiting column shows the new link', (await page.textContent('#pending')).includes(one));
+    j.check('waiting row says where it runs', (await page.textContent('#pending')).includes('runs on the server'));
     j.check('failed column shows the failure reason', (await page.textContent('#failed')).includes('Journey failure reason'));
     await j.shot('queue-phone');
 
@@ -668,6 +669,20 @@ async function phoneShare(j) {
   }
 }
 
+async function androidUpdates(j) {
+  const latest = await j.api('/api/android/latest');
+  j.check('latest update metadata is served', latest.status === 200 && latest.json?.versionCode === 7, `HTTP ${latest.status} ${latest.text.slice(0, 120)}`);
+  j.check('latest metadata is uncached JSON', (latest.headers['content-type'] || '').includes('application/json') && latest.headers['cache-control'] === 'no-store', `${latest.headers['content-type']} ${latest.headers['cache-control']}`);
+  const apk = await j.api('/api/android/releases/7/app.apk');
+  j.check('APK download is served from R2', apk.status === 200 && apk.text.includes('CS-VERIFY-APK-7'), `HTTP ${apk.status} ${apk.text.length} bytes`);
+  j.check('APK download is an attachment', apk.headers['content-type'] === 'application/vnd.android.package-archive' && /attachment; filename="app\.apk"/.test(apk.headers['content-disposition'] || ''), `${apk.headers['content-type']} ${apk.headers['content-disposition']}`);
+  const missing = await j.api('/api/android/releases/8/app.apk');
+  j.check('missing release is a JSON 404', missing.status === 404 && missing.json?.error === 'not_found', `HTTP ${missing.status} ${missing.text}`);
+  const file = join(j.proofDir, 'android-update.json');
+  writeFileSync(file, JSON.stringify({ latest, apk, missing }, null, 2));
+  j.proof.push(file);
+}
+
 export const journeys = {
   home,
   video,
@@ -686,4 +701,5 @@ export const journeys = {
   monitor,
   extension,
   'phone-share': phoneShare,
+  'android-updates': androidUpdates,
 };

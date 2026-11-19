@@ -3,6 +3,7 @@ name: home
 journey: home
 paths:
   - dashboard/public/index.html
+  - dashboard/src/index.ts
 ---
 
 # Home list, search and categories
@@ -35,7 +36,7 @@ Preconditions:
 - **Chips match the API.** The journey compares the chip count with `GET /api/categories` plus the five fixed chips (All and four pinned clusters).
 - **A new transcript appears.** The journey publishes a scratch article through `POST /api/transcribe`, reloads `/` and finds its title in the grid.
 - **Search narrows.** The journey fills `#searchInput` with the scratch title. Only one card remains.
-- **Category filters.** The journey clicks the first card's category chip. `#stats` reads `N of M videos` and every rendered card carries that category.
+- **Category filters.** The journey reads the first card's category and clicks the matching chip in the category bar. `#stats` reads `N of M videos` and every rendered card carries that category.
 - **Channel filters.** The journey opens `/?channel=<name>` from a card's channel link and checks the same `N of M` line.
 - **Delete writes.** The journey opens the card's `⋮`, accepts the confirm dialog and chooses `Delete`. The card leaves the grid, the page sends `DELETE /api/transcripts/<id>`, and `GET /api/transcripts/<id>` returns 404.
 - **Proof.** `proof/home/home-phone.png` shows the populated grid, and `proof/home/home-after-delete.png` shows the scratch card gone.
