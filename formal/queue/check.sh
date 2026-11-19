@@ -78,11 +78,36 @@ expect_fail() {
   grep -E "Invariant $inv is violated|states generated|distinct states" "$out" || true
 }
 
+expect_property_fail() {
+  local label="$1"
+  local cfg="$2"
+  local prop="$3"
+  local out="$WORK/${label}.out"
+  local rc=0
+  run_tlc "$cfg" "$out" || rc=$?
+  if grep -q "Model checking completed. No error has been found." "$out"; then
+    echo "FAIL: $label expected property $prop to break" >&2
+    exit 1
+  fi
+  if grep -q "Invariant .* is violated" "$out"; then
+    echo "FAIL: $label broke an invariant instead of property $prop" >&2
+    tail -n 60 "$out" >&2
+    exit 1
+  fi
+  if ! grep -q "constitutes a counter-example" "$out"; then
+    echo "FAIL: $label did not violate $prop" >&2
+    tail -n 60 "$out" >&2
+    exit 1
+  fi
+  echo "PASS: $label breaks $prop"
+  grep -E "constitutes a counter-example|states generated|distinct states" "$out" || true
+}
+
 write_cfg() {
   local path="$1"
   local crash="$2"
   local broken="$3"
-  local invs="$4"
+  local checks="$4"
   cat >"$path" <<EOF
 CONSTANTS
   Videos = {v1, v2}
@@ -96,7 +121,7 @@ SPECIFICATION Spec
 
 INVARIANT TypeOK
 INVARIANT Bound
-$invs
+$checks
 
 CHECK_DEADLOCK FALSE
 EOF
@@ -118,9 +143,8 @@ if [[ "$MODE" == "--broken" ]]; then
       expect_fail "broken-enqueue-no-dedupe" "$WORK/b.cfg" "NoDupPending"
       ;;
     crash-no-recovery)
-      write_cfg "$WORK/b.cfg" TRUE none "INVARIANT LiveClaim
-INVARIANT NoLost"
-      expect_fail "broken-crash-no-recovery" "$WORK/b.cfg" "LiveClaim"
+      write_cfg "$WORK/b.cfg" TRUE crash-no-recovery "PROPERTY Recovers"
+      expect_property_fail "broken-crash-no-recovery" "$WORK/b.cfg" "Recovers"
       ;;
     *)
       echo "unknown broken variant: $VARIANT" >&2
@@ -136,14 +160,11 @@ if [[ -n "$MODE" ]]; then
   exit 2
 fi
 
-write_cfg "$WORK/main.cfg" FALSE none "INVARIANT NoDupPending
+write_cfg "$WORK/main.cfg" TRUE none "INVARIANT NoDupPending
 INVARIANT NoDoubleProcess
 INVARIANT NoLost
-INVARIANT LiveClaim"
+PROPERTY Recovers"
 expect_pass "main" "$WORK/main.cfg"
-
-write_cfg "$WORK/finding.cfg" TRUE none "INVARIANT LiveClaim"
-expect_fail "finding-crash-stuck" "$WORK/finding.cfg" "LiveClaim"
 
 write_cfg "$WORK/b1.cfg" FALSE claim-no-guard "INVARIANT NoDoubleProcess"
 expect_fail "broken-claim-no-guard" "$WORK/b1.cfg" "NoDoubleProcess"
@@ -151,7 +172,7 @@ expect_fail "broken-claim-no-guard" "$WORK/b1.cfg" "NoDoubleProcess"
 write_cfg "$WORK/b2.cfg" FALSE enqueue-no-dedupe "INVARIANT NoDupPending"
 expect_fail "broken-enqueue-no-dedupe" "$WORK/b2.cfg" "NoDupPending"
 
-write_cfg "$WORK/b3.cfg" TRUE none "INVARIANT NoLost"
-expect_fail "broken-crash-no-recovery" "$WORK/b3.cfg" "NoLost"
+write_cfg "$WORK/b3.cfg" TRUE crash-no-recovery "PROPERTY Recovers"
+expect_property_fail "broken-crash-no-recovery" "$WORK/b3.cfg" "Recovers"
 
 echo "formal/queue check ok"

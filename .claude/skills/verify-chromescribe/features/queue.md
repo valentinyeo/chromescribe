@@ -16,6 +16,7 @@ The queue page shows the share queue in four columns: Waiting, Processing, Faile
 - `queue-retry` moves a failed row back to Waiting.
 - `queue-remove` deletes a failed row after a confirm.
 - `queue-live` refreshes every 15 seconds while the tab is visible.
+- `queue-reclaim`: a row left in progress by a crashed drainer returns to waiting after 30 minutes, or fails for the operator at the attempt limit
 
 ## How to get to it (user POV)
 
@@ -40,3 +41,5 @@ Preconditions:
 - The page polls every 15 seconds. Wait for the rendered row, not a fixed sleep, or a poll may race the assertion.
 - Rows created by the journey are deleted at the end, so reruns stay stable. A failed seeded row is not touched.
 - A pending video id is unique. Posting the same link twice does not create a second pending row; the share journey covers that.
+- The lease is `QUEUE_LEASE_SECONDS` (30 minutes) in `dashboard/src/queue-lib.mjs`, and the attempt limit is `QUEUE_MAX_ATTEMPTS` (2). `attempts` counts both claims and lease reclaims.
+- `GET /api/queue` writes: it reclaims stale rows before it lists them.
