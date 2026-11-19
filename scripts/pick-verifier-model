@@ -2,6 +2,7 @@
 """pick-verifier-model: print an opencode-go verifier model whose family differs from every declared author.
 
   pick-verifier-model [--event PATH]   read the PR body from a GitHub event payload (default: $GITHUB_EVENT_PATH)
+  pick-verifier-model --all [--event PATH]   print every eligible verifier in order, one per line
   pick-verifier-model --self-test
 
 The PR body declares each author on its own line: `Author model: <provider or family>/<model>`.
@@ -82,15 +83,19 @@ def families(body):
 
 
 def pick(body):
+    return pick_all(body)[0]
+
+
+def pick_all(body):
     authors = families(body)
     if not authors:
         raise SystemExit(
             "pick-verifier-model: the PR body has no `Author model: <family>/<model>` line. "
             "Add one line per author, for example `Author model: anthropic/claude-sonnet`, then push again."
         )
-    for family, model in VERIFIERS:
-        if family not in authors:
-            return model
+    models = [model for family, model in VERIFIERS if family not in authors]
+    if models:
+        return models
     raise SystemExit(
         "pick-verifier-model: authors cover every verifier family (%s). Ask for a verifier from another family."
         % ", ".join(sorted(authors))
@@ -150,6 +155,8 @@ def self_test():
         json.dump({"pull_request": {"body": "Author model: anthropic/x"}}, handle)
         handle.flush()
         assert pick(body_from_event(handle.name)) == "deepseek-v4.1-flash"
+    assert pick_all("Author model: anthropic/x") == ["deepseek-v4.1-flash", "glm-5.3-flash", "kimi-k3"]
+    assert pick_all("Author model: deepseek/x") == ["glm-5.3-flash", "kimi-k3"]
     print("pick-verifier-model self-test ok")
 
 
@@ -157,10 +164,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--event", default=os.environ.get("GITHUB_EVENT_PATH"))
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--all", action="store_true", help="print every eligible verifier, in order, one per line")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
-    print(pick(body_from_event(args.event)))
+    body = body_from_event(args.event)
+    print("\n".join(pick_all(body)) if args.all else pick(body))
 
 
 if __name__ == "__main__":
