@@ -73,9 +73,11 @@ jobs:
         run: |
           picker=.verify-base/scripts/pick-verifier-model
           [ -f "$picker" ] || picker=scripts/pick-verifier-model
-          model=$(python3 -I "$picker" --event "$EVENT_FILE")
-          echo "VERIFIER_MODEL=$model" >> "$GITHUB_ENV"
-          echo "Verifier model: $model"
+          models=$(python3 -I "$picker" --all --event "$EVENT_FILE" 2>/dev/null) || models=$(python3 -I "$picker" --event "$EVENT_FILE") || exit 1
+          models=$(echo $models)
+          echo "VERIFIER_MODELS=$models" >> "$GITHUB_ENV"
+          echo "VERIFIER_MODEL=${models%% *}" >> "$GITHUB_ENV"
+          echo "Verifier models, in order: $models"
       - name: No skip markers in commits or title
         run: |
           if { echo "$TITLE"; git log --format=%B "$BASE..$HEAD"; } | grep -niE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]'; then
@@ -115,9 +117,15 @@ jobs:
             -e "s|__CHECKS__|$RUNNER_TEMP/checks.log|g" -e "s|__CHECKS_EXIT__|$CHECKS_EXIT|g" \
             -e "s|__LEAKS__|$RUNNER_TEMP/leaks.log|g" -e "s|__LEAKS_EXIT__|$LEAKS_EXIT|g" \
             tools/verifier/brief.md > "$RUNNER_TEMP/brief.md"
-          pi --provider opencode-go --model "$VERIFIER_MODEL" --thinking medium \
-            --no-extensions --no-mcp --no-skills --no-context-files --no-prompt-templates --no-themes \
-            --tools read,bash --no-session --mode json -p "$(cat "$RUNNER_TEMP/brief.md")" > "$RUNNER_TEMP/verifier.jsonl"
+          for model in $VERIFIER_MODELS; do
+            echo "VERIFIER_MODEL=$model" >> "$GITHUB_ENV"
+            pi --provider opencode-go --model "$model" --thinking medium \
+              --no-extensions --no-mcp --no-skills --no-context-files --no-prompt-templates --no-themes \
+              --tools read,bash --no-session --mode json -p "$(cat "$RUNNER_TEMP/brief.md")" > "$RUNNER_TEMP/verifier.jsonl"
+            node tools/verifier/verdict.mjs "$RUNNER_TEMP/verifier.jsonl" > /dev/null && break
+            tail -n 5 "$RUNNER_TEMP/verifier.jsonl" | grep -q 'rate_limit_error' || break
+            echo "$model is rate limited; trying the next verifier family"
+          done
       - name: Post the verdict
         if: ${{ !cancelled() }}
         env:
