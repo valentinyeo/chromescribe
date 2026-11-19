@@ -124,7 +124,7 @@ jobs:
             const body = [v, '', ...notes, r.text.slice(0, 60000), '', 'Verifier: opencode-go/' + process.env.VERIFIER_MODEL + '. Head ' + process.env.HEAD + '.', 'Trace: ' + process.env.RUN_URL].join('\n');
             fs.writeFileSync(process.argv[3], body);
           " "$RUNNER_TEMP/verdict.json" "$verdict" "$RUNNER_TEMP/comment.md"
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md" || { echo "Could not post the verdict comment; a verdict nobody can read does not count."; exit 1; }
           echo "Verdict: ${verdict:-none}"
           case "$verdict" in PASS|PASS+NOTES) exit 0 ;; *) exit 1 ;; esac
       - uses: actions/upload-artifact@v4
