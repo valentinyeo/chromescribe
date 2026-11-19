@@ -22,7 +22,8 @@ test('deployment discovers pages instead of hardcoding page names', () => {
     assert.doesNotMatch(read(file), /[\w-]+\.html\b/, 'upload pages with the public/*.html loop in dashboard/deploy.sh');
   }
   assert.match(read('../../.github/workflows/deploy.yml'), /run: bash deploy\.sh/);
-  assert.match(read('../../.github/workflows/deploy.yml'), /needs: test/);
+  const deploy = read('../../.github/workflows/deploy.yml');
+  assert.ok(deploy.indexOf('bash tools/run-checks.sh') > 0 && deploy.indexOf('bash tools/run-checks.sh') < deploy.indexOf('run: bash deploy.sh'), 'deploy.yml runs tools/run-checks.sh before deploy.sh');
   assert.match(read('../../.github/workflows/deploy.yml'), /wrangler@4\.82\.2/);
 });
 

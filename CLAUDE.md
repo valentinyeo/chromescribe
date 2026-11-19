@@ -30,11 +30,11 @@ node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
 ```
 
-No package.json and no build step. Every PR runs these in CI as the `tests` job, and a PR cannot merge until it passes. No code comments: CI fails on any; `node tools/strip-comments.mjs .` removes them. Do not deploy as part of local verification unless explicitly authorized.
+`bash tools/run-checks.sh` runs all of these in parallel, as CI does. No package.json and no build step. Every PR runs these in CI as the `tests` job, and a PR cannot merge until it passes. No code comments: CI fails on any; `node tools/strip-comments.mjs .` removes them. Do not deploy as part of local verification unless explicitly authorized.
 
 ## Ship
 
-- Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs the tests, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker, then `tools/live-check.mjs --require-login`, which fails the run unless every page on https://chromescribe.yeoux.net matches `dashboard/public`, the API refuses calls without a login, the service key gets in, and `/reports/<id>` stays open. It reads the service key from the repo secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`.
+- Deploy by pushing to `master`: `.github/workflows/deploy.yml` runs `tools/run-checks.sh` (every check from "Test" plus the no-paid-AI grep, in parallel) in the same job, then `dashboard/deploy.sh`, which uploads every `dashboard/public/*.html` page to R2 and always deploys the Worker, then `tools/live-check.mjs --require-login`, which fails the run unless every page on https://chromescribe.yeoux.net matches `dashboard/public`, the API refuses calls without a login, the service key gets in, and `/reports/<id>` stays open. A failed check stops the job, so the deploy steps never run. It reads the service key from the repo secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`.
 - Local `wrangler` deploys get 403: the shell's `CLOUDFLARE_API_TOKEN` belongs to the Hypertask account, not Yeo UX.
 - Read-only D1 queries: `cd dashboard && wrangler d1 execute chromescribe --remote --command "<SQL>"`.
 
@@ -66,3 +66,5 @@ When a message says `process: <url>`, follow `system-prompt.txt` exactly: never 
 | With the gate on, `/api/*` refuses calls without a valid Access login; no CORS headers | `dashboard/test/access-gate.test.mjs`, `dashboard/test/channels-api.test.mjs` |
 | A PR merges only when `tests` (from GitHub Actions) and `secret-scan` pass | GitHub ruleset "secret-scan and tests required" on master |
 | Never put a CI skip marker in a commit message or PR title | `tests.yml` PR step; `dashboard/deploy.sh` always deploys the Worker, so the next push catches up |
+| No real email in any commit (the repo is public) | `tools/run-checks.sh` |
+| No OpenRouter or Z.ai API use | `tools/run-checks.sh`, run by `tests.yml` on PRs and `deploy.yml` before deploy |
