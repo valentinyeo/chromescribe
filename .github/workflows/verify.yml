@@ -14,6 +14,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  statuses: write
 
 concurrency:
   group: verify-${{ github.event.pull_request.number || inputs.pr }}
@@ -142,6 +143,11 @@ jobs:
           " "$RUNNER_TEMP/verdict.json" "$verdict" "$RUNNER_TEMP/comment.md"
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md" || { echo "Could not post the verdict comment; a verdict nobody can read does not count."; exit 1; }
           echo "Verdict: ${verdict:-none}"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            state=failure
+            case "$verdict" in PASS|PASS+NOTES) state=success ;; esac
+            gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD" -f state="$state" -f context=pstack-verifier -f target_url="$RUN_URL" -f description="${verdict:-FAIL}" > /dev/null || { echo "Could not post the pstack-verifier status"; exit 1; }
+          fi
           case "$verdict" in PASS|PASS+NOTES) exit 0 ;; *) exit 1 ;; esac
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
