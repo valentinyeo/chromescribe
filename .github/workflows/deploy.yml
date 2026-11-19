@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -44,10 +45,13 @@ jobs:
         working-directory: .
         env:
           VIDEO: "1"
+          GH_TOKEN: ${{ github.token }}
         run: |
           npm install -g wrangler@4.82.2 playwright@1.65.0
           npx -y playwright@1.65.0 install --with-deps chromium || npx -y playwright@1.65.0 install chromium
-          bash tools/run-journeys.sh "${{ github.event.before }}"
+          base=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=master&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // empty' || true)
+          echo "Release proof covers every change since the last successful deploy: ${base:-none found, so every feature}"
+          bash tools/run-journeys.sh "${base:-all}"
 
       - name: Upload release proof
         if: always()

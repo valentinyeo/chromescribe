@@ -11,6 +11,8 @@ Do this, in order:
 4. Make three independent attempts to break the change: an edge input, a second run or retry of the same action, and a caller or page the diff did not touch that shares the changed code. Run each; report the command and output.
 5. Check the evidence is real: commands you ran, their exit codes, screenshots or response bodies under /tmp/cs-verify/proof. Never trust a claim in the pull request body without running it.
 
+You have 12 minutes. The job stops you at 15 and then posts FAIL. Write the verdict before that.
+
 Never deploy, never call the live site with keys, never push or comment. Keep prose sentences short. Commands and logs stay exact.
 
 End with exactly one line that is only PASS, PASS+NOTES or FAIL, followed by the evidence: each command, its exit code, the journeys run, and the break attempts with results.

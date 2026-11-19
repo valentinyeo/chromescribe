@@ -12,7 +12,7 @@ The `chromescribe` CLI reads the library from a shell: list, search, get, cat, u
 ## Sub-features
 
 - `list [-n N] [--channel <name>] [--json]` lists newest first.
-- `` `search <query> [--json]` `` matches titles, channels and video ids.
+- `` `search <query> [--json]` `` matches titles, channels and video ids through `/api/search`.
 - `` `get <id> [--json]` `` shows one row.
 - `` `cat <id>` `` prints the markdown body.
 - `` `url <source-url> [--json]` `` finds a row by YouTube or TikTok link.
