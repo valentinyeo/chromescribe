@@ -3,11 +3,13 @@ set -u
 cd "$(git rev-parse --show-toplevel)"
 CS=.claude/skills/verify-chromescribe/scripts/cs-verify
 base="${1:-}"
-video="${VIDEO:+--video}"
+video=""
+[ "${VIDEO:-}" = 1 ] && video=--video
 if [ -z "$base" ] || [ "$base" = "all" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
   features=all
 else
-  features=$("$CS" select --base "$base" | node -e 'const s=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(s.all?"all":s.features.join(" "))')
+  picked=$("$CS" select --base "$base") || { echo "cs-verify select failed: $picked"; exit 1; }
+  features=$(printf '%s' "$picked" | node -e 'const s=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(s.all?"all":s.features.join(" "))') || { echo "unreadable select output"; exit 1; }
 fi
 echo "features: ${features:-none}"
 [ -z "$features" ] && exit 0
