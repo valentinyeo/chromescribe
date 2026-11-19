@@ -7,6 +7,8 @@ Prior art: checked pstack maintain-formal-verification-skill, create-formal-veri
 
 # Verify share queue (formal)
 
+pstack: 0.15.44
+
 ## Goal
 
 A shared link must not be lost or processed by two drainers at once, and a row abandoned by a crashed drainer must come back to the waiting list instead of staying in progress forever. A duplicate share of a still-pending video must not create a second pending row.
