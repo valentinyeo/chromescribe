@@ -14,7 +14,7 @@ Usage:
   chromescribe list [-n N] [--channel <name>] [--json]          List transcripts (newest first)
   chromescribe search <query> [--json]       Search titles/channels/video_id
   chromescribe get <id> [--json]             Show metadata for one transcript
-  chromescribe cat <id>                      Print the full markdown to stdout
+  chromescribe cat <id|link>                      Print the full markdown to stdout
   chromescribe url <source-url> [--json]     Find transcript by source URL
   chromescribe view <id>                     Print dashboard URL for browser
 
@@ -58,6 +58,9 @@ need curl
 need jq
 
 YEO_KEY="${CHROMESCRIBE_YEO_KEY-yeo-key}"
+if [ "$YEO_KEY" = yeo-key ] && ! command -v yeo-key >/dev/null 2>&1 && [ -x "$HOME/.local/bin/yeo-key" ]; then
+  YEO_KEY="$HOME/.local/bin/yeo-key"
+fi
 if [ -n "$YEO_KEY" ] && command -v "$YEO_KEY" >/dev/null 2>&1; then
   vault_id="$("$YEO_KEY" "Chromescribe Access" CF_ACCESS_CLIENT_ID 2>/dev/null || true)"
   vault_secret="$("$YEO_KEY" "Chromescribe Access" CF_ACCESS_CLIENT_SECRET 2>/dev/null || true)"
@@ -180,8 +183,18 @@ cmd_get() {
 
 cmd_cat() {
   local id="${1:-}"
-  [ -n "$id" ] || die "cat requires an id"
-  api_curl "$API/api/transcript/$id/content" || die "failed to fetch content for id=$id"
+  [ -n "$id" ] || die "cat requires an id or a transcript.html?id= link"
+  case "$id" in
+    *[!0-9]*) id=$(printf '%s' "$id" | grep -oE '[?&]id=[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+              [ -n "$id" ] || die "no id= in link: ${1}";;
+  esac
+  local body
+  body=$(api_curl "$API/api/transcript/$id/content") || die "failed to fetch content for id=$id"
+  case "$body" in
+    *cloudflareaccess.com*"Sign in"*|*"Sign in"*cloudflareaccess.com*)
+      die "got the Cloudflare Access login page, not id=$id: no service token. Put yeo-key on PATH (vault item \"Chromescribe Access\") or set CF_ACCESS_CLIENT_ID/SECRET";;
+  esac
+  printf '%s\n' "$body"
 }
 
 cmd_url() {

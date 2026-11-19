@@ -62,6 +62,7 @@ async function setup(t) {
       data = rows.find(row => row.id === Number(url.pathname.split('/').at(-1)));
     } else if (url.pathname.endsWith('/content')) {
       const id = url.pathname.split('/')[3];
+      if (id === '7') { res.end('<html><title>Sign in ・ Cloudflare Access</title><a href="https://x.cloudflareaccess.com/">Sign in</a></html>'); return; }
       res.end(id === '1' ? 'x'.repeat(85001) + ' final-tail-marker' : 'y'.repeat(120));
       return;
     } else if (url.pathname === '/api/search') data = rows.filter(row => row.title.toLowerCase().includes(url.searchParams.get('q').toLowerCase()));
@@ -366,4 +367,27 @@ test('channels --refresh continues past failed rows and returns a failing exit c
   assert.match(result.stderr, /could not refresh/);
   assert.ok(result.stdout.includes('Zulu (' + channels[0].id + ') -> Resolved'));
   assert.equal(requests.filter(request => request.method === 'POST').length, 2);
+});
+
+test('cat takes a pasted dashboard link and reads that transcript', async t => {
+  const { call, requests } = await setup(t);
+  const result = await call('cat', 'https://chromescribe.yeoux.net/transcript.html?id=3');
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'y'.repeat(120));
+  assert.deepEqual(requests.filter(req => req.url.endsWith('/content')).map(req => req.url), ['/api/transcript/3/content']);
+});
+
+test('cat fails loudly when the API answers with the Access login page', async t => {
+  const { call } = await setup(t);
+  const result = await call('cat', '7');
+  assert.notEqual(result.code, 0);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /Cloudflare Access login page/);
+});
+
+test('cat refuses a link with no id', async t => {
+  const { call } = await setup(t);
+  const result = await call('cat', 'https://chromescribe.yeoux.net/');
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /no id= in link/);
 });
