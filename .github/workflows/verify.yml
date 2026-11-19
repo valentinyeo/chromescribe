@@ -79,7 +79,7 @@ jobs:
       - name: Install wrangler, Playwright and pi
         run: |
           npm install -g wrangler@4.82.2 playwright@1.65.0 @earendil-works/pi-coding-agent@1.5.0
-          npx -y playwright@1.65.0 install --with-deps chromium
+          npx -y playwright@1.65.0 install --with-deps chromium || npx -y playwright@1.65.0 install chromium
       - name: Independent verification
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -109,6 +109,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set +e
+          touch "$RUNNER_TEMP/verifier.jsonl"
           node tools/verifier/verdict.mjs "$RUNNER_TEMP/verifier.jsonl" > "$RUNNER_TEMP/verdict.json"
           verdict=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).verdict||'')" "$RUNNER_TEMP/verdict.json")
           [ "$CHECKS_EXIT" = 0 ] || verdict=FAIL
