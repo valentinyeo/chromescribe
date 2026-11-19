@@ -1,0 +1,45 @@
+name: Journeys
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: journeys-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    name: Every journey on master
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.65.0
+      - name: Install wrangler and Playwright
+        run: |
+          npm install -g wrangler@4.82.2 playwright@1.65.0
+          npx -y playwright@1.65.0 install --with-deps chromium
+      - name: Run every journey with video
+        env:
+          VIDEO: "1"
+        run: bash tools/run-journeys.sh all
+      - name: Upload proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journeys-proof-${{ github.run_id }}
+          path: /tmp/cs-verify/proof
+          retention-days: 14

@@ -1,0 +1,81 @@
+name: Feature map upkeep
+
+on:
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: map-maintenance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  maintain:
+    name: Maintain the verify skill
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: cursor/plugins
+          ref: e58dd043600587dbaf58ba315e7f2b38373eeb43
+          path: .verify-pstack
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.65.0
+      - name: Install wrangler, Playwright and pi
+        run: |
+          npm install -g wrangler@4.82.2 playwright@1.65.0 @earendil-works/pi-coding-agent@1.5.0
+          npx -y playwright@1.65.0 install --with-deps chromium
+      - name: Run the maintenance pass
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          sed "s#__PSTACK__#$PWD/.verify-pstack/pstack#" tools/maintainer/brief.md > /tmp/maintainer-brief.md
+          pi -p --provider opencode-go --model deepseek-v4.1-flash --thinking medium "$(cat /tmp/maintainer-brief.md)" | tee /tmp/maintainer.log
+      - name: Open one pull request of corrections
+        run: |
+          rm -rf .verify-pstack
+          git add -A .claude/skills/verify-chromescribe tools/feature-map.test.js
+          if git diff --cached --quiet; then
+            echo "clean: no corrections"
+            exit 0
+          fi
+          node --test tools/feature-map.test.js
+          branch="map-upkeep-$(date -u +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -m "Feature map upkeep $(date -u +%F)"
+          git push -f origin "$branch"
+          tail -c 3000 /tmp/maintainer.log > /tmp/body.md
+          printf '\n\nAuthor model: deepseek/deepseek-v4.1-flash\n' >> /tmp/body.md
+          pr=$(gh pr list --head "$branch" --json number --jq '.[0].number')
+          if [ -z "$pr" ]; then
+            gh pr create --base master --head "$branch" --title "Feature map upkeep $(date -u +%F)" --body-file /tmp/body.md
+            pr=$(gh pr list --head "$branch" --json number --jq '.[0].number')
+          fi
+          gh workflow run verify.yml --ref "$branch" -f pr="$pr"
+      - name: Upload the pass log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: map-maintenance-${{ github.run_id }}
+          path: |
+            /tmp/maintainer.log
+            /tmp/cs-verify/proof
+          if-no-files-found: ignore

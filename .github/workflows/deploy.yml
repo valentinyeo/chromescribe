@@ -34,6 +34,30 @@ jobs:
         working-directory: .
         run: bash tools/run-checks.sh
 
+      - name: Cache Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.65.0
+
+      - name: Release proof for changed features
+        working-directory: .
+        env:
+          VIDEO: "1"
+        run: |
+          npm install -g wrangler@4.82.2 playwright@1.65.0
+          npx -y playwright@1.65.0 install --with-deps chromium
+          bash tools/run-journeys.sh "${{ github.event.before }}"
+
+      - name: Upload release proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-proof-${{ github.sha }}
+          path: /tmp/cs-verify/proof
+          if-no-files-found: ignore
+          retention-days: 90
+
       - name: Cache wrangler
         uses: actions/cache@v4
         with:
