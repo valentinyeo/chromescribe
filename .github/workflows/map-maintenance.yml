@@ -40,7 +40,7 @@ jobs:
       - name: Install wrangler, Playwright and pi
         run: |
           npm install -g wrangler@4.82.2 playwright@1.65.0 @earendil-works/pi-coding-agent@1.5.0
-          npx -y playwright@1.65.0 install --with-deps chromium
+          npx -y playwright@1.65.0 install --with-deps chromium || npx -y playwright@1.65.0 install chromium
       - name: Run the maintenance pass
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
