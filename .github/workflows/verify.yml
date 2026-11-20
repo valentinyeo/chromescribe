@@ -91,6 +91,8 @@ jobs:
           echo "CHECKS_EXIT=$?" >> "$GITHUB_ENV"
           tail -40 "$RUNNER_TEMP/checks.log"
       - name: Secret scan on this change
+        id: leaks
+        timeout-minutes: 1
         run: |
           set +e
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar -xz -C "$RUNNER_TEMP" gitleaks
@@ -102,11 +104,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-1.65.0
       - name: Install wrangler, Playwright and pi
+        id: install
+        timeout-minutes: 3
         run: |
           npm install -g wrangler@4.82.2 playwright@1.65.0 @earendil-works/pi-coding-agent@1.5.0
           npx -y playwright@1.65.0 install --with-deps chromium || npx -y playwright@1.65.0 install chromium
           command -v ffmpeg || { sudo apt-get update -q && sudo apt-get install -y -q ffmpeg; }
       - name: Independent verification
+        id: verify
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
@@ -134,9 +139,13 @@ jobs:
           done
       - name: Post the verdict
         if: ${{ !cancelled() }}
+        timeout-minutes: 1
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LEAKS_OUTCOME: ${{ steps.leaks.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
           set +e
           touch "$RUNNER_TEMP/verifier.jsonl"
@@ -151,7 +160,9 @@ jobs:
             const notes = [];
             if (process.env.CHECKS_EXIT !== '0') notes.push('Cheap checks failed (tools/run-checks.sh exit ' + process.env.CHECKS_EXIT + ').');
             if (process.env.LEAKS_EXIT !== '0') notes.push('Secret scan found a leak in this change.');
-            if (!process.argv[2]) notes.push('The verifier returned no verdict.');
+            const stuck = [['Secret scan on this change', process.env.LEAKS_OUTCOME], ['Install wrangler, Playwright and pi', process.env.INSTALL_OUTCOME]].find(([, outcome]) => outcome && outcome !== 'success');
+            if (!process.argv[2] && stuck) notes.push('Setup step failed or timed out: ' + stuck[0] + '. The verifier never ran, so this PR gets FAIL.');
+            else if (!process.argv[2]) notes.push(process.env.VERIFY_OUTCOME === 'success' ? 'The verifier returned no verdict.' : 'The verifier step ended as ' + process.env.VERIFY_OUTCOME + ', so no verdict was produced.');
             if (process.env.VERIFIER_TIMED_OUT === '1') notes.push('The verifier ran out of its 15 minute budget, so a verdict arrives within 20 minutes or fails.');
             const body = [v, '', ...notes, r.text.slice(0, 60000), '', 'Verifier: opencode-go/' + process.env.VERIFIER_MODEL + '. Head ' + process.env.HEAD + '.', 'Trace: ' + process.env.RUN_URL].join('\n');
             fs.writeFileSync(process.argv[3], body);
