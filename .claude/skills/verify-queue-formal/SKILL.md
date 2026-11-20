@@ -7,7 +7,7 @@ Prior art: checked pstack maintain-formal-verification-skill, create-formal-veri
 
 # Verify share queue (formal)
 
-pstack: 0.15.44
+pstack: 0.15.46
 
 ## Goal
 
