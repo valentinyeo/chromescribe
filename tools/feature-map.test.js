@@ -57,6 +57,29 @@ function cliCommands() {
   return [...commands].sort();
 }
 
+function readmeCliCommands() {
+  const readme = read('cli/README.md');
+  const start = readme.indexOf('## Commands');
+  const end = readme.indexOf('## Lenses');
+  const section = start >= 0 && end > start ? readme.slice(start, end) : '';
+  return [...new Set([...section.matchAll(/`([a-z][a-z0-9_-]*)(?![a-z0-9_/-])/g)].map(match => match[1]))].sort();
+}
+
+const DYNAMIC_API_ROUTES = [
+  { marker: "path.startsWith('reports/')", route: '/api/reports/<id>' },
+  { marker: "path.startsWith('thumb/')", route: '/api/thumb/<videoId>' },
+  { marker: "path.startsWith('channels/') && path.endsWith('/refresh')", route: '/api/channels/<id>/refresh' },
+  { marker: "path.startsWith('channels/')", route: '/api/channels/<id>' },
+  { marker: '/^transcripts\\/\\d+\\/source$/', route: '/api/transcripts/<id>/source' },
+  { marker: "path.startsWith('transcripts/')", route: '/api/transcripts/<id>' },
+  { marker: "path.startsWith('transcript/') && path.endsWith('/content')", route: '/api/transcript/<id>/content' },
+  { marker: '/^speak\\/[^/]+$/', route: '/api/speak/<id>' },
+  { marker: "path.startsWith('transcripts/') && path.endsWith('/analyze')", route: '/api/transcripts/<id>/analyze' },
+  { marker: "path.startsWith('transcripts/') && path.endsWith('/summarize')", route: '/api/transcripts/<id>/summarize' },
+  { marker: "path.startsWith('transcripts/') && path.endsWith('/classify')", route: '/api/transcripts/<id>/classify' },
+  { marker: "path.startsWith('queue/')", route: '/api/queue/<id>' },
+];
+
 function namedIn(text, command) {
   return new RegExp('`' + command + '\\b|chromescribe ' + command + '\\b').test(text);
 }
@@ -163,6 +186,26 @@ test('every literal API route is named by a feature file', () => {
   assert.deepEqual(problems, [], `API routes no feature file names as /api/<route>: ${problems.join(', ')}`);
 });
 
+test('every dynamic API route is named by a feature file', () => {
+  const source = read('dashboard/src/index.ts');
+  const moved = DYNAMIC_API_ROUTES.filter(({ marker }) => !source.includes(marker));
+  assert.deepEqual(moved.map(({ route }) => route), [], 'dynamic API route scan markers moved');
+  const problems = DYNAMIC_API_ROUTES.filter(({ route }) => !all.includes(route)).map(({ route }) => route);
+  assert.deepEqual(problems, [], `dynamic API routes no feature file names: ${problems.join(', ')}`);
+});
+
+test('every API route is named by a feature that owns dashboard/src/index.ts', () => {
+  const source = read('dashboard/src/index.ts');
+  const literal = [...new Set([...source.matchAll(/\bpath === ['"]([^'"]+)['"]/g)].map(match => match[1]))]
+    .filter(route => !OPERATOR_ONLY_API.has(route))
+    .map(route => `/api/${route}`);
+  const routes = [...new Set([...literal, ...DYNAMIC_API_ROUTES.map(({ route }) => route)])];
+  assert.ok(routes.length > 10, `API route scan found ${routes.length} routes`);
+  const owners = features.filter(feature => owns(feature, 'dashboard/src/index.ts'));
+  const problems = routes.filter(route => !owners.some(feature => feature.text.includes(route)));
+  assert.deepEqual(problems, [], `API routes with no owning feature paths: ${problems.join(', ')}`);
+});
+
 test('every shell pipeline belongs to a feature file through paths', () => {
   const pipelines = ['process.sh', 'queue.sh', 'monitor.sh'];
   const problems = pipelines.filter(file => !features.some(feature => owns(feature, file)));
@@ -196,6 +239,17 @@ test('every CLI subcommand is named by a feature that owns the CLI', () => {
   const owners = features.filter(feature => owns(feature, 'cli/chromescribe'));
   const problems = commands.filter(command => !owners.some(feature => namedIn(feature.text, command)));
   assert.deepEqual(problems, [], `CLI commands with no owning feature paths: ${problems.join(', ')}`);
+});
+
+test('every CLI command in cli/README.md exists and is named by a feature that owns the CLI', () => {
+  const commands = readmeCliCommands();
+  assert.ok(commands.length >= 10, `parsed ${commands.length} CLI commands from cli/README.md`);
+  const known = cliCommands();
+  const missing = commands.filter(command => !known.includes(command));
+  assert.deepEqual(missing, [], `cli/README.md commands missing from the CLI: ${missing.join(', ')}`);
+  const owners = features.filter(feature => owns(feature, 'cli/chromescribe'));
+  const problems = commands.filter(command => !owners.some(feature => namedIn(feature.text, command)));
+  assert.deepEqual(problems, [], `cli/README.md commands with no owning feature paths: ${problems.join(', ')}`);
 });
 
 test('the feature README indexes every feature file and states coverage', () => {

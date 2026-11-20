@@ -15,7 +15,7 @@ paths:
 - `monitor-channels` reads active channels from `GET /api/channels?active=1`, falling back to `channels.txt`.
 - `monitor-force` processes one given video with `--force <video_id> [title]`.
 - `monitor-youtube` reads each channel's feed and skips Shorts and processed ids.
-- `monitor-tiktok` seeds a TikTok backlog on first run and processes at most five new videos.
+- `monitor-tiktok` seeds a TikTok backlog on first run when the listing has at least ten videos, and processes at most five new videos per run.
 - `monitor-transcribe` uploads audio or combined chunks and analyzes the result.
 - `monitor-telegram` notifies Telegram only when `CHROMESCRIBE_TELEGRAM=1`.
 - `monitor-state` records processed ids in `.processed_videos`.

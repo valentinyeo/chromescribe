@@ -16,6 +16,8 @@ The home page lists every transcript newest first, filters by category chip, by 
 - `home-search` filters titles, channels, categories and tags as the user types.
 - `home-categories` filters by a category chip and restores All.
 - `home-channel` filters by a channel through `/?channel=<name>`.
+- `home-thumbnails` loads each video card image through `GET /api/thumb/<videoId>`, which caches the image in R2.
+- `home-open-original` opens an article card's stored source through `/api/transcripts/<id>/source`.
 - `home-delete` deletes one transcript from the card actions after a confirm.
 
 ## How to get to it (user POV)
@@ -39,6 +41,7 @@ Preconditions:
 - **Category filters.** The journey reads the first card's category and clicks the matching chip in the category bar. `#stats` reads `N of M videos` and every rendered card carries that category.
 - **Channel filters.** The journey opens `/?channel=<name>` from a card's channel link and checks the same `N of M` line.
 - **Delete writes.** The journey opens the card's `⋮`, accepts the confirm dialog and chooses `Delete`. The card leaves the grid, the page sends `DELETE /api/transcripts/<id>`, and `GET /api/transcripts/<id>` returns 404.
+- **Thumbnails and sources.** Video cards request `GET /api/thumb/<videoId>`; article cards put `/api/transcripts/<id>/source` behind `Open original`, proven by `cs-verify journey article-source`.
 - **Proof.** `proof/home/home-phone.png` shows the populated grid, and `proof/home/home-after-delete.png` shows the scratch card gone.
 
 ## Gotchas

@@ -104,11 +104,11 @@ git status --short
 
 ## Features
 
-`features/README.md` indexes 18 mapped features, and each file carries its own `paths:` globs and `journey:` id:
+`features/README.md` indexes 19 mapped features, and each file carries its own `paths:` globs and `journey:` id:
 
-home and video pages, add video, queue, subscriptions, reports and the public report page, stats, settings, the CLI query and channel commands, CLI learn and lens, `process.sh`, `queue.sh`, `monitor.sh`, the extension, the phone share API, and the Android app update API.
+home and video pages, the article original link, add video, queue, subscriptions, reports and the public report page, stats, settings, the CLI query and channel commands, CLI learn and lens, `process.sh`, `queue.sh`, `monitor.sh`, the extension, the phone share API, and the Android app update API.
 
-`tools/feature-map.test.js` fails when a page route, a `dashboard/public/*.html` file, or a `cli/chromescribe` subcommand is missing from the map, when a feature file lacks front matter or the four H2 sections, or when the README index drifts.
+`tools/feature-map.test.js` fails when a page route, an API route, a `dashboard/public/*.html` file, a `cli/chromescribe` subcommand or a `cli/README.md` command is missing from the map, when a feature file lacks front matter or the four H2 sections, or when the README index drifts.
 
 ## Gotchas
 

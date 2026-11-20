@@ -5,6 +5,7 @@ paths:
   - process.sh
   - upload_article.py
   - fxtwitter_article.py
+  - dashboard/src/index.ts
 ---
 
 # process.sh pipeline
@@ -34,7 +35,7 @@ Preconditions:
 - The journey copies `process.sh`, `lib/cf_access.sh`, `fxtwitter_article.py` and a JSON-printing `upload_article.py` into a temp directory, and puts stub `curl`, `cmd.exe`, `yt-dlp` and `ffmpeg` on `PATH`.
 
 - **Video path.** Run `cs-verify journey process`. The journey runs `process.sh https://www.youtube.com/watch?v=JOURNEYPROC` with `REQUIRE_ANALYZE=1` and `CHROMESCRIBE_NO_OPEN=1`. It must exit 0, print `Audio extracted` and `Phase 1 complete`, call `/api/transcribe`, then `/api/transcripts/7/analyze`.
-- **Article path.** The journey runs `process.sh https://example.com/journey-article`. It must exit 0, print `Article #7`, and never open a browser.
+- **Article path.** The journey runs `process.sh https://example.com/journey-article`. It must exit 0, print `Article #7`, print `Cloudflare summary complete`, and never open a browser.
 - **Analysis.** Both paths must print `Cloudflare summary complete`.
 
 ## Gotchas

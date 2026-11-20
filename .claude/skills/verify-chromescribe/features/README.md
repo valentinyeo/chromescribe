@@ -39,10 +39,11 @@ Each feature file starts with YAML front matter carrying `name`, `journey` and a
 
 ## Features
 
-Coverage: 18 of 18 features mapped.
+Coverage: 19 of 19 features mapped.
 
 - [Home list, search and categories](./home.md) covers `/` and `/index.html`, search, category chips, channel filtering and card delete.
-- [Video page](./video.md) covers `/transcript.html?id=<id>`, summary and transcript tabs, neighbour navigation, More actions and the missing-id error.
+- [Video page](./video.md) covers `/transcript.html?id=<id>`, summary and transcript tabs, neighbour navigation, More actions, the command menu, read aloud and the missing-id error.
+- [Article original link](./article-source.md) covers `/api/transcripts/<id>/source` and the card `Open original` action.
 - [Add video](./add-video.md) covers the home Add modal and the transcribe endpoint.
 - [Queue page](./queue.md) covers `/queue.html`, the four columns, Retry and Remove.
 - [Subscriptions page](./subscriptions.md) covers `/subscriptions.html`, filter, subscribe, pause, resume and remove.
