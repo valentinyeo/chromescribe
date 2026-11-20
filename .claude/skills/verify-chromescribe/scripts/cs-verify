@@ -10,6 +10,8 @@ import { DatabaseSync } from 'node:sqlite';
 const SELF_DIR = fileURLToPath(new URL('.', import.meta.url));
 const SKILL_DIR = resolve(SELF_DIR, '..');
 const FEATURES_DIR = join(SKILL_DIR, 'features');
+const FAKE_AI_ENTRY = join(SKILL_DIR, 'scripts', 'fake-ai-entry.mjs');
+const FAKE_AI_LOG = '/__verify/ai-calls';
 const ROOT = execFileSync('git', ['-C', SELF_DIR, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
 const RUN = process.env.CS_VERIFY_DIR || '/tmp/cs-verify';
 const DEFAULT_PORT = Number(process.env.CS_VERIFY_PORT || 8799);
@@ -22,7 +24,7 @@ const HELP = {
   tool: {
     usage: 'cs-verify <command> [options]',
     description:
-      'Drive the real ChromeScribe app locally and print one JSON object. Launches the Worker with local D1 and R2, no AI binding, seeds a real-scale library, and runs scripted user journeys in headless Chromium or against the local API.',
+      'Drive the real ChromeScribe app locally and print one JSON object. Launches the real Worker with local D1 and R2, replaces only the Workers AI binding with a local fake, seeds a real-scale library, and runs scripted user journeys in headless Chromium or against the local API.',
     commands: [
       { name: 'launch', summary: 'Start the local Worker, seeded and ready.' },
       { name: 'doctor', summary: 'Read-only readiness check of the running instance.' },
@@ -43,13 +45,14 @@ const HELP = {
     notes: [
       'Needs Node 22, global wrangler and global playwright with Chromium in ~/.cache/ms-playwright.',
       'Set CS_VERIFY_DIR and CS_VERIFY_PORT to run a second instance beside the first.',
-      'The local config always drops the [ai] block, so no call can reach Workers AI or bill the account.',
+      'The local config always drops the [ai] block and starts the Worker through scripts/fake-ai-entry.mjs, so no call can reach Workers AI or bill the account.',
+      'The fake AI answers transcription, summarization and classification deterministically and logs every call at /__verify/ai-calls on the local instance.',
     ],
   },
   launch: {
     usage: 'cs-verify launch [--port N] [--seed small|real]',
     description:
-      'Copies dashboard/wrangler.toml without the [ai] block, applies schema.sql and seed rows to a fresh local D1, uploads the dashboard pages and transcript markdown to local R2, starts wrangler dev, and waits until GET /api/transcripts answers success.',
+      'Copies dashboard/wrangler.toml without the [ai] block, points main at scripts/fake-ai-entry.mjs so the real Worker runs with a fake AI binding, applies schema.sql and seed rows to a fresh local D1, uploads the dashboard pages and transcript markdown to local R2, starts wrangler dev, and waits until GET /api/transcripts answers success.',
     options: [
       { flag: '--port', value: 'N', default: String(DEFAULT_PORT), description: 'Local port. Also CS_VERIFY_PORT.' },
       { flag: '--seed', value: 'small|real', default: 'real', description: 'small seeds 6 transcripts for a quick smoke; real seeds 4000 transcripts, 82 categories, 76 channels and 157 queue rows.' },
@@ -60,11 +63,12 @@ const HELP = {
       'Refuses to start when its own instance is running or the port belongs to someone else.',
       'A second launch replaces local state only after the first instance is cleaned up.',
       'Ready means GET /api/transcripts returns "success":true and one transcript body reads back from R2.',
+      'Only env.AI is faked. The handler, D1, R2 and every page are the real ones.',
     ],
   },
   doctor: {
     usage: 'cs-verify doctor',
-    description: 'Read-only check that the instance is worth driving: recorded pid alive, no AI binding, API answering, home page 200, transcript body readable from R2, row counts, commit.',
+    description: 'Read-only check that the instance is worth driving: recorded pid alive, the Worker entry is the fake AI wrapper, no AI binding, the fake AI answers, API answering, home page 200, transcript body readable from R2, row counts, commit.',
     options: [],
     output: 'ok plus a checks array; every failed check carries the command that fixes it.',
     examples: ['cs-verify doctor'],
@@ -548,8 +552,10 @@ function writeWranglerConfig() {
     if (/^\[/.test(line)) skip = false;
     if (!skip) kept.push(line);
   }
-  const text = kept.join('\n').replace(/^main = .*$/m, `main = ${JSON.stringify(join(DASHBOARD, 'src', 'index.ts'))}`);
+  if (!existsSync(FAKE_AI_ENTRY)) throw new Error(`The fake AI entry is missing at ${FAKE_AI_ENTRY}`);
+  const text = kept.join('\n').replace(/^main = .*$/m, `main = ${JSON.stringify(FAKE_AI_ENTRY)}`);
   if (/^\[ai\]/m.test(text)) throw new Error('AI binding still present in the generated config; refusing to start');
+  if (!text.includes(`main = ${JSON.stringify(FAKE_AI_ENTRY)}`)) throw new Error('The generated config does not start through the fake AI entry; refusing to start');
   writeFileSync(join(RUN, 'wrangler.toml'), text);
 }
 
@@ -680,6 +686,18 @@ async function doctor() {
   add('instance pid', pid, pid ? `pid ${pid}` : 'no pid recorded or the process exited', 'Run cs-verify launch.');
   const config = readIf(join(RUN, 'wrangler.toml'));
   add('no AI binding', config && !/^\[ai\]/m.test(config), config ? 'local config has no [ai] block' : 'local config missing', 'Run cs-verify launch to regenerate the config.');
+  const entry = `main = ${JSON.stringify(FAKE_AI_ENTRY)}`;
+  add('fake AI entry', config.includes(entry), config.includes(entry) ? `the Worker starts through ${FAKE_AI_ENTRY}` : 'the local config does not start through the fake AI entry', 'Run cs-verify launch to regenerate the config.');
+  let fakeAI = { status: 0, json: null };
+  if (pid) {
+    try {
+      fakeAI = await apiGet(base, FAKE_AI_LOG);
+    } catch (error) {
+      fakeAI = { status: 0, json: null, text: error.message };
+    }
+  }
+  const fakeOk = fakeAI.status === 200 && Array.isArray(fakeAI.json?.calls);
+  add('fake AI answers', fakeOk, fakeOk ? `${FAKE_AI_LOG} answers with ${fakeAI.json.calls.length} recorded call(s)` : `HTTP ${fakeAI.status || 'none'} on ${FAKE_AI_LOG}`, 'Run cs-verify cleanup then launch.');
   let list = { status: 0, json: null, text: '' };
   let home = { status: 0 };
   if (pid) {

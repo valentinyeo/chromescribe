@@ -22,13 +22,16 @@ Rules that do not change:
 
 - Never deploy. Deploys run from `master` through `.github/workflows/deploy.yml`.
 - Never call the live API with the service key, and never print a key.
-- The local config always drops the `[ai]` block. Never put it back to drive an AI route: Workers AI runs remote and bills.
+- The local config always drops the `[ai]` block and starts the Worker through `scripts/fake-ai-entry.mjs`. Never put the binding back to drive an AI route: Workers AI runs remote and bills.
+- Only `env.AI` is faked. The handler, D1, R2 and every page are the real ones, so a journey never intercepts our own routes.
 
 ## Launch
 
 `$S/cs-verify launch [--port N] [--seed small|real]` from the repo root.
 
-It copies `dashboard/wrangler.toml` without the `[ai]` block into `$CS_VERIFY_DIR` (default `/tmp/cs-verify`), applies `dashboard/schema.sql` and the seed rows to a fresh local D1, writes every `dashboard/public/*.html` page and every transcript body to local R2, then starts `wrangler dev` on `127.0.0.1:8799` with `CHRO10_API_GATE=0`.
+It copies `dashboard/wrangler.toml` without the `[ai]` block into `$CS_VERIFY_DIR` (default `/tmp/cs-verify`), points `main` at `scripts/fake-ai-entry.mjs`, applies `dashboard/schema.sql` and the seed rows to a fresh local D1, writes every `dashboard/public/*.html` page and every transcript body to local R2, then starts `wrangler dev` on `127.0.0.1:8799` with `CHRO10_API_GATE=0`.
+
+`scripts/fake-ai-entry.mjs` imports the real Worker from `dashboard/src/index.ts` and adds one thing to `env`: an `AI` object whose `run(model, input, options)` answers deterministically and never touches the network. Whisper `@cf/openai/whisper-large-v3-turbo` returns `text` plus `segments`; `@cf/google/gemma-4-26b-a4b-it` returns a three-section `## TL;DR` / `## Summary` / `## Talking Points` markdown for the summary call and a JSON `{category, tags}` for the classification call. It logs every call as model, gateway task, input unit and input size, served at `GET /__verify/ai-calls` and cleared with `DELETE /__verify/ai-calls`.
 
 Ready means `GET /api/transcripts` returns `"success":true` and one seeded transcript body reads back from R2. A full real seed takes about 35 seconds.
 
@@ -39,7 +42,7 @@ Ready means `GET /api/transcripts` returns `"success":true` and one seeded trans
 
 ## Doctor
 
-`$S/cs-verify doctor` is read-only and takes a few seconds. It checks the recorded pid is alive, the local config has no `[ai]` block, the API answers, the home page is 200, a transcript body reads back from R2, and prints the D1 counts and the commit. Every failed check carries the command that fixes it.
+`$S/cs-verify doctor` is read-only and takes a few seconds. It checks the recorded pid is alive, the local config has no `[ai]` block, the config's `main` is the fake AI entry, `GET /__verify/ai-calls` answers on the running instance, the API answers, the home page is 200, a transcript body reads back from R2, and prints the D1 counts and the commit. Every failed check carries the command that fixes it.
 
 Run it before the first journey and whenever anything looks off.
 
@@ -69,7 +72,7 @@ node --test cli/test/*.test.mjs
 cd dashboard && node --test test/*.test.mjs
 ```
 
-Routes that call AI (`/api/whisper`, `/api/transcribe` audio, `/api/transcripts/:id/analyze`, `/summarize`, `/classify`) fail locally by design. Prove them with the repo stubs in the journeys and the Worker tests in `dashboard/test/`.
+AI routes (`/api/whisper`, `/api/transcribe` audio, `/api/transcripts/:id/analyze`, `/summarize`, `/classify`) run locally against the fake AI, so a journey can prove them through the real handler and the fake AI call log. `add-video` does exactly that. Remote inference, billing and model quality stay out of reach, which is what `dashboard/test/` covers.
 
 ## Evidence
 
@@ -100,7 +103,7 @@ git status --short
 
 ## Helpers
 
-`scripts/cs-verify` is the whole harness: launch, doctor, journey, select, shot and cleanup. `scripts/journeys.mjs` holds one journey function per feature. There is no package.json and no build step; the tool finds global `wrangler` and `playwright` through `npm root -g`.
+`scripts/cs-verify` is the whole harness: launch, doctor, journey, select, shot and cleanup. `scripts/journeys.mjs` holds one journey function per feature. `scripts/fake-ai-entry.mjs` is the only fake inside our own code: it swaps `env.AI` and leaves the Worker as it ships. There is no package.json and no build step; the tool finds global `wrangler` and `playwright` through `npm root -g`.
 
 ## Features
 
