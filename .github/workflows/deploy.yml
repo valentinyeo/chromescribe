@@ -49,6 +49,7 @@ jobs:
         run: |
           npm install -g wrangler@4.82.2 playwright@1.65.0
           npx -y playwright@1.65.0 install --with-deps chromium || npx -y playwright@1.65.0 install chromium
+          command -v ffmpeg || { sudo apt-get update -q && sudo apt-get install -y -q ffmpeg; }
           base=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=master&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // empty' || true)
           echo "Release proof covers every change since the last successful deploy: ${base:-none found, so every feature}"
           bash tools/run-journeys.sh "${base:-all}"

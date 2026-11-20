@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, copyFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
 const STAMP = Date.now().toString(36);
@@ -79,6 +80,107 @@ esac
 )
 if [ -n "$out" ]; then printf '%s' "$body" > "$out"; printf '200'; else printf '%s' "$body"; fi
 `);
+}
+
+const REAL_CURL = (() => {
+  try {
+    return execFileSync('sh', ['-c', 'command -v curl'], { encoding: 'utf8' }).trim() || '/usr/bin/curl';
+  } catch {
+    return '/usr/bin/curl';
+  }
+})();
+
+const YT_DLP_STUB = `#!/bin/bash
+file=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) file="$2"; shift 2;;
+    --print-to-file) printf 'Journey pipeline video\\n' > "$3"; shift 3;;
+    *) shift;;
+  esac
+done
+ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=10 -c:a aac -b:a 64k -f mp4 -y "\${file//%(ext)s/m4a}"
+`;
+
+function jinaBody(title) {
+  return `Title: ${title}\n\nMarkdown Content:\n# ${title}\n\n**Author:** Journey\n\n${'The pipeline drives the real scripts against the local app and checks the written result. '.repeat(6)}\n`;
+}
+
+function outsideCurl(dir, log, jinaFile) {
+  return writeStub(dir, 'curl', `#!/bin/bash
+argv=("$@")
+target=""
+for arg in "$@"; do
+  case "$arg" in
+    http://*|https://*) target="$arg";;
+  esac
+done
+printf '%s\\n' "$target" >> ${JSON.stringify(log)}
+out=""
+code=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2;;
+    -w) code="$2"; shift 2;;
+    -H|-F|-b|-c|-X|-d|-u|-A|-e|--max-time|--proto|--data-urlencode|--form-string|--retry|--connect-timeout) shift 2;;
+    *) shift;;
+  esac
+done
+reply() {
+  if [ -n "$out" ]; then cp "$1" "$out"; else cat "$1"; fi
+  if [ -n "$code" ]; then printf '200'; fi
+}
+case "$target" in
+  *r.jina.ai*) reply ${JSON.stringify(jinaFile)}; exit 0;;
+  *api.fxtwitter.com*) printf '%s' '{"tweet":{"text":"Journey post"}}'; exit 0;;
+  *youtube.com/oembed*) printf '%s' '{"title":"Journey pipeline video"}'; exit 0;;
+  *api.telegram.org*) printf '%s' '{"ok":true}'; exit 0;;
+esac
+exec ${JSON.stringify(REAL_CURL)} "\${argv[@]}"
+`);
+}
+
+function pipelineTools(j, name, scripts) {
+  const dir = stub(j, name);
+  const bin = join(dir, 'bin');
+  mkdirSync(join(dir, 'lib'), { recursive: true });
+  mkdirSync(join(dir, 'home'), { recursive: true });
+  copyFileSync(join(ROOT, 'lib', 'cf_access.sh'), join(dir, 'lib', 'cf_access.sh'));
+  copyFileSync(join(ROOT, 'fxtwitter_article.py'), join(dir, 'fxtwitter_article.py'));
+  copyFileSync(join(ROOT, 'upload_article.py'), join(dir, 'upload_article.py'));
+  copyFileSync(join(ROOT, 'cf_access.py'), join(dir, 'cf_access.py'));
+  for (const script of scripts) copyFileSync(join(ROOT, script), join(dir, script));
+  writeStub(dir, 'yt-dlp', YT_DLP_STUB);
+  const log = join(dir, 'curl.log');
+  const jinaFile = join(dir, 'jina.body');
+  writeFileSync(log, '');
+  outsideCurl(dir, log, jinaFile);
+  return {
+    dir,
+    log,
+    jina: title => writeFileSync(jinaFile, jinaBody(title)),
+    env: {
+      PATH: bin + ':' + process.env.PATH,
+      HOME: join(dir, 'home'),
+      CHROMESCRIBE_API: j.base,
+      CF_ACCESS_CLIENT_ID: 'verify-id',
+      CF_ACCESS_CLIENT_SECRET: 'verify-secret',
+      CHROMESCRIBE_ENV_FILE: join(dir, 'missing.env'),
+      CHROMESCRIBE_NO_OPEN: '1',
+    },
+    calls: () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : []),
+  };
+}
+
+const devLogMark = j => (existsSync(join(j.stateDir, 'dev.log')) ? readFileSync(join(j.stateDir, 'dev.log'), 'utf8').length : 0);
+
+const devLogSince = (j, mark) => {
+  const path = join(j.stateDir, 'dev.log');
+  return existsSync(path) ? readFileSync(path, 'utf8').slice(mark) : '';
+};
+
+function outsideOnly(j, urls) {
+  return urls.every(url => url.startsWith(j.base) || /r\.jina\.ai|api\.fxtwitter\.com|youtube\.com\/oembed/.test(url));
 }
 
 function cliEnv(j, extra = {}) {
@@ -583,79 +685,111 @@ async function cliLens(j) {
 }
 
 async function processPipeline(j) {
-  const dir = stub(j, 'process');
-  mkdirSync(join(dir, 'lib'), { recursive: true });
-  const copy = (from, to) => writeFileSync(to, readFileSync(from));
-  copy(join(ROOT, 'process.sh'), join(dir, 'process.sh'));
-  copy(join(ROOT, 'lib', 'cf_access.sh'), join(dir, 'lib', 'cf_access.sh'));
-  copy(join(ROOT, 'fxtwitter_article.py'), join(dir, 'fxtwitter_article.py'));
-  writeFileSync(join(dir, 'upload_article.py'), `print(${JSON.stringify(JSON.stringify({ data: { id: 7, already_exists: false } }))})\n`);
-  const log = join(dir, 'curl.log');
-  curlStub(dir, log, `  *analyze*) printf '%s' '{"success":true,"data":{"summarized":true,"classified":true,"word_count":1200,"category":"AI Agents"}}';;
-  *"/api/transcripts?"*) printf '%s' '{"success":true,"data":[]}';;
-  *transcribe*) printf '%s' '{"success":true,"data":{"id":7,"title":"Video title"}}';;
-  *r.jina.ai*) printf '%s' '{"title":"Journey article"}'; printf ' # Journey article\\n\\n'; printf '%0300d' 0;;`);
-  writeStub(dir, 'cmd.exe', '#!/bin/bash\nexit 0\n');
-  writeStub(dir, 'yt-dlp', `#!/bin/bash
-file=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -o) file="$2"; shift 2;;
-    --print-to-file) printf 'Journey video title\\n' > "$3"; shift 3;;
-    *) shift;;
-  esac
-done
-printf 'video' > "\${file//%(ext)s/webm}"
-`);
-  writeStub(dir, 'ffmpeg', `#!/bin/bash
-for arg in "$@"; do
-  if [[ "$arg" == */audio.mp3 ]]; then printf 'audio' > "$arg"; fi
-done
-`);
-  const video = j.run('bash', [join(dir, 'process.sh'), 'https://www.youtube.com/watch?v=JOURNEYPROC'], {
-    cwd: dir,
-    env: { PATH: join(dir, 'bin') + ':' + process.env.PATH, CF_ACCESS_CLIENT_ID: 'verify-id', CF_ACCESS_CLIENT_SECRET: 'verify-secret', CHROMESCRIBE_NO_OPEN: '1', REQUIRE_ANALYZE: '1' },
-  });
-  const calls = existsSync(log) ? readFileSync(log, 'utf8') : '';
-  j.check('process.sh finishes a video', video.code === 0, video.stdout.trim().split('\n').slice(-2).join(' | '));
-  j.check('process.sh downloads and extracts audio', video.stdout.includes('Audio extracted') && video.stdout.includes('Phase 1 complete'));
-  j.check('process.sh uploads to /api/transcribe', calls.includes('/api/transcribe'));
-  j.check('process.sh requests hosted analysis', calls.includes('/api/transcripts/7/analyze'));
-  j.check('process.sh reports the summary', video.stdout.includes('Cloudflare summary complete'), video.stdout.trim().split('\n').filter(line => line.includes('summary')).join(' | '));
+  const tools = pipelineTools(j, 'process', ['process.sh']);
+  const articleUrl = `https://example.com/journey-process-${STAMP}`;
+  const articleTitle = `Journey process article ${STAMP}`;
+  const videoId = youtubeId('PROC');
+  let articleId = 0;
+  let audioId = 0;
+  try {
+    tools.jina(articleTitle);
+    const articleMark = devLogMark(j);
+    const article = j.run('bash', [join(tools.dir, 'process.sh'), articleUrl], { cwd: tools.dir, env: tools.env, timeout: 180000 });
+    await j.sleep(800);
+    const articleLog = devLogSince(j, articleMark);
+    articleId = Number((/Article #(\d+)/.exec(article.stdout) || [])[1] || 0);
+    const row = articleId ? j.d1(`SELECT id, video_id, channel FROM transcripts WHERE id = ${articleId}`)[0] : null;
+    j.check('process.sh finishes the article path', article.code === 0 && articleId > 0, `${article.code} ${article.stdout.trim().split('\n').slice(-2).join(' | ')}`);
+    j.check('the article upload reaches the real local /api/transcribe handler', articleLog.includes('POST /api/transcribe 201'), articleLog.split('\n').filter(line => line.includes('/api/transcribe')).slice(-1).join(' | '));
+    j.check('the article becomes a row in local D1', Boolean(row) && row.video_id.startsWith('article:'), row ? `${row.video_id} ${row.channel}` : 'no row');
+    const body = articleId ? await j.api(`/api/transcript/${articleId}/content`) : { status: 0, text: '' };
+    j.check('the article body reads back from local R2', body.status === 200 && body.text.includes(articleTitle), `HTTP ${body.status} ${body.text.length} bytes`);
+    j.check('the analysis request reaches the real local analyze handler', articleLog.includes(`POST /api/transcripts/${articleId}/analyze`), articleLog.split('\n').filter(line => line.includes('/analyze')).slice(-1).join(' | '));
+    j.check('process.sh summarizes the article through the real analyze handler and the fake AI', article.stdout.includes('Cloudflare summary complete'), article.stdout.trim().split('\n').filter(line => line.includes('summary') || line.includes('analysis')).slice(-1).join(' | '));
+    j.check('process.sh never opened a browser', !article.stdout.includes('Opening http'));
 
-  const article = j.run('bash', [join(dir, 'process.sh'), 'https://example.com/journey-article'], {
-    cwd: dir,
-    env: { PATH: join(dir, 'bin') + ':' + process.env.PATH, CF_ACCESS_CLIENT_ID: 'verify-id', CF_ACCESS_CLIENT_SECRET: 'verify-secret', CHROMESCRIBE_NO_OPEN: '1', REQUIRE_ANALYZE: '1' },
-  });
-  j.check('process.sh finishes an article without yt-dlp', article.code === 0 && article.stdout.includes('Article #7'), article.stdout.trim().split('\n').slice(-2).join(' | '));
-  j.check('process.sh summarizes the article', article.stdout.includes('Cloudflare summary complete'), article.stdout.trim().split('\n').filter(line => line.includes('summary')).join(' | '));
-  j.check('process.sh never opened a browser', !article.stdout.includes('Opening http'));
+    const audioMark = devLogMark(j);
+    const audio = j.run('bash', [join(tools.dir, 'process.sh'), `https://www.youtube.com/watch?v=${videoId}`], {
+      cwd: tools.dir,
+      env: { ...tools.env, REQUIRE_ANALYZE: '1' },
+      timeout: 180000,
+    });
+    await j.sleep(800);
+    const audioLog = devLogSince(j, audioMark);
+    audioId = Number((/Transcript #(\d+)/.exec(audio.stdout) || [])[1] || 0);
+    const transcribed = /Transcribing audio with Cloudflare AI, buffer size: \d+/.test(audioLog);
+    const accepted = audio.code === 0 && audio.stdout.includes('Phase 1 complete');
+    j.check('process.sh extracts the audio before uploading', audio.stdout.includes('Audio extracted'), audio.stdout.trim().split('\n').slice(0, 3).join(' | '));
+    j.check('the audio upload reaches the real local /api/transcribe handler', transcribed && audioLog.includes(`Video ID: ${videoId}`), audioLog.split('\n').filter(line => line.includes('Video ID') || line.includes('buffer size')).join(' | '));
+    j.check('the real handler accepts the audio and writes a transcript', accepted && audioId > 0, accepted ? 'accepted, transcript written' : audio.stdout.trim().split('\n').filter(line => line.includes('ERROR')).slice(-1).join(' | '));
+    j.check('the outside network is faked only for Jina Reader', outsideOnly(j, tools.calls()), tools.calls().slice(0, 3).join(' | '));
+  } finally {
+    await removeTranscript(j, articleId);
+    await removeTranscript(j, audioId);
+  }
 }
 
 async function queueDrain(j) {
-  const dir = stub(j, 'queue-drain');
-  mkdirSync(join(dir, 'lib'), { recursive: true });
-  writeFileSync(join(dir, 'queue.sh'), readFileSync(join(ROOT, 'queue.sh')));
-  writeFileSync(join(dir, 'lib', 'cf_access.sh'), readFileSync(join(ROOT, 'lib', 'cf_access.sh')));
-  const log = join(dir, 'curl.log');
-  curlStub(dir, log, `  *"/api/queue/1"*) printf '%s' '{"success":true,"data":{"id":1,"status":"ok"}}';;
-  *"/api/queue"*) printf '%s' '{"success":true,"data":[{"id":1,"video_id":"JOURNEY0001","url":"https://www.youtube.com/watch?v=JOURNEY0001"}]}';;
-  *youtube.com/oembed*) printf '%s' '{"title":"Journey drain video"}';;
-  `);;
-  const monitorLog = join(dir, 'monitor.log');
-  writeStub(dir, 'monitor-stub.sh', `#!/bin/bash\nprintf '%s\\n' "$@" >> ${JSON.stringify(monitorLog)}\nexit 0\n`);
-  const result = j.run('bash', [join(dir, 'queue.sh')], {
-    cwd: dir,
-    env: { PATH: join(dir, 'bin') + ':' + process.env.PATH, CF_ACCESS_CLIENT_ID: 'verify-id', CF_ACCESS_CLIENT_SECRET: 'verify-secret', MONITOR_SH: join(dir, 'bin', 'monitor-stub.sh'), QUEUE_LOCK_FILE: join(dir, 'queue.lock') },
-  });
-  const calls = existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [];
-  const puts = calls.filter(line => line.includes('/api/queue/1') && line.includes('PUT'));
-  j.check('queue.sh exits 0', result.code === 0, result.stderr.trim().slice(0, 120));
-  j.check('queue.sh marks the row processing first', puts.length >= 1 && puts[0].includes('processing'), puts[0] || 'no PUT');
-  j.check('queue.sh finishes the row as done', puts.some(line => line.includes('done')), puts.at(-1) || 'no PUT');
-  j.check('queue.sh logs the outcome', result.stdout.includes('Queue #1: done'), result.stdout.trim().split('\n').slice(-2).join(' | '));
-  const monitored = existsSync(monitorLog) ? readFileSync(monitorLog, 'utf8') : '';
-  j.check('queue.sh hands the video to monitor.sh', monitored.includes('JOURNEY0001') && monitored.includes('Journey drain video'), monitored.trim().slice(0, 80));
+  const tools = pipelineTools(j, 'queue-drain', ['queue.sh', 'process.sh', 'monitor.sh']);
+  const env = { ...tools.env, MONITOR_SH: join(tools.dir, 'monitor.sh'), QUEUE_LOCK_FILE: join(tools.dir, 'queue.lock') };
+  const freshUrl = `https://example.com/journey-drain-${STAMP}`;
+  const freshTitle = `Journey drain article ${STAMP}`;
+  const settledUrl = `https://example.com/journey-drain-settled-${STAMP}`;
+  const settledTitle = `Journey drain settled article ${STAMP}`;
+  const created = [];
+  const transcripts = [];
+  let drained = [];
+  const floor = j.d1('SELECT COALESCE(MAX(id), 0) AS n FROM transcripts')[0].n;
+  try {
+    const fresh = await json(j, '/api/queue', { method: 'POST', body: { url: freshUrl } });
+    created.push(fresh.id);
+    const settled = await json(j, '/api/queue', { method: 'POST', body: { url: settledUrl } });
+    created.push(settled.id);
+    const existing = await json(j, '/api/transcribe', { method: 'POST', body: { url: settledUrl, markdown_content: markdown(settledTitle) } });
+    transcripts.push(existing.id);
+    j.check('the queue holds two waiting article rows before the drain', fresh.id > 0 && settled.id > 0, `rows ${fresh.id} and ${settled.id}`);
+
+    tools.jina(freshTitle);
+    const articleMark = devLogMark(j);
+    const run = j.run('bash', [join(tools.dir, 'queue.sh')], { cwd: tools.dir, env: { ...env, QUEUE_PLATFORMS: 'article' }, timeout: 240000 });
+    await j.sleep(800);
+    const articleLog = devLogSince(j, articleMark);
+    const rows = await json(j, '/api/queue/all?limit=1000');
+    const freshRow = rows.find(row => row.id === fresh.id) || {};
+    const settledRow = rows.find(row => row.id === settled.id) || {};
+    const written = j.d1(`SELECT id, video_id FROM transcripts WHERE title = '${freshTitle}'`);
+    transcripts.push(...written.map(row => row.id));
+    j.check('queue.sh claims both rows through the real API before work', freshRow.attempts >= 1 && settledRow.attempts >= 1 && Boolean(freshRow.started_at) && Boolean(settledRow.started_at), `attempts ${freshRow.attempts} and ${settledRow.attempts}`);
+    j.check('queue.sh runs the real process.sh for the article rows', run.stdout.includes('Uploading raw article to dashboard'), run.stdout.trim().split('\n').slice(-2).join(' | '));
+    j.check('the row whose transcript exists ends done', settledRow.status === 'done' && run.stdout.includes('Already transcribed'), `${settledRow.status} ${settledRow.error || ''}`.trim());
+    j.check('the fresh row writes a transcript through the real /api/transcribe handler', written.length === 1 && articleLog.includes('POST /api/transcribe 201'), written.map(row => row.video_id).join(' | '));
+    j.check('the fresh row is no longer waiting', freshRow.status !== 'pending' && Boolean(freshRow.finished_at), `${freshRow.status} ${freshRow.error || ''}`.trim());
+    j.check('the fresh row ends done', freshRow.status === 'done', `${freshRow.status}: ${(freshRow.error || '').slice(0, 120)}`);
+
+    const waiting = await json(j, '/api/queue?platforms=youtube');
+    drained = waiting;
+    j.check('the queue holds waiting video rows for the hand-off', waiting.length > 0, `${waiting.length} waiting`);
+    const videoMark = devLogMark(j);
+    const handoff = j.run('bash', [join(tools.dir, 'queue.sh')], { cwd: tools.dir, env: { ...env, QUEUE_PLATFORMS: 'youtube' }, timeout: 240000 });
+    await j.sleep(800);
+    const videoLog = devLogSince(j, videoMark);
+    const after = await json(j, '/api/queue/all?limit=1000');
+    const first = waiting[0] || {};
+    const videoRow = after.find(row => row.id === first.id) || {};
+    j.check('queue.sh hands the waiting video to the real monitor.sh', handoff.stdout.includes(`Force mode: processing video ${first.video_id}`), handoff.stdout.trim().split('\n').find(line => line.includes('Force mode')) || 'no hand-off');
+    j.check('the hand-off uploads the audio to the real local handler', videoLog.includes(`Video ID: ${first.video_id}`) && /Transcribing audio with Cloudflare AI, buffer size: \d+/.test(videoLog), videoLog.split('\n').filter(line => line.includes('Video ID') || line.includes('buffer size')).slice(-2).join(' | '));
+    j.check('the drained video row leaves the waiting state', videoRow.status !== 'pending' && videoRow.attempts >= 1, `${videoRow.status} attempts ${videoRow.attempts}`);
+    j.check('the drained video row ends done', videoRow.status === 'done', `${videoRow.status}: ${(videoRow.error || '').slice(0, 120)}`);
+    j.check('every call the scripts made went to the local instance or a faked outside host', outsideOnly(j, tools.calls()), tools.calls().filter(url => !url.startsWith(j.base)).join(' | '));
+  } finally {
+    for (const id of created) await j.api(`/api/queue/${id}`, { method: 'DELETE' }).catch(() => {});
+    for (const id of transcripts) await removeTranscript(j, id);
+    const videos = drained.map(row => `'${row.video_id}'`).join(',');
+    if (videos) {
+      for (const row of j.d1(`SELECT id FROM transcripts WHERE id > ${floor} AND video_id IN (${videos})`)) await removeTranscript(j, row.id);
+    }
+    for (const row of drained) await j.api(`/api/queue/${row.id}`, { method: 'PUT', body: { status: 'pending' } }).catch(() => {});
+  }
 }
 
 async function monitor(j) {

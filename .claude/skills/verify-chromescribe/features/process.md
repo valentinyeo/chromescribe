@@ -31,16 +31,20 @@ paths:
 
 Preconditions:
 
-- `cs-verify launch` is ok, but the journey never talks to it.
-- The journey copies `process.sh`, `lib/cf_access.sh`, `fxtwitter_article.py` and a JSON-printing `upload_article.py` into a temp directory, and puts stub `curl`, `cmd.exe`, `yt-dlp` and `ffmpeg` on `PATH`.
+- `cs-verify launch` runs the real Worker on `127.0.0.1` with the Access gate off. The journey drives that instance; nothing is stubbed in our own code.
+- The journey copies `process.sh`, `upload_article.py`, `fxtwitter_article.py` and `lib/cf_access.sh` into a temp directory, puts a stub `yt-dlp` on `PATH` that writes a real 10 second audio file with the real `ffmpeg`, and adds a `curl` wrapper that answers only the outside network (Jina Reader, FXTwitter, YouTube oEmbed) and hands every other URL to the real `curl`.
+- It runs with `CHROMESCRIBE_API` set to the local instance and `CHROMESCRIBE_NO_OPEN=1`.
 
-- **Video path.** Run `cs-verify journey process`. The journey runs `process.sh https://www.youtube.com/watch?v=JOURNEYPROC` with `REQUIRE_ANALYZE=1` and `CHROMESCRIBE_NO_OPEN=1`. It must exit 0, print `Audio extracted` and `Phase 1 complete`, call `/api/transcribe`, then `/api/transcripts/7/analyze`.
-- **Article path.** The journey runs `process.sh https://example.com/journey-article`. It must exit 0, print `Article #7`, print `Cloudflare summary complete`, and never open a browser.
-- **Analysis.** Both paths must print `Cloudflare summary complete`.
+- **Article path.** Run `cs-verify journey process`. The journey runs `process.sh https://example.com/journey-process-<stamp>`. It must exit 0 and print `Phase 1 complete! Article #<id>`.
+- **Article checks.** The Worker log must show `POST /api/transcribe 201`, a transcript row for the article must exist in local D1, its body must read back from local R2, and the Worker log must show `POST /api/transcripts/<id>/analyze`.
+- **Article summary.** The article path must print `Cloudflare summary complete` from the real analyze handler and the fake AI.
+- **Audio path.** The journey runs `process.sh https://www.youtube.com/watch?v=<id>` with `REQUIRE_ANALYZE=1`. The Worker log must show `Video ID: <id>` and `Transcribing audio with Cloudflare AI, buffer size: N`, which proves the real multipart upload reached the `/api/transcribe` handler.
+- **Audio outcome.** The real handler accepts the audio: `process.sh` exits 0, prints `Audio extracted` and `Phase 1 complete`, and writes a transcript with an id above 0.
+- **No API stub.** The journey fails if any recorded `curl` call went somewhere other than the local instance or a faked outside host.
 
 ## Gotchas
 
-- Real downloads need live YouTube or TikTok and a working `yt-dlp`. TikTok blocks datacenter IPs, and this journey runs on a VPS with stubs only.
-- The audio paths need Workers AI, which is off locally. The stub `curl` answers the transcribe and analyze calls; the real handler is covered by `dashboard/test/` and the add-video journey.
-- `process.sh` hardcodes the workers.dev API base and is not pointed at the local instance. The stubs record the calls instead.
-- The chunked path only runs for audio over 500 KB. The journey stub writes a few bytes, so it exercises the small-upload path.
+- Real downloads need live YouTube or TikTok and a working `yt-dlp`. TikTok blocks datacenter IPs, so `yt-dlp` is a stub here. `ffmpeg` is a local tool, so the journey runs the real one.
+- Transcription and analysis reach the fake `env.AI` from `scripts/fake-ai-entry.mjs`. The handlers are real.
+- The chunked path only runs for audio over 500 KB. The fake audio is 10 seconds of 64k AAC, so the small-upload path is what runs.
+- Jina Reader, FXTwitter and YouTube oEmbed are the only faked network calls. `r.jina.ai` in particular is a real paid service.

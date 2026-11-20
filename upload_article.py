@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, re, sys, urllib.request
+import json, os, re, sys, urllib.request
 from datetime import date
 from cf_access import load
 
@@ -60,8 +60,10 @@ md = f"""# {title}
 
 payload = json.dumps({'url': url, 'title': title, 'markdown_content': md})
 
+API_BASE = os.environ.get('CHROMESCRIBE_API', 'https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev').rstrip('/')
+
 req = urllib.request.Request(
-    'https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev/api/transcribe',
+    f'{API_BASE}/api/transcribe',
     data=payload.encode(),
     headers={
         'Content-Type': 'application/json',
