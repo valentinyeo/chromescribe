@@ -68,7 +68,7 @@ const HELP = {
   },
   doctor: {
     usage: 'cs-verify doctor',
-    description: 'Read-only check that the instance is worth driving: recorded pid alive, the Worker entry is the fake AI wrapper, no AI binding, the fake AI answers, API answering, home page 200, transcript body readable from R2, row counts, commit.',
+    description: 'Read-only check that the instance is worth driving: recorded pid alive, ffmpeg on PATH, the Worker entry is the fake AI wrapper, no AI binding, the fake AI answers, API answering, home page 200, transcript body readable from R2, row counts, commit.',
     options: [],
     output: 'ok plus a checks array; every failed check carries the command that fixes it.',
     examples: ['cs-verify doctor'],
@@ -684,6 +684,9 @@ async function doctor() {
   const checks = [];
   const add = (name, ok, detail, fix) => checks.push({ name, ok: Boolean(ok), detail: String(detail ?? ''), ...(ok ? {} : { fix }) });
   add('instance pid', pid, pid ? `pid ${pid}` : 'no pid recorded or the process exited', 'Run cs-verify launch.');
+  const ffmpeg = spawnSync('sh', ['-c', 'command -v ffmpeg'], { encoding: 'utf8' });
+  const ffmpegPath = ffmpeg.status === 0 ? ffmpeg.stdout.trim() : '';
+  add('ffmpeg on PATH', ffmpegPath, ffmpegPath || 'the pipeline journeys write and extract a real audio file, so ffmpeg must be installed', 'sudo apt-get update -q && sudo apt-get install -y -q ffmpeg');
   const config = readIf(join(RUN, 'wrangler.toml'));
   add('no AI binding', config && !/^\[ai\]/m.test(config), config ? 'local config has no [ai] block' : 'local config missing', 'Run cs-verify launch to regenerate the config.');
   const entry = `main = ${JSON.stringify(FAKE_AI_ENTRY)}`;
@@ -970,6 +973,7 @@ async function runOneJourney({ feature, browser, record, journeys, base }) {
   const j = {
     feature: feature.name,
     base,
+    stateDir: RUN,
     url: path => base + (path || '/'),
     proofDir,
     checks,

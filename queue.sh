@@ -3,7 +3,12 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
+CHROMESCRIBE_API="${CHROMESCRIBE_API:-https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev}"
+DASHBOARD_URL="${CHROMESCRIBE_API%/}"
+case "$CHROMESCRIBE_API" in
+    https://*) API_PROTOCOL='=https' ;;
+    *) API_PROTOCOL='=https,http' ;;
+esac
 
 # shellcheck disable=SC1090
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
@@ -41,7 +46,7 @@ api_call() {
     local out="$TMPDIR_Q/api.json"
     local err="$TMPDIR_Q/curl.err"
     local code rc
-    code=$(curl -sS -f --max-time "$API_MAX_TIME" --proto '=https' \
+    code=$(curl -sS -f --max-time "$API_MAX_TIME" --proto "$API_PROTOCOL" \
         -X "$method" \
         -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
         -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \

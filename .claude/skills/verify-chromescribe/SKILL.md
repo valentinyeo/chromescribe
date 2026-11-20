@@ -1,6 +1,6 @@
 ---
 name: verify-chromescribe
-description: Verify ChromeScribe changes with cs-verify. Launches the real Worker and pages locally against seeded D1 and R2 with no AI binding, checks readiness, drives every user feature in headless Chromium or through the real CLI and shell pipelines, saves proof, and reports one JSON object per command. Use after any change to dashboard/, cli/, tools/, process.sh, queue.sh, monitor.sh or extension/, and for screenshot or journey proof before a PR.
+description: Verify ChromeScribe changes with cs-verify. Launches the real Worker and pages locally against seeded D1 and R2 with only the Workers AI binding faked, checks readiness, drives every user feature in headless Chromium or through the real CLI and shell pipelines, saves proof, and reports one JSON object per command. Use after any change to dashboard/, cli/, tools/, process.sh, queue.sh, monitor.sh or extension/, and for screenshot or journey proof before a PR.
 ---
 
 # Verify ChromeScribe
@@ -118,7 +118,7 @@ home and video pages, the article original link, add video, queue, subscriptions
 - Master is protected: push a branch, open a PR with `Author model:` lines, and wait for the `pstack-verifier` verdict. It is the only required check. Never merge on FAIL.
 - No code comments in any file, YAML and shell included. `node tools/strip-comments.mjs .` removes them.
 - TikTok and live YouTube downloads do not work from a datacenter host. The shell journeys use stubs, and the real paths run on the Windows box.
-- `queue.sh` and `process.sh` hardcode the workers.dev API base. Their journeys use stubs; the local instance is for the web, CLI and share journeys.
+- `queue.sh`, `process.sh` and `monitor.sh` read the API base from `CHROMESCRIBE_API`, default the workers.dev host. Their journeys point it at the local instance and fake only outside systems: `yt-dlp`, Jina Reader, FXTwitter, YouTube oEmbed and Workers AI. No journey stubs `curl` on the `queue-drain` and `process` paths.
 - A second instance needs its own `CS_VERIFY_DIR` and `CS_VERIFY_PORT`. Two runs sharing one state directory corrupt each other.
 - The real seed writes about 120 MB of transcript markdown into the state directory. `cleanup` removes it.
 

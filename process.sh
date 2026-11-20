@@ -39,7 +39,8 @@ if m and host in {"x.com", "www.x.com", "mobile.x.com", "twitter.com", "www.twit
 sys.exit(0 if is_x or host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be", "tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"} else 1)' "$1"
 }
 
-DASHBOARD_BASE="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
+CHROMESCRIBE_API="${CHROMESCRIBE_API:-https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev}"
+DASHBOARD_BASE="${CHROMESCRIBE_API%/}"
 
 api_call() {
     local method="$1" path="$2"

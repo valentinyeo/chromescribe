@@ -8,7 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CHANNELS_FILE="$SCRIPT_DIR/channels.txt"
 PROCESSED_FILE="$SCRIPT_DIR/.processed_videos"
 TMPDIR="$(mktemp -d /tmp/chromescribe.XXXXXX)"
-DASHBOARD_URL="https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev"
+CHROMESCRIBE_API="${CHROMESCRIBE_API:-https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev}"
+DASHBOARD_URL="${CHROMESCRIBE_API%/}"
 
 export PATH="$HOME/.local/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$PATH"
 export DISPLAY=:0
