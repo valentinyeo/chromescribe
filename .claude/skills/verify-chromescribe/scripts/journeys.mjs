@@ -228,35 +228,85 @@ async function video(j) {
   j.check('missing id shows a clear error', error.includes('No transcript ID provided'), error.trim().slice(0, 80));
 }
 
-async function addVideo(j) {
-  const page = await j.open('/');
-  const captured = {};
-  await page.route('**/api/transcribe', async route => {
-    captured.body = route.request().postDataJSON();
-    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ success: true, data: { id: 999001, title: 'Journey added video' } }) });
-  });
-  await page.locator('#mobileMenuBtn').click();
-  await page.locator('#mobileMenu button').filter({ hasText: 'Add Video' }).click();
-  await page.waitForSelector('#addModal:not(.hidden)');
-  j.check('Add opens the video form', await page.locator('#addForm').isVisible());
-  await page.fill('#videoUrl', 'https://www.youtube.com/watch?v=JRNYADD0001');
-  await page.fill('#videoTitle', 'Journey added video');
-  await page.fill('#srtContent', 'Journey pasted transcript text.');
-  await page.locator('#addForm button[type="submit"]').click();
-  await page.waitForFunction(() => document.querySelector('#toastMessage')?.textContent === 'Added!');
-  j.check('Add posts the form to the API', captured.body?.url === 'https://www.youtube.com/watch?v=JRNYADD0001' && captured.body?.srt_content === 'Journey pasted transcript text.', JSON.stringify(captured.body).slice(0, 160));
-  j.check('Add confirms success and closes the form', await page.locator('#addModal').evaluate(node => node.classList.contains('hidden')));
-  await j.shot('add-video-form');
+const FAKE_AI_LOG = '/__verify/ai-calls';
+const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
+const ANALYSIS_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 
-  await page.unroute('**/api/transcribe');
-  const title = `Journey added real ${STAMP}`;
-  const created = await createArticle(j, title);
-  j.check('the real transcribe path writes a transcript', created?.id > 0, `id ${created?.id}`);
-  await page.goto(j.url('/'), { waitUntil: 'networkidle' });
-  const card = page.locator('#videoGrid .card').filter({ hasText: title }).first();
-  j.check('the new transcript reaches the home list', await retryUntil(card), title);
-  await j.shot('add-video-home');
-  await removeTranscript(j, created.id);
+async function fakeAiCalls(j) {
+  const result = await j.api(FAKE_AI_LOG);
+  if (result.status !== 200 || !Array.isArray(result.json?.calls)) {
+    throw new Error(`GET ${FAKE_AI_LOG} returned HTTP ${result.status}: ${result.text.slice(0, 200)}. The instance is not running the fake AI entry; run cs-verify doctor.`);
+  }
+  return result.json.calls;
+}
+
+async function uploadAudio(j, title) {
+  const audio = Buffer.from(('ID3 local verification audio payload for ' + title + ' ').repeat(64));
+  const form = new FormData();
+  form.append('audio', new Blob([audio], { type: 'audio/mpeg' }), 'journey-audio.mp3');
+  form.append('title', title);
+  const response = await fetch(j.base + '/api/transcribe', { method: 'POST', body: form, signal: AbortSignal.timeout(120000) });
+  const text = await response.text();
+  let body = null;
+  try {
+    body = JSON.parse(text);
+  } catch {}
+  return { status: response.status, text, body, bytes: audio.length };
+}
+
+async function addVideo(j) {
+  await j.api(FAKE_AI_LOG, { method: 'DELETE' });
+  let created = null;
+  let page = null;
+  try {
+    page = await j.open('/');
+    await page.locator('#mobileMenuBtn').click();
+    await page.locator('#mobileMenu button').filter({ hasText: 'Add Video' }).click();
+    await page.waitForSelector('#addModal:not(.hidden)');
+    j.check('Add opens the video form', await page.locator('#addForm').isVisible());
+    await page.fill('#videoUrl', 'https://www.youtube.com/watch?v=JRNYADD0001');
+    await page.fill('#videoTitle', 'Journey added video');
+    await page.fill('#srtContent', 'Journey pasted transcript text.');
+    const answered = page.waitForResponse(response => response.url().includes('/api/transcribe') && response.request().method() === 'POST');
+    await page.locator('#addForm button[type="submit"]').click();
+    const response = await answered;
+    const body = await response.json();
+    await page.waitForFunction(() => document.querySelector('#toastMessage')?.textContent === 'Added!');
+    j.check('Add posts the form to the real API', response.status() === 200 && j.apiCalls.some(call => call === '200 POST /api/transcribe'), j.apiCalls.join(', '));
+    j.check('the real handler answers the form', (body?.data?.instructions?.step1 || '').includes('yt-dlp'), JSON.stringify(body?.data).slice(0, 200));
+    j.check('Add confirms success and closes the form', await page.locator('#addModal').evaluate(node => node.classList.contains('hidden')));
+    j.check('the form path asks no AI', (await fakeAiCalls(j)).length === 0);
+    await j.shot('add-video-form');
+
+    const title = `Journey audio ${STAMP}`;
+    const uploaded = await uploadAudio(j, title);
+    created = uploaded.body?.data;
+    j.check('the audio upload runs the real transcribe handler', uploaded.status === 201 && uploaded.body?.success === true && created?.id > 0, `HTTP ${uploaded.status} ${uploaded.text.slice(0, 200)}`);
+    const calls = await fakeAiCalls(j);
+    const whisper = calls.filter(call => call.model === WHISPER_MODEL);
+    const gemma = calls.filter(call => call.model === ANALYSIS_MODEL);
+    j.check('the fake AI was asked to transcribe the upload', whisper.length === 1 && whisper[0].input_size === uploaded.bytes && whisper[0].input_unit === 'audio_bytes', `${JSON.stringify(whisper)} for ${uploaded.bytes} bytes`);
+    j.check('the fake AI was asked to summarize and classify', gemma.length === 2 && new Set(gemma.map(call => call.task)).size === 2, JSON.stringify(gemma));
+    j.check('the handler stored the fake summary and category', created?.summarized === true && created?.classified === true && created?.category === 'Journey Verification', JSON.stringify({ summarized: created?.summarized, classified: created?.classified, category: created?.category }));
+    const proofLog = join(j.proofDir, 'ai-calls.json');
+    writeFileSync(proofLog, JSON.stringify(calls, null, 2));
+    j.proof.push(proofLog);
+
+    const row = await j.api(`/api/transcripts/${created.id}`);
+    j.check('the new transcript row is in the API', row.status === 200 && row.json?.data?.title === title, `HTTP ${row.status} ${row.text.slice(0, 120)}`);
+    const stored = j.d1(`SELECT title, category, word_count FROM transcripts WHERE id = ${Number(created.id)}`)[0];
+    j.check('the new transcript row is in D1', stored?.title === title && stored?.category === 'Journey Verification' && stored?.word_count > 0, JSON.stringify(stored));
+    const content = await j.api(`/api/transcript/${created.id}/content`);
+    j.check('the stored markdown carries the fake summary', content.status === 200 && content.text.includes('## TL;DR') && content.text.includes('local verification fake'), `HTTP ${content.status} ${content.text.length} bytes`);
+
+    await page.goto(j.url('/'), { waitUntil: 'networkidle' });
+    const card = page.locator('#videoGrid .card').filter({ hasText: title }).first();
+    j.check('the new transcript reaches the home list', await retryUntil(card), title);
+    await j.shot('add-video-home');
+  } finally {
+    if (created?.id) await removeTranscript(j, created.id);
+    await j.api(FAKE_AI_LOG, { method: 'DELETE' }).catch(() => {});
+  }
 }
 
 async function queue(j) {
