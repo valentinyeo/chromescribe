@@ -74,6 +74,23 @@ cd dashboard && node --test test/*.test.mjs
 
 AI routes (`/api/whisper`, `/api/transcribe` audio, `/api/transcripts/:id/analyze`, `/summarize`, `/classify`) run locally against the fake AI, so a journey can prove them through the real handler and the fake AI call log. `add-video` does exactly that. Remote inference, billing and model quality stay out of reach, which is what `dashboard/test/` covers.
 
+## Steps the local setup skips
+
+Production does each of these and the local instance does not. Each line names where the step is covered instead.
+
+- **Workers AI and AI Gateway.** Locally `scripts/fake-ai-entry.mjs` answers `env.AI`. The real handlers run against that fake. Model output, gateway tags and billing are seen only on the live site.
+- **Access login and the API gate.** Launch sets `CHRO10_API_GATE=0`. The gate is covered by `dashboard/test/access-gate.test.mjs`, and every deploy runs `tools/live-check.mjs --require-login`, which fails unless the live API refuses calls without a login.
+- **Remote D1, R2 and the custom domain.** Locally they are wrangler's local stores on `127.0.0.1`. `tools/live-check.mjs` checks the live pages, the API and the public reports after every deploy.
+- **YouTube and TikTok downloads.** `yt-dlp` is faked. TikTok blocks datacenter IPs, so real downloads run only on the Windows box.
+- **ffmpeg chunking for audio over 500 KB.** The fake download is 10 seconds of audio, so only the direct upload runs. The chunked path and `/api/whisper` chunk uploads are not driven by any journey.
+- **Jina Reader, FXTwitter and YouTube oEmbed.** The `curl` wrapper answers these outside hosts and passes every other URL to the real `curl`.
+- **VPSManager terminal.** The `extension` journey stubs the `chrome` API because the terminal at `localhost:7681` is not started.
+- **Codex through `hax`.** `cli-learn` and `cli-lens` fake `hax` and `yt-dlp`, so they prove the CLI plumbing, not the learning output.
+- **Telegram.** Notifications are off by default (`CHROMESCRIBE_TELEGRAM`). The `monitor` journey checks that no message is sent, and the pipeline `curl` wrapper answers Telegram if one is.
+- **Windows TikTok drain task.** The journeys never queue or drain TikTok; that task runs only on the Windows box.
+- **The Android app.** It lives in its own repo. The `phone-share`, `android-updates` and `queue` journeys drive the API it calls.
+- **Known gap: the `monitor` journey still stubs `curl` for our own API.** `queue-drain` runs the real `monitor.sh` against the local Worker for one video, which covers the force path. The channel polling path is covered only by that stub.
+
 ## Evidence
 
 - Journeys save screenshots under `/tmp/cs-verify/proof/<feature>/` and return every check with its pass state and detail.

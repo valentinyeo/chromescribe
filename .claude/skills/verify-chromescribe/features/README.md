@@ -17,7 +17,7 @@ This directory is the maintained source for proving user-facing ChromeScribe beh
 - Journeys start from the seeded state. A journey that needs extra rows creates them through the API or the repo stubs and removes them at the end.
 - Prefer stable handles: ids, `aria-label`, role and visible text. Never click coordinates.
 - A journey asserts user-visible end state and, where the feature writes data, the side effect through the API or a read-only D1 query.
-- AI, live YouTube and live TikTok are off locally. Those features are driven with the repo's stubs and say so in their Gotchas.
+- Workers AI is faked locally by `scripts/fake-ai-entry.mjs`; live YouTube and TikTok downloads are faked too. Features that touch them say so in their Gotchas, and `SKILL.md` lists every step the local setup skips.
 - `--video` records a `.webm` of each browser journey beside its screenshots.
 
 ## Proof and reporting
