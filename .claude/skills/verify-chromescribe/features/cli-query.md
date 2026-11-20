@@ -14,7 +14,7 @@ The `chromescribe` CLI reads the library from a shell: list, search, get, cat, u
 - `list [-n N] [--channel <name>] [--json]` lists newest first.
 - `` `search <query> [--json]` `` matches titles, channels and video ids through `/api/search`.
 - `` `get <id> [--json]` `` shows one row.
-- `` `cat <id>` `` prints the markdown body.
+- `` `cat <id|link>` `` prints the markdown body for an id or a pasted `transcript.html?id=<id>` link, and refuses the Access login page.
 - `` `url <source-url> [--json]` `` finds a row by YouTube or TikTok link.
 - `` `view <id>` `` prints the dashboard link.
 - `` `help` `` prints every command and its examples.
@@ -34,7 +34,7 @@ Preconditions:
 
 - **List.** Run `cs-verify journey cli-query`. The journey runs `bash cli/chromescribe list -n 3 --json` and compares the ids with `GET /api/transcripts?limit=3`.
 - **Search and get.** A word from the first title must return that id, and `get <id> --json` must return the same row.
-- **Cat.** `cat <id>` must exit 0, print more than 1000 characters and contain the video id.
+- **Cat.** `cat <id>` must exit 0, print more than 1000 characters and contain the video id; `cat https://chromescribe.yeoux.net/transcript.html?id=<id>` reads the same body, and a link with no `id=` exits non-zero.
 - **Url and view.** `url` with the row's YouTube link must find it; `view <id>` must print `https://chromescribe.yeoux.net/transcript.html?id=<id>`.
 - **Failure and help.** `get 999999` must exit non-zero and print `error:`; `--help` must name `list`, `cat`, `channels`, `subscribe`, `learn` and `lens`.
 

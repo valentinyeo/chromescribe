@@ -35,12 +35,13 @@ Preconditions:
 - **Create two rows.** Run `cs-verify journey queue`. The journey posts two YouTube links to `POST /api/queue`, then marks the second `failed` with reason `Journey failure reason` through `PUT /api/queue/<id>`.
 - **Columns render.** The journey opens `/queue.html` and compares `#count` with `GET /api/queue/all?limit=200`. The Waiting column shows the first link and the Failed column shows the reason.
 - **Routing label.** The waiting YouTube row carries `runs on the server`; a TikTok row would carry `runs on the laptop`.
-- **Retry writes.** The journey accepts the confirm dialog, clicks the row's Retry button and waits for the link in `#pending`. `GET /api/queue/all` then reports `status: pending` for that row.
+- **Retry writes.** The journey clicks the row's Retry button and waits for the link in `#pending`. `GET /api/queue/all` then reports `status: pending` for that row.
+- **Remove confirms.** Removing a failed row needs the confirm dialog; the journey leaves the seeded rows alone.
 - **Proof.** `proof/queue/queue-phone.png` shows all four columns and `queue-after-retry.png` shows the row back in Waiting.
 
 ## Gotchas
 
-- Retry opens a confirm dialog. Without a dialog handler the click hangs.
+- Retry has no confirm dialog; only Remove does. A dialog handler on Retry is harmless but misleading.
 - The page polls every 15 seconds. Wait for the rendered row, not a fixed sleep, or a poll may race the assertion.
 - Rows created by the journey are deleted at the end, so reruns stay stable. A failed seeded row is not touched.
 - A pending video id is unique. Posting the same link twice does not create a second pending row; the share journey covers that.

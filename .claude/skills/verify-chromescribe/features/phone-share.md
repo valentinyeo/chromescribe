@@ -32,8 +32,9 @@ Preconditions:
 - `cs-verify launch` and `cs-verify doctor` are ok.
 
 - **Queue a link.** Run `cs-verify journey phone-share`. `POST /api/queue` with a YouTube link must return 200 with `queued: true` and `platform: "youtube"`.
-- **Duplicate.** Posting the same link again must return the same id with `duplicate: true`, and `GET /api/queue?platforms=youtube` must hold one pending row for it.
-- **Refuse.** Posting `not a link` must return 400 with `Unsupported URL`.
+- **Duplicate.** Posting the same link again must return the same id with `duplicate: true`, and `GET /api/queue/all?limit=1000` must hold one pending row for it.
+- **TikTok.** A full `tiktok.com/@user/video/<id>` link and a short `tiktok.com/t/<code>` link both queue with `platform: "tiktok"`.
+- **Refuse.** Posting `not a link`, a `localhost` link or a link with credentials must return 400 with `Unsupported URL`.
 - **Article.** Posting an example.com link must queue with `platform: "article"`, and `GET /api/queue?platforms=article` must show it.
 - **Cleanup.** The journey deletes the rows it created.
 

@@ -16,8 +16,9 @@ The subscriptions page lists monitored channels, filters them, subscribes a new 
 - `subscriptions-list` lists channels grouped by first letter with transcript counts.
 - `subscriptions-filter` narrows the list and reports `N of M subscriptions`.
 - `subscriptions-add` subscribes a URL, `@handle` or UC id through the form.
-- `subscriptions-pause` and `subscriptions-resume` toggle monitoring.
-- `subscriptions-remove` removes the channel and keeps its transcripts.
+- `subscriptions-pause` and `subscriptions-resume` toggle monitoring through `PATCH /api/channels/<id>`.
+- `subscriptions-remove` removes the channel through `DELETE /api/channels/<id>` and keeps its transcripts.
+- `subscriptions-refresh` lets the CLI repair a YouTube row through `POST /api/channels/<id>/refresh`.
 
 ## How to get to it (user POV)
 
@@ -37,6 +38,7 @@ Preconditions:
 - **Filter.** Filling `#filter` with the handle makes `#count` start with `1 of`.
 - **Pause and resume.** Clicking the row's `Pause` button makes the row read `Paused` and `GET /api/channels` report `paused: 1`. Clicking `Resume` reverses both.
 - **Remove.** Accepting the confirm dialog and clicking `Remove` takes the row out of the list, and the channel disappears from `GET /api/channels`.
+- **Refresh.** `chromescribe channels --refresh` posts to `/api/channels/<id>/refresh`; the CLI journey proves the CLI side, and the Worker test covers the resolution.
 - **Proof.** `proof/subscriptions/subscriptions-phone.png` and `subscriptions-after-remove.png`.
 
 ## Gotchas

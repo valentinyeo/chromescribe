@@ -192,6 +192,7 @@ async function video(j) {
   const counter = (await page.textContent('#navCounter')).trim();
   j.check('neighbour navigation shows a position', /^\d+ \/ \d+$/.test(counter), counter);
   j.check('older neighbour is reachable', !(await page.locator('.nav-next').first().isDisabled()));
+  j.check('newer neighbour is disabled for the newest row', await page.locator('.nav-prev').first().isDisabled());
   j.check('video page API calls succeeded', j.apiCalls.some(call => call.startsWith(`200 GET /api/transcripts/${first.id}`)) && j.apiCalls.some(call => call.startsWith(`200 GET /api/transcript/${first.id}/content`)), j.apiCalls.join(', '));
   await j.shot('video-phone-transcript');
 
@@ -199,7 +200,20 @@ async function video(j) {
   j.check('More menu opens', await page.locator('#pageHeader').evaluate(node => node.classList.contains('menu-open')));
   j.check('More panel links to the queue', await page.locator('#morePanel a[href="/queue.html"]').isVisible());
   const moreText = (await page.locator('#morePanel').textContent()).toLowerCase();
-  j.check('More panel offers Download MD and Summarize', moreText.includes('download md') && moreText.includes('summarize'), moreText.replace(/\s+/g, ' ').slice(0, 120));
+  j.check('More panel offers Read aloud, Download MD and Summarize', moreText.includes('read aloud') && moreText.includes('download md') && moreText.includes('summarize'), moreText.replace(/\s+/g, ' ').slice(0, 120));
+
+  await page.locator('#morePanel button').filter({ hasText: 'Keyboard shortcuts' }).click();
+  await page.waitForFunction(() => document.querySelector('#shortcuts')?.open);
+  j.check('shortcuts dialog lists the key map', (await page.textContent('#shortcuts')).includes('Next video'));
+  await page.locator('#shortcuts .shortcuts-close').click();
+  await page.keyboard.press('Control+k');
+  await page.waitForFunction(() => document.querySelector('#cmdk')?.open);
+  j.check('Ctrl+K opens the command menu', true, 'cmdk open');
+  await page.fill('#cmdkInput', 'download');
+  j.check('command menu filters its commands', await page.locator('#cmdkList li').count() === 1, await page.textContent('#cmdkList'));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#cmdk')?.open);
+  j.check('Escape closes the command menu', true, 'cmdk closed');
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(j.url(`/transcript.html?id=${first.id}`), { waitUntil: 'networkidle' });
@@ -268,7 +282,6 @@ async function queue(j) {
     j.check('failed column shows the failure reason', (await page.textContent('#failed')).includes('Journey failure reason'));
     await j.shot('queue-phone');
 
-    page.once('dialog', dialog => dialog.accept());
     await page.locator(`#failed button[data-action="retry"][data-id="${second.id}"]`).click();
     await page.waitForFunction(value => document.querySelector('#pending')?.textContent.includes(value), two);
     j.check('Retry moves the row back to Waiting', true, 'row left Failed and appeared in Waiting');
@@ -381,6 +394,7 @@ async function settings(j) {
   const body = await page.textContent('body');
   j.check('settings documents cat', body.includes('chromescribe cat 141'));
   j.check('settings documents the transcripts API', body.includes('GET /api/transcripts'));
+  j.check('settings documents the search and update APIs', body.includes('GET /api/search') && body.includes('PUT /api/transcripts'));
   j.check('settings documents the env overrides', body.includes('CHROMESCRIBE_API'));
   await page.locator('button.copy').first().click();
   await page.waitForFunction(() => document.querySelector('button.copy')?.textContent === 'copied');
@@ -401,6 +415,10 @@ async function cliQuery(j) {
   j.check('get returns the row', get.code === 0 && JSON.parse(get.stdout).id === target.id);
   const cat = await cli(j, ['cat', String(target.id)]);
   j.check('cat prints the markdown', cat.code === 0 && cat.stdout.length > 1000 && cat.stdout.includes(target.video_id), `${cat.stdout.length} bytes`);
+  const catLink = await cli(j, ['cat', `https://chromescribe.yeoux.net/transcript.html?id=${target.id}`]);
+  j.check('cat accepts a pasted dashboard link', catLink.code === 0 && catLink.stdout.includes(target.video_id), catLink.stderr.trim() || `${catLink.stdout.length} bytes`);
+  const catBad = await cli(j, ['cat', 'https://chromescribe.yeoux.net/']);
+  j.check('cat refuses a link with no id', catBad.code !== 0 && catBad.stderr.includes('no id='), catBad.stderr.trim().slice(0, 80));
   const url = await cli(j, ['url', `https://www.youtube.com/watch?v=${target.video_id}`, '--json']);
   j.check('url finds the row by source link', url.code === 0 && JSON.parse(url.stdout || '[]')[0]?.id === target.id);
   const view = await cli(j, ['view', String(target.id)]);
@@ -560,6 +578,7 @@ done
     env: { PATH: join(dir, 'bin') + ':' + process.env.PATH, CF_ACCESS_CLIENT_ID: 'verify-id', CF_ACCESS_CLIENT_SECRET: 'verify-secret', CHROMESCRIBE_NO_OPEN: '1', REQUIRE_ANALYZE: '1' },
   });
   j.check('process.sh finishes an article without yt-dlp', article.code === 0 && article.stdout.includes('Article #7'), article.stdout.trim().split('\n').slice(-2).join(' | '));
+  j.check('process.sh summarizes the article', article.stdout.includes('Cloudflare summary complete'), article.stdout.trim().split('\n').filter(line => line.includes('summary')).join(' | '));
   j.check('process.sh never opened a browser', !article.stdout.includes('Opening http'));
 }
 
@@ -660,12 +679,46 @@ async function phoneShare(j) {
     j.check('the shared link is pending once', pending.filter(row => row.video_id === youtubeId('P')).length === 1, `${pending.length} queue rows`);
     const bad = await j.api('/api/queue', { method: 'POST', body: { url: 'not a link' } });
     j.check('an unsupported link is refused with a reason', bad.status === 400 && bad.text.includes('Unsupported URL'), `HTTP ${bad.status} ${bad.text}`);
+    const local = await j.api('/api/queue', { method: 'POST', body: { url: 'https://localhost/watch' } });
+    j.check('a local link is refused', local.status === 400, `HTTP ${local.status} ${local.text}`);
+    const credentialed = await j.api('/api/queue', { method: 'POST', body: { url: 'https://user:pass@example.com/journey' } });
+    j.check('a credentialed link is refused', credentialed.status === 400, `HTTP ${credentialed.status} ${credentialed.text}`);
+    const tiktokId = String(Date.now()).padEnd(19, '0');
+    const tiktok = await json(j, '/api/queue', { method: 'POST', body: { url: `https://www.tiktok.com/@journey/video/${tiktokId}` } });
+    created.push(tiktok.id);
+    j.check('full TikTok links are queued', tiktok.platform === 'tiktok' && tiktok.queued === true, JSON.stringify(tiktok));
+    const tiktokShort = await json(j, '/api/queue', { method: 'POST', body: { url: `https://www.tiktok.com/t/${STAMP}/` } });
+    created.push(tiktokShort.id);
+    j.check('short TikTok links are queued', tiktokShort.platform === 'tiktok' && tiktokShort.queued === true, JSON.stringify(tiktokShort));
     const article = await json(j, '/api/queue', { method: 'POST', body: { url: `https://example.com/journey-share-${STAMP}` } });
     created.push(article.id);
     j.check('article links are queued for the worker', article.platform === 'article', JSON.stringify(article));
     j.check('queued rows are visible to the drain script', (await json(j, '/api/queue?platforms=article')).some(row => row.id === article.id));
   } finally {
     for (const id of created) await j.api(`/api/queue/${id}`, { method: 'DELETE' }).catch(() => {});
+  }
+}
+
+async function articleSource(j) {
+  const title = `Journey article source ${STAMP}`;
+  let created = null;
+  try {
+    created = await createArticle(j, title);
+    j.check('scratch article written through the API', created?.id > 0, `id ${created?.id}`);
+    const source = `https://example.com/${encodeURIComponent(title)}`;
+    const route = `/api/transcripts/${created.id}/source`;
+    const redirect = await j.api(route, { redirect: 'manual' });
+    j.check('article source route redirects to the stored link', redirect.status === 302 && redirect.headers.location === source, `HTTP ${redirect.status} ${redirect.headers.location}`);
+    const missing = await j.api('/api/transcripts/999999999/source', { redirect: 'manual' });
+    j.check('missing transcript source is a 404', missing.status === 404, `HTTP ${missing.status}`);
+    const page = await j.open('/');
+    const card = page.locator('#videoGrid .card').filter({ hasText: title }).first();
+    await retryUntil(card);
+    const original = card.locator('a', { hasText: 'Open original' }).first();
+    j.check('article card links Open original to the source route', (await original.getAttribute('href')) === route, await original.getAttribute('href'));
+    await j.shot('article-source-card');
+  } finally {
+    if (created?.id) await removeTranscript(j, created.id);
   }
 }
 
@@ -701,5 +754,6 @@ export const journeys = {
   monitor,
   extension,
   'phone-share': phoneShare,
+  'article-source': articleSource,
   'android-updates': androidUpdates,
 };

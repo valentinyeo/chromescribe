@@ -12,10 +12,10 @@ The CLI manages channel subscriptions from a shell: `channels`, `subscribe`, `un
 
 ## Sub-features
 
-- `channels [--json | --refresh]` lists subscriptions; `--refresh` repairs YouTube names and handles.
-- `` `subscribe <url|@handle|UC id>` `` adds a channel.
-- `` `unsubscribe <channel>` `` removes it and keeps transcripts.
-- `` `pause <channel>` `` and `` `resume <channel>` `` toggle monitoring.
+- `channels [--json | --refresh]` lists subscriptions; `--refresh` repairs YouTube names and handles through `POST /api/channels/<id>/refresh`.
+- `` `subscribe <url|@handle|UC id>` `` adds a channel through `POST /api/channels`.
+- `` `unsubscribe <channel>` `` removes it through `DELETE /api/channels/<id>` and keeps transcripts.
+- `` `pause <channel>` `` and `` `resume <channel>` `` toggle monitoring through `PATCH /api/channels/<id>`.
 - Selectors accept a case-insensitive name, an `@handle`, a UC id or a channel URL.
 
 ## How to get to it (user POV)
