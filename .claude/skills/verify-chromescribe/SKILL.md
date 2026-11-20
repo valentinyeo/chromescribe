@@ -108,7 +108,7 @@ git status --short
 
 home and video pages, the article original link, add video, queue, subscriptions, reports and the public report page, stats, settings, the CLI query and channel commands, CLI learn and lens, `process.sh`, `queue.sh`, `monitor.sh`, the extension, the phone share API, and the Android app update API.
 
-`tools/feature-map.test.js` fails when a page route, an API route, a `dashboard/public/*.html` file, a `cli/chromescribe` subcommand or a `cli/README.md` command is missing from the map, when a feature file lacks front matter or the four H2 sections, or when the README index drifts.
+`tools/feature-map.test.js` fails when a page route, a `dashboard/public/*.html` file, a literal `/api/` route, an API module, a shell pipeline, a `cli/chromescribe` subcommand or a `cli/README.md` command is missing from the map, when a feature file lacks front matter or the four H2 sections, or when the README index drifts.
 
 ## Gotchas
 
@@ -119,7 +119,7 @@ home and video pages, the article original link, add video, queue, subscriptions
 - A second instance needs its own `CS_VERIFY_DIR` and `CS_VERIFY_PORT`. Two runs sharing one state directory corrupt each other.
 - The real seed writes about 120 MB of transcript markdown into the state directory. `cleanup` removes it.
 
-pstack: 0.15.44
+pstack: 0.15.46
 
 ## Evals
 

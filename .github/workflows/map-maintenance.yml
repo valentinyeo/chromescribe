@@ -50,7 +50,13 @@ jobs:
       - name: Open one pull request of corrections
         run: |
           rm -rf .verify-pstack
-          git add -A .claude/skills/verify-chromescribe tools/feature-map.test.js
+          git add -A .claude/skills/verify-chromescribe
+          outside=$(git status --porcelain -- . ':!.claude/skills/verify-chromescribe')
+          if [ -n "$outside" ]; then
+            echo "$outside"
+            echo "::error::The upkeep pass edited files outside the verify skill. pstack maintain-verification-skill allows edits only inside it."
+            exit 1
+          fi
           if git diff --cached --quiet; then
             echo "clean: no corrections"
             exit 0
