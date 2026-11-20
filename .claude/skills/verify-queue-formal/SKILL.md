@@ -3,7 +3,7 @@ name: verify-queue-formal
 description: Formally checks the ChromeScribe share queue against loss, double-claim, and pending-dedupe properties with TLA+/TLC. Use after any change to dashboard/src/queue-lib.mjs, the /api/queue routes in dashboard/src/index.ts, queue.sh, or formal/queue/.
 ---
 
-Prior art: checked pstack maintain-formal-verification-skill, create-formal-verification-skill, principle-prove-it-works, rat-stack model-a-protocol, local verification-check; none fits because this file is the project-local verify skill that create-formal-verification-skill requires this repo to own.
+Prior art: checked pstack maintain-formal-verification-skill, create-formal-verification-skill, principle-prove-it-works, rat-stack model-a-protocol; none fits because this file is the project-local verify skill that create-formal-verification-skill requires this repo to own.
 
 # Verify share queue (formal)
 
