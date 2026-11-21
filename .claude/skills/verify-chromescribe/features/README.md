@@ -39,7 +39,7 @@ Each feature file starts with YAML front matter carrying `name`, `journey` and a
 
 ## Features
 
-Coverage: 19 of 19 features mapped.
+Coverage: 20 of 20 features mapped.
 
 - [Home list, search and categories](./home.md) covers `/` and `/index.html`, search, category chips, channel filtering and card delete.
 - [Video page](./video.md) covers `/transcript.html?id=<id>`, summary and transcript tabs, neighbour navigation, More actions, the command menu, read aloud and the missing-id error.
@@ -50,6 +50,7 @@ Coverage: 19 of 19 features mapped.
 - [Reports and public report pages](./reports.md) covers `/reports.html` and the public `/reports/<id>` page.
 - [Stats page](./stats.md) covers `/stats.html` storage, media, transcript and category counts.
 - [Settings page](./settings.md) covers `/settings.html` docs and copy buttons.
+- [Shared theme](./theme.md) covers the three-state theme on `/` and `/transcript.html`.
 - [CLI query commands](./cli-query.md) covers `chromescribe list`, `search`, `get`, `cat`, `url` and `view`.
 - [CLI channel commands](./cli-channels.md) covers `channels`, `subscribe`, `unsubscribe`, `pause` and `resume`.
 - [CLI learn](./cli-learn.md) covers `chromescribe learn`.
