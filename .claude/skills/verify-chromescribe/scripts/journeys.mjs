@@ -554,6 +554,43 @@ async function settings(j) {
   await j.shot('settings-desktop');
 }
 
+async function theme(j) {
+  const page = await j.open('/');
+  await page.waitForSelector('#mobileMenuBtn');
+  const state = () => page.evaluate(() => ({
+    choice: document.documentElement.getAttribute('data-theme-choice'),
+    theme: document.documentElement.getAttribute('data-theme'),
+    stored: localStorage.getItem('cs-theme'),
+  }));
+  let current = await state();
+  j.check('theme starts on the system choice', current.choice === 'system', JSON.stringify(current));
+  j.check('system resolves to a concrete theme', ['dark', 'light'].includes(current.theme), current.theme);
+  await page.locator('#mobileMenuBtn').click();
+  await page.locator('#mobileMenu button').filter({ hasText: 'Theme' }).click();
+  current = await state();
+  j.check('theme cycles system to dark', current.choice === 'dark' && current.theme === 'dark', JSON.stringify(current));
+  j.check('theme choice is stored', current.stored === 'dark', current.stored);
+  await page.locator('#mobileMenuBtn').click();
+  await j.shot('theme-home-dark');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  current = await state();
+  j.check('theme choice survives a reload', current.choice === 'dark' && current.theme === 'dark' && current.stored === 'dark', JSON.stringify(current));
+  const newest = (await j.api('/api/transcripts?limit=1')).json.data[0];
+  await page.goto(j.url(`/transcript.html?id=${newest.id}`), { waitUntil: 'networkidle' });
+  current = await state();
+  j.check('video page reads the saved theme', current.choice === 'dark' && current.theme === 'dark', JSON.stringify(current));
+  await page.locator('#menuToggle').click();
+  const toggle = page.locator('#themeToggle');
+  j.check('video page offers the theme control', await toggle.isVisible(), 'More panel theme button');
+  await toggle.click();
+  current = await state();
+  j.check('video page cycles dark to light', current.choice === 'light' && current.theme === 'light' && current.stored === 'light', JSON.stringify(current));
+  await j.shot('theme-video-light');
+  await toggle.click();
+  current = await state();
+  j.check('video page cycles light back to system', current.choice === 'system' && ['dark', 'light'].includes(current.theme) && current.stored === 'system', JSON.stringify(current));
+}
+
 async function cliQuery(j) {
   const list = await cli(j, ['list', '-n', '3', '--json']);
   j.check('list exits 0', list.code === 0, list.stderr.trim());
@@ -929,6 +966,7 @@ export const journeys = {
   reports,
   stats,
   settings,
+  theme,
   'cli-query': cliQuery,
   'cli-channels': cliChannels,
   'cli-learn': cliLearn,
