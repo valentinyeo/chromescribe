@@ -39,9 +39,10 @@ Each feature file starts with YAML front matter carrying `name`, `journey` and a
 
 ## Features
 
-Coverage: 20 of 20 features mapped.
+Coverage: 21 of 21 features mapped.
 
 - [Home list, search and categories](./home.md) covers `/` and `/index.html`, search, category chips, channel filtering and card delete.
+- [Home keyboard shortcuts and command menu](./home-commands.md) covers `j`/`k` card selection, `/` search, `a`, the `g` chords, `?` shortcuts and `Ctrl+K` on `/`.
 - [Video page](./video.md) covers `/transcript.html?id=<id>`, summary and transcript tabs, neighbour navigation, More actions, the command menu, read aloud and the missing-id error.
 - [Article original link](./article-source.md) covers `/api/transcripts/<id>/source` and the card `Open original` action.
 - [Add video](./add-video.md) covers the home Add modal and the transcribe endpoint.

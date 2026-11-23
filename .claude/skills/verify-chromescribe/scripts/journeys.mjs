@@ -957,8 +957,56 @@ async function androidUpdates(j) {
   j.proof.push(file);
 }
 
+async function homeCommands(j) {
+  const page = await j.open('/');
+  await page.waitForSelector('#videoGrid .card');
+  await page.waitForFunction(() => /\d/.test(document.querySelector('#stats')?.textContent || ''));
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector('#videoGrid .card');
+
+  await page.keyboard.press('j');
+  await page.waitForFunction(() => document.querySelectorAll('#videoGrid .card.kb-selected').length === 1);
+  j.check('j selects a card', await page.locator('#videoGrid .card.kb-selected').count() === 1, 'one card selected');
+  await page.keyboard.press('k');
+  j.check('k keeps a card selected', await page.locator('#videoGrid .card.kb-selected').count() === 1, 'one card selected');
+
+  await page.keyboard.press('/');
+  j.check('slash focuses the search box', await page.evaluate(() => document.activeElement?.id === 'searchInput'), 'search input focused');
+  await page.keyboard.press('Escape');
+
+  await page.keyboard.press('?');
+  await page.waitForFunction(() => document.querySelector('#shortcuts')?.open);
+  j.check('question mark opens the shortcut list', (await page.textContent('#shortcuts')).includes('Go to queue'), 'shortcut dialog open');
+  await page.locator('#shortcuts .shortcuts-close').click();
+  await page.waitForFunction(() => !document.querySelector('#shortcuts')?.open);
+
+  await page.keyboard.press('Control+k');
+  await page.waitForFunction(() => document.querySelector('#cmdk')?.open);
+  await page.fill('#cmdkInput', 'stats');
+  j.check('the command menu filters commands', (await page.textContent('#cmdkList')).includes('Stats'), await page.textContent('#cmdkList'));
+  await page.keyboard.press('Enter');
+  await page.waitForURL(/\/stats\.html$/);
+  j.check('Enter runs the selected command', page.url().endsWith('/stats.html'), page.url());
+
+  await page.goto(j.url('/'), { waitUntil: 'networkidle' });
+  await page.waitForSelector('#videoGrid .card');
+  await page.keyboard.press('a');
+  await page.waitForSelector('#addModal:not(.hidden)');
+  j.check('a opens the Add form', await page.locator('#addModal').evaluate(node => !node.classList.contains('hidden')), 'modal visible');
+  await page.keyboard.press('Escape');
+  j.check('Escape closes the Add form', await page.locator('#addModal').evaluate(node => node.classList.contains('hidden')), 'modal hidden');
+
+  await page.keyboard.press('g');
+  await page.keyboard.press('q');
+  await page.waitForURL(/\/queue\.html$/);
+  j.check('g then q navigates to the queue page', page.url().endsWith('/queue.html'), page.url());
+  await j.shot('home-commands');
+}
+
 export const journeys = {
   home,
+  'home-commands': homeCommands,
   video,
   'add-video': addVideo,
   queue,
