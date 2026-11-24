@@ -591,6 +591,62 @@ async function theme(j) {
   j.check('video page cycles light back to system', current.choice === 'system' && ['dark', 'light'].includes(current.theme) && current.stored === 'system', JSON.stringify(current));
 }
 
+async function commands(j) {
+  const page = await j.open('/');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForSelector('#videoGrid .card');
+  await page.keyboard.press('?');
+  await page.waitForFunction(() => document.querySelector('#shortcuts')?.open);
+  j.check('home ? opens the shortcut dialog', (await page.textContent('#shortcuts')).includes('Next video'));
+  await j.shot('commands-shortcuts');
+  await page.locator('#shortcuts .shortcuts-close').click();
+  await page.keyboard.press('Control+k');
+  await page.waitForFunction(() => document.querySelector('#cmdk')?.open);
+  await page.fill('#cmdkInput', 'settings');
+  j.check('home command menu filters to Settings', await page.locator('#cmdkList li').count() === 1 && (await page.textContent('#cmdkList')).includes('Settings'));
+  await j.shot('commands-menu');
+  await page.keyboard.press('Enter');
+  await page.waitForURL('**/settings.html');
+  j.check('home command menu runs the active command', page.url().endsWith('/settings.html'), page.url());
+
+  await page.goto(j.url('/'), { waitUntil: 'networkidle' });
+  await page.waitForSelector('#videoGrid .card');
+  await page.keyboard.press('/');
+  j.check('slash focuses search', await page.evaluate(() => document.activeElement?.id === 'searchInput'));
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('a');
+  await page.waitForFunction(() => !document.querySelector('#addModal')?.classList.contains('hidden'));
+  j.check('a opens the Add form', await page.locator('#addModal').isVisible());
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('#addModal')?.classList.contains('hidden'));
+
+  for (const [key, path] of [['q', '/queue.html'], ['s', '/subscriptions.html'], ['r', '/reports.html']]) {
+    await page.keyboard.press('g');
+    await page.keyboard.press(key);
+    await page.waitForURL(`**${path}`);
+    j.check(`g ${key} opens ${path}`, page.url().endsWith(path), page.url());
+    await page.goto(j.url('/'), { waitUntil: 'networkidle' });
+    await page.waitForSelector('#videoGrid .card');
+  }
+
+  await page.keyboard.press('j');
+  j.check('j selects a card', await retryUntil(page.locator('#videoGrid .card.kb-selected')));
+  await page.keyboard.press('Enter');
+  await page.waitForURL(/\/transcript\.html\?id=\d+/);
+  await page.waitForFunction(() => document.querySelector('#title')?.textContent.trim());
+  j.check('Enter opens the selected transcript', page.url().includes('/transcript.html?id='), page.url());
+  await page.keyboard.press('?');
+  await page.waitForFunction(() => document.querySelector('#shortcuts')?.open);
+  j.check('video ? opens the shortcut dialog', (await page.textContent('#shortcuts')).includes('Next video'));
+  await page.locator('#shortcuts .shortcuts-close').click();
+  await page.keyboard.press('Control+k');
+  await page.waitForFunction(() => document.querySelector('#cmdk')?.open);
+  await page.fill('#cmdkInput', 'download');
+  j.check('video command menu filters to Download MD', await page.locator('#cmdkList li').count() === 1 && (await page.textContent('#cmdkList')).includes('Download MD'));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#cmdk')?.open);
+}
+
 async function cliQuery(j) {
   const list = await cli(j, ['list', '-n', '3', '--json']);
   j.check('list exits 0', list.code === 0, list.stderr.trim());
@@ -967,6 +1023,7 @@ export const journeys = {
   stats,
   settings,
   theme,
+  commands,
   'cli-query': cliQuery,
   'cli-channels': cliChannels,
   'cli-learn': cliLearn,
