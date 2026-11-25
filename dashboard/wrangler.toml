@@ -20,3 +20,6 @@ binding = "AI"
 [vars]
 ENVIRONMENT = "production"
 CHRO10_API_GATE = "1"
+
+[triggers]
+crons = ["23 4 * * *"]

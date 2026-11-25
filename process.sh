@@ -1,6 +1,7 @@
 #!/bin/bash
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/analyze.sh"
 
 URL="$1"
 if [ -z "$URL" ]; then
@@ -75,7 +76,7 @@ run_hosted_analysis() {
     local transcript_id="$1"
     local result summary_ok classify_ok warning
     echo ">>> Generating summary + classification on Cloudflare..."
-    result=$(api_call POST "/api/transcripts/$transcript_id/analyze" --max-time 240)
+    result=$(chromescribe_analyze "$transcript_id")
     summary_ok=$(echo "$result" | "$PYTHON" -c "
 import sys, json
 try: print('yes' if json.load(sys.stdin).get('data', {}).get('summarized') else '')
@@ -91,7 +92,9 @@ except: print('')
         return 1
     fi
     echo ">>> Cloudflare summary complete"
-    if [ "$classify_ok" = "yes" ]; then
+    if printf '%s' "$result" | grep -q '"recovered":true'; then
+        echo ">>> Cloudflare analysis had already finished on the server"
+    elif [ "$classify_ok" = "yes" ]; then
         echo ">>> Cloudflare classification complete"
     else
         warning=$(echo "$result" | "$PYTHON" -c "

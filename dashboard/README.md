@@ -72,6 +72,8 @@ All `/api/*` calls go through Cloudflare Zero Trust and need the
 - `PUT /api/transcripts/:id`, `DELETE /api/transcripts/:id`, `GET /api/search?q=`
 - `POST /api/transcribe` has two modes: a JSON body with URL and markdown (from Claude), or a multipart form with an audio file that the Worker transcribes with Workers AI Whisper.
 - `POST /api/whisper` transcribes one audio chunk; `POST /api/transcripts/:id/analyze` writes the summary and classification.
+- `process.sh` and `monitor.sh` send the analyze call through `lib/analyze.sh`: up to three attempts (`ANALYZE_ATTEMPTS`), a doubling delay between them (`ANALYZE_RETRY_DELAY`, 20s), a 240s curl timeout (`ANALYZE_MAX_TIME`), and a `GET /api/transcript/:id/content` check after every failure that stops the retries once the server has written a TL;DR on its own.
+- A daily cron (`[triggers]` in `wrangler.toml`, 04:23 UTC) runs the Worker's `scheduled` handler, which reads the transcripts created in the last 14 days, picks at most five that carry no TL;DR, and runs the same analysis on them. The cap and the window are constants in `src/index.ts`, so one run can never loop over the library and burn AI quota.
 - Video IDs: YouTube (`youtube.com/watch`, `youtu.be/`, `/shorts/`) and TikTok (`tiktok.com/@user/video/id`, stored as `tiktok:<id>`).
 
 ### Channel subscriptions

@@ -237,6 +237,108 @@ const jsonResponse = (data: any, status = 200): Response => {
   });
 };
 
+class AnalysisError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+interface AnalysisResult {
+  id: string;
+  summarized: true;
+  classified: boolean;
+  word_count: number;
+  category?: string;
+  tags?: string[];
+  warning?: string;
+}
+
+const hasSummary = (markdown: string): boolean => /^##[ \t]+TL;DR[ \t]*$/m.test(markdown);
+
+async function analyzeTranscript(env: Env, id: string): Promise<AnalysisResult> {
+  const existing = await env.DB
+    .prepare('SELECT srt_path, video_id, duration FROM transcripts WHERE id = ?')
+    .bind(id)
+    .first<{ srt_path: string; video_id: string; duration: number }>();
+  if (!existing) throw new AnalysisError('Transcript not found', 404);
+
+  const content = await env.TRANSCRIPTS.get(existing.srt_path);
+  if (!content) throw new AnalysisError('Content file not found', 404);
+  const rawMarkdown = await content.text();
+
+  let newMarkdown: string;
+  try {
+    newMarkdown = await summarizeContent(rawMarkdown, env.AI, existing);
+  } catch (e: any) {
+    throw new AnalysisError(`Analysis failed during summarization: ${e.message}`, 502);
+  }
+
+  await env.TRANSCRIPTS.put(existing.srt_path, newMarkdown);
+  const wordCount = newMarkdown.split(/\s+/).filter(w => w.length > 0).length;
+  await env.DB
+    .prepare('UPDATE transcripts SET word_count = ? WHERE id = ?')
+    .bind(wordCount, id)
+    .run();
+
+  const { results: catRows } = await env.DB
+    .prepare("SELECT DISTINCT category FROM transcripts WHERE category IS NOT NULL AND category != ''")
+    .all<{ category: string }>();
+  const existingCats = catRows.map(r => r.category).join(', ') || '(none yet)';
+
+  try {
+    const classification = await classifyContent(newMarkdown, existingCats, env.AI);
+    await env.DB
+      .prepare('UPDATE transcripts SET category = ?, tags = ? WHERE id = ?')
+      .bind(classification.category, JSON.stringify(classification.tags), id)
+      .run();
+    return {
+      id,
+      summarized: true,
+      classified: true,
+      word_count: wordCount,
+      category: classification.category,
+      tags: classification.tags,
+    };
+  } catch (e: any) {
+    console.error('Analysis classification failed:', e);
+    return {
+      id,
+      summarized: true,
+      classified: false,
+      word_count: wordCount,
+      warning: `Classification failed: ${e.message}`,
+    };
+  }
+}
+
+const REPAIR_WINDOW_DAYS = 14;
+const REPAIR_CANDIDATE_LIMIT = 200;
+const REPAIR_MAX_PER_RUN = 5;
+
+async function repairMissingSummaries(env: Env): Promise<{ repaired: string[]; failed: string[] }> {
+  const { results } = await env.DB
+    .prepare("SELECT id, srt_path FROM transcripts WHERE created_at >= datetime('now', ?) ORDER BY id DESC LIMIT ?")
+    .bind(`-${REPAIR_WINDOW_DAYS} days`, REPAIR_CANDIDATE_LIMIT)
+    .all<{ id: string; srt_path: string }>();
+  const recent = results || [];
+  const missing: string[] = [];
+  for (const row of recent) {
+    if (missing.length >= REPAIR_MAX_PER_RUN) break;
+    const stored = await env.TRANSCRIPTS.get(row.srt_path);
+    if (!stored) continue;
+    if (!hasSummary(await stored.text())) missing.push(row.id);
+  }
+
+  const outcomes = await Promise.allSettled(missing.map(id => analyzeTranscript(env, id)));
+  const repaired = missing.filter((_, index) => outcomes[index].status === 'fulfilled');
+  const failed = missing.filter((_, index) => outcomes[index].status === 'rejected');
+  console.log(`Summary repair: ${repaired.length} repaired, ${failed.length} failed, ${recent.length} recent transcripts scanned`);
+  return { repaired, failed };
+}
+
 
 
 function whisperToSRT(segments: WhisperResponse['segments']): string {
@@ -1325,63 +1427,10 @@ ${srtContent || transcript.text}
     if (request.method === 'POST' && path.startsWith('transcripts/') && path.endsWith('/analyze')) {
       const parts = path.split('/');
       if (parts.length === 3) {
-        const id = parts[1];
-        const existing = await env.DB
-          .prepare('SELECT srt_path, video_id, duration FROM transcripts WHERE id = ?')
-          .bind(id)
-          .first<{ srt_path: string; video_id: string; duration: number }>();
-        if (!existing) {
-          return handleError(new Error('Transcript not found'), 404);
-        }
-
-        const content = await env.TRANSCRIPTS.get(existing.srt_path);
-        if (!content) {
-          return handleError(new Error('Content file not found'), 404);
-        }
-        const rawMarkdown = await content.text();
-
-        let newMarkdown: string;
         try {
-          newMarkdown = await summarizeContent(rawMarkdown, env.AI, existing);
+          return jsonResponse(await analyzeTranscript(env, parts[1]));
         } catch (e: any) {
-          return handleError(new Error(`Analysis failed during summarization: ${e.message}`), 502);
-        }
-
-        await env.TRANSCRIPTS.put(existing.srt_path, newMarkdown);
-        const wordCount = newMarkdown.split(/\s+/).filter(w => w.length > 0).length;
-        await env.DB
-          .prepare('UPDATE transcripts SET word_count = ? WHERE id = ?')
-          .bind(wordCount, id)
-          .run();
-
-        const { results: catRows } = await env.DB
-          .prepare("SELECT DISTINCT category FROM transcripts WHERE category IS NOT NULL AND category != ''")
-          .all<{ category: string }>();
-        const existingCats = catRows.map(r => r.category).join(', ') || '(none yet)';
-
-        try {
-          const classification = await classifyContent(newMarkdown, existingCats, env.AI);
-          await env.DB
-            .prepare('UPDATE transcripts SET category = ?, tags = ? WHERE id = ?')
-            .bind(classification.category, JSON.stringify(classification.tags), id)
-            .run();
-          return jsonResponse({
-            id,
-            summarized: true,
-            classified: true,
-            word_count: wordCount,
-            category: classification.category,
-            tags: classification.tags,
-          });
-        } catch (e: any) {
-          console.error('Analysis classification failed:', e);
-          return jsonResponse({
-            id,
-            summarized: true,
-            classified: false,
-            word_count: wordCount,
-            warning: `Classification failed: ${e.message}`,
-          });
+          return handleError(e, e instanceof AnalysisError ? e.status : 502);
         }
       }
     }
@@ -1549,6 +1598,10 @@ ${srtContent || transcript.text}
 };
 
 export default {
+  async scheduled(_controller: unknown, env: Env): Promise<void> {
+    await repairMissingSummaries(env);
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 

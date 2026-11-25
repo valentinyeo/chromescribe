@@ -36,6 +36,19 @@ ${extra || `Seed lead line for ${title}.`}
 ${'The journey drives a real user path and checks the written result. '.repeat(20)}
 `;
 
+const rawMarkdown = title => `# ${title}
+
+**Source:** https://example.com/${encodeURIComponent(title)}
+**Date:** 2026-01-01
+**Type:** Article
+
+---
+
+## Full Article
+
+${'The journey stores this body without a summary so the repair job can fill it in. '.repeat(20)}
+`;
+
 async function createArticle(j, title) {
   return json(j, '/api/transcribe', {
     method: 'POST',
@@ -102,8 +115,8 @@ done
 ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=10 -c:a aac -b:a 64k -f mp4 -y "\${file//%(ext)s/m4a}"
 `;
 
-function jinaBody(title) {
-  return `Title: ${title}\n\nMarkdown Content:\n# ${title}\n\n**Author:** Journey\n\n${'The pipeline drives the real scripts against the local app and checks the written result. '.repeat(6)}\n`;
+function jinaBody(title, extra = '') {
+  return `Title: ${title}\n\nMarkdown Content:\n# ${title}\n\n**Author:** Journey\n\n${extra}${'The pipeline drives the real scripts against the local app and checks the written result. '.repeat(6)}\n`;
 }
 
 function outsideCurl(dir, log, jinaFile) {
@@ -145,7 +158,7 @@ function pipelineTools(j, name, scripts) {
   const bin = join(dir, 'bin');
   mkdirSync(join(dir, 'lib'), { recursive: true });
   mkdirSync(join(dir, 'home'), { recursive: true });
-  copyFileSync(join(ROOT, 'lib', 'cf_access.sh'), join(dir, 'lib', 'cf_access.sh'));
+  for (const file of ['cf_access.sh', 'analyze.sh']) copyFileSync(join(ROOT, 'lib', file), join(dir, 'lib', file));
   copyFileSync(join(ROOT, 'fxtwitter_article.py'), join(dir, 'fxtwitter_article.py'));
   copyFileSync(join(ROOT, 'upload_article.py'), join(dir, 'upload_article.py'));
   copyFileSync(join(ROOT, 'cf_access.py'), join(dir, 'cf_access.py'));
@@ -158,7 +171,7 @@ function pipelineTools(j, name, scripts) {
   return {
     dir,
     log,
-    jina: title => writeFileSync(jinaFile, jinaBody(title)),
+    jina: (title, extra = '') => writeFileSync(jinaFile, jinaBody(title, extra)),
     env: {
       PATH: bin + ':' + process.env.PATH,
       HOME: join(dir, 'home'),
@@ -727,6 +740,7 @@ async function processPipeline(j) {
   const articleTitle = `Journey process article ${STAMP}`;
   const videoId = youtubeId('PROC');
   let articleId = 0;
+  let retryId = 0;
   let audioId = 0;
   try {
     tools.jina(articleTitle);
@@ -760,9 +774,55 @@ async function processPipeline(j) {
     j.check('the audio upload reaches the real local /api/transcribe handler', transcribed && audioLog.includes(`Video ID: ${videoId}`), audioLog.split('\n').filter(line => line.includes('Video ID') || line.includes('buffer size')).join(' | '));
     j.check('the real handler accepts the audio and writes a transcript', accepted && audioId > 0, accepted ? 'accepted, transcript written' : audio.stdout.trim().split('\n').filter(line => line.includes('ERROR')).slice(-1).join(' | '));
     j.check('the outside network is faked only for Jina Reader', outsideOnly(j, tools.calls()), tools.calls().slice(0, 3).join(' | '));
+
+    const retryUrl = `https://example.com/journey-process-retry-${STAMP}`;
+    const retryTitle = `Journey process retry ${STAMP}`;
+    tools.jina(retryTitle, '[[verify:slow-summary]] ');
+    const retryMark = devLogMark(j);
+    const retry = j.run('bash', [join(tools.dir, 'process.sh'), retryUrl], {
+      cwd: tools.dir,
+      env: { ...tools.env, ANALYZE_MAX_TIME: '1', ANALYZE_RETRY_DELAY: '4' },
+      timeout: 180000,
+    });
+    await j.sleep(800);
+    const retryLog = devLogSince(j, retryMark);
+    retryId = Number((/Article #(\d+)/.exec(retry.stdout) || [])[1] || 0);
+    const attempts = retryLog.split('\n').filter(line => line.includes(`/api/transcripts/${retryId}/analyze`)).length;
+    const retryBody = retryId ? await j.api(`/api/transcript/${retryId}/content`) : { status: 0, text: '' };
+    j.check('process.sh survives an analyze call that times out on the client', retry.code === 0 && retry.stderr.includes('Analyze attempt 1/3 failed'), retry.stderr.trim().split('\n').slice(-2).join(' | '));
+    j.check('the retry finds the server-written summary and does not analyze twice', attempts === 1 && /^## TL;DR$/m.test(retryBody.text), `${attempts} analyze request(s), HTTP ${retryBody.status}`);
+    j.check('process.sh reports the recovered summary', retry.stdout.includes('Cloudflare analysis had already finished on the server'), retry.stdout.trim().split('\n').filter(line => line.includes('Cloudflare')).join(' | '));
   } finally {
     await removeTranscript(j, articleId);
+    await removeTranscript(j, retryId);
     await removeTranscript(j, audioId);
+  }
+}
+
+async function summaryRepair(j) {
+  const title = `Journey repair ${STAMP}`;
+  let id = 0;
+  try {
+    const created = await j.api('/api/transcribe', {
+      method: 'POST',
+      body: { url: `https://example.com/journey-repair-${STAMP}`, markdown_content: rawMarkdown(title) },
+    });
+    id = created.json?.data?.id || 0;
+    j.check('a transcript lands with its raw article body', created.status === 201 && id > 0, `HTTP ${created.status}, id ${id}`);
+    const before = id ? await j.api(`/api/transcript/${id}/content`) : { status: 0, text: '' };
+    j.check('its stored body carries no TL;DR yet', before.status === 200 && !/^## TL;DR$/m.test(before.text), `${before.text.length} bytes`);
+
+    const mark = devLogMark(j);
+    const scheduled = await j.api('/__scheduled?cron=23+4+*+*+*');
+    j.check('the daily schedule runs the repair handler on the local Worker', scheduled.status === 200, scheduled.text.trim().slice(0, 120));
+    const after = id ? await j.api(`/api/transcript/${id}/content`) : { status: 0, text: '' };
+    j.check('the repair writes the missing summary', after.status === 200 && /^## TL;DR$/m.test(after.text), `${after.text.length} bytes`);
+    const row = id ? await j.api(`/api/transcripts/${id}`) : { json: null };
+    j.check('the repair updates the row the user opens', Boolean(row.json?.data?.category), row.json?.data?.category || 'no category');
+    const log = devLogSince(j, mark);
+    j.check('the repair run reports its bounded work', /Summary repair: \d+ repaired, \d+ failed, \d+ recent transcripts scanned/.test(log), log.split('\n').filter(line => line.includes('Summary repair')).join(' | '));
+  } finally {
+    await removeTranscript(j, id);
   }
 }
 
@@ -834,6 +894,7 @@ async function monitor(j) {
   mkdirSync(join(dir, 'lib'), { recursive: true });
   writeFileSync(join(dir, 'monitor.sh'), readFileSync(join(ROOT, 'monitor.sh')));
   writeFileSync(join(dir, 'lib', 'cf_access.sh'), readFileSync(join(ROOT, 'lib', 'cf_access.sh')));
+  writeFileSync(join(dir, 'lib', 'analyze.sh'), readFileSync(join(ROOT, 'lib', 'analyze.sh')));
   writeFileSync(join(dir, 'channels.txt'), 'UC00000000000000000000 # fallback\n');
   const log = join(dir, 'curl.log');
   curlStub(dir, log, `  *analyze*) printf '%s' '{"success":true,"data":{"summarized":true,"word_count":900,"category":"Health"}}';;
@@ -1029,6 +1090,7 @@ export const journeys = {
   'cli-lens': cliLens,
   process: processPipeline,
   'queue-drain': queueDrain,
+  'summary-repair': summaryRepair,
   monitor,
   extension,
   'phone-share': phoneShare,
