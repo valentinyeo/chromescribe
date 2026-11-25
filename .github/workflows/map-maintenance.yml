@@ -48,7 +48,8 @@ jobs:
         run: |
           sed "s#__PSTACK__#$PWD/.verify-pstack/pstack#" tools/maintainer/brief.md > /tmp/maintainer-brief.md
           pi -p --provider opencode-go --model deepseek-v4.1-flash --thinking medium "$(cat /tmp/maintainer-brief.md)" | tee /tmp/maintainer.log
-      - name: Open one pull request of corrections
+      - name: Open or update one pull request of corrections
+        id: pr
         run: |
           rm -rf .verify-pstack
           git add -A .claude/skills/verify-chromescribe
@@ -63,20 +64,53 @@ jobs:
             exit 0
           fi
           node --test tools/feature-map.test.js
-          branch="map-upkeep-$(date -u +%Y%m%d)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          open=$(gh pr list --state open --base master --json number,headRefName --jq '[.[] | select(.headRefName | startswith("map-upkeep-"))][0] // empty')
+          branch=$(printf '%s' "$open" | jq -r '.headRefName // empty')
+          if [ -n "$branch" ]; then
+            echo "Updating the open map pull request on $branch instead of opening another one"
+          else
+            branch="map-upkeep-$(date -u +%Y%m%d)"
+          fi
           git checkout -b "$branch"
           git commit -m "Feature map upkeep $(date -u +%F)"
           git push -f origin "$branch"
           printf 'Author model: deepseek/deepseek-v4.1-flash\n\nDaily feature map upkeep. Pass log tail:\n\n' > /tmp/body.md
           tail -n 40 /tmp/maintainer.log | sed 's/^/    /' >> /tmp/body.md
-          pr=$(gh pr list --head "$branch" --json number --jq '.[0].number')
-          if [ -z "$pr" ]; then
+          pr=$(printf '%s' "$open" | jq -r '.number // empty')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "Feature map upkeep $(date -u +%F)" --body-file /tmp/body.md
+          else
             gh pr create --base master --head "$branch" --title "Feature map upkeep $(date -u +%F)" --body-file /tmp/body.md
             pr=$(gh pr list --head "$branch" --json number --jq '.[0].number')
           fi
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
           gh workflow run verify.yml --ref "$branch" -f pr="$pr"
+      - name: Merge the pull request on a PASS verdict
+        if: ${{ steps.pr.outputs.pr != '' }}
+        timeout-minutes: 30
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr="${{ steps.pr.outputs.pr }}"
+          deadline=$(( $(date +%s) + 25 * 60 ))
+          state=""
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq .head.sha)
+            state=$(gh api "repos/$GITHUB_REPOSITORY/commits/$head/status" --jq '[.statuses[] | select(.context == "pstack-verifier")] | sort_by(.created_at) | last | .state // ""')
+            case "$state" in success|failure|error) break ;; esac
+            sleep 20
+          done
+          if [ "$state" != success ]; then
+            echo "::error::No PASS verdict on #$pr within 25 minutes (pstack-verifier is ${state:-missing}), so it stays open for a person."
+            exit 1
+          fi
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$pr/merge" -f merge_method=squash --jq '.merged' | grep -qx true || {
+            echo "::error::The verifier passed but #$pr did not merge. Read the merge response above."
+            exit 1
+          }
+          echo "Merged #$pr on the verifier's PASS verdict"
       - name: Upload the pass log
         if: always()
         uses: actions/upload-artifact@v4

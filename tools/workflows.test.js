@@ -41,6 +41,31 @@ test('network setup steps time out before the 20 minute verdict promise', () => 
   assert.ok(setup + 15 + posting <= 20, `${name}: setup may hang for ${setup} minutes, plus the 15 minute verifier budget plus ${posting} to post, over the 20 minute promise`);
 });
 
+const stepBody = (text, name) => {
+  const steps = text.split(/^ {6}- /m).slice(1);
+  const match = steps.find(step => ((step.match(/^name: *(.+?) *$/m) || [])[1] || '').trim() === name);
+  return match || null;
+};
+
+test('map upkeep merges its own pull request on a PASS verdict', () => {
+  const text = fs.readFileSync(path.join(dir, 'map-maintenance.yml'), 'utf8');
+  const merge = stepBody(text, 'Merge the pull request on a PASS verdict');
+  assert.ok(merge, 'map-maintenance.yml: add a step that merges the upkeep pull request, because nothing else merges it: the repository has auto-merge off and no other workflow calls the merge API');
+  assert.match(merge, /pstack-verifier/, 'map-maintenance.yml: the merge step reads the pstack-verifier verdict that verify.yml posts on the head commit');
+  assert.match(merge, /pulls\/\$pr\/merge/, 'map-maintenance.yml: merge the upkeep pull request through the merge API once the verdict is PASS');
+  assert.match(merge, /merge_method=squash/, 'map-maintenance.yml: merge the upkeep pull request with squash');
+  assert.match(merge, /success/, 'map-maintenance.yml: only a PASS or PASS+NOTES verdict, which verify.yml posts as the success state, may merge');
+});
+
+test('map upkeep updates the open map pull request instead of stacking a new one each day', () => {
+  const text = fs.readFileSync(path.join(dir, 'map-maintenance.yml'), 'utf8');
+  const open = stepBody(text, 'Open or update one pull request of corrections');
+  assert.ok(open, 'map-maintenance.yml: keep the step that opens the upkeep pull request');
+  assert.match(open, /gh pr list[^\n]*--state open/, 'map-maintenance.yml: look for an open map pull request first, so yesterday\'s PR is updated instead of a second one opened beside it');
+  assert.match(open, /map-upkeep-/, 'map-maintenance.yml: recognise the map pull request by its branch prefix');
+  assert.match(open, /gh pr edit/, 'map-maintenance.yml: refresh the open map pull request title and body with today\'s pass');
+});
+
 test('pull request groups are keyed by the pull request number', () => {
   for (const name of files) {
     const text = fs.readFileSync(path.join(dir, name), 'utf8');
