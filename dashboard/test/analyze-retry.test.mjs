@@ -33,9 +33,9 @@ case "$args" in
     n=$(( $(count) + 1 ))
     echo "$n" > "$state/analyze-count"
     if [ "$n" -le ${failures} ]; then exit 28; fi
-    printf '%s' '${JSON.stringify(analyze)}'
+    printf '%s' '${analyze}'
     exit 0;;
-  */api/transcribe) printf '%s' '${JSON.stringify(transcribe)}'; exit 0;;
+  */api/transcribe) printf '%s' '${transcribe}'; exit 0;;
 esac
 printf '%s' '{"success":true,"data":{}}'
 exit 0
@@ -83,7 +83,7 @@ function env(dir, extra = {}) {
 function runArticle(options) {
   const dir = prepare('process');
   try {
-    curlStub(dir, { transcribe: { data: { id: 7, title: 'Article title' } }, ...options });
+    curlStub(dir, { transcribe: JSON.stringify({ data: { id: 7, title: 'Article title' } }), ...options });
     const result = spawnSync('bash', [join(dir, 'process.sh'), 'https://example.com/retry-article'], {
       encoding: 'utf8', timeout: 30000, env: env(dir, { REQUIRE_ANALYZE: options.required ?? '1' }),
     });
@@ -97,7 +97,7 @@ function runArticle(options) {
 function runMonitor(options) {
   const dir = prepare('monitor');
   try {
-    curlStub(dir, { transcribe: { data: { id: 42, title: 'Monitor video' } }, ...options });
+    curlStub(dir, { transcribe: JSON.stringify({ data: { id: 42, title: 'Monitor video' } }), ...options });
     const result = spawnSync('bash', [join(dir, 'monitor.sh'), '--force', 'MONITOR0001', 'Monitor video'], {
       encoding: 'utf8', timeout: 30000, env: env(dir, { CHROMESCRIBE_TELEGRAM: '0' }),
     });

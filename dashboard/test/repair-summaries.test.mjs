@@ -57,7 +57,7 @@ function envFor({ candidates, bodies = {}, missing = [], fails = [] }) {
 }
 
 function recentRows(count) {
-  return Array.from({ length: count }, (_, index) => ({ id: String(100 + index), srt_path: `content/${100 + index}.md` }));
+  return Array.from({ length: count }, (_, index) => ({ id: String(100 + index), srt_path: `content/${100 + index}.md`, video_id: 'video', duration: 60 }));
 }
 
 function bodiesFor(rows) {
@@ -79,9 +79,9 @@ test('the schedule repairs recent transcripts that carry no TL;DR', async () => 
 
 test('already summarized and unreadable transcripts are left alone', async () => {
   const candidates = [
-    { id: '1', srt_path: 'content/1.md' },
-    { id: '2', srt_path: 'content/2.md' },
-    { id: '3', srt_path: 'content/3.md' },
+    { id: '1', srt_path: 'content/1.md', video_id: 'video', duration: 60 },
+    { id: '2', srt_path: 'content/2.md', video_id: 'video', duration: 60 },
+    { id: '3', srt_path: 'content/3.md', video_id: 'video', duration: 60 },
   ];
   const context = envFor({
     candidates,
@@ -97,8 +97,8 @@ test('already summarized and unreadable transcripts are left alone', async () =>
 
 test('one failed repair does not stop the others and never rejects the schedule', async () => {
   const candidates = [
-    { id: '11', srt_path: 'content/11.md' },
-    { id: '12', srt_path: 'content/12.md' },
+    { id: '11', srt_path: 'content/11.md', video_id: 'video', duration: 60 },
+    { id: '12', srt_path: 'content/12.md', video_id: 'video', duration: 60 },
   ];
   const bodies = { 'content/11.md': stored('11'), 'content/12.md': `${stored('12')}\nBOOM\n` };
   const context = envFor({ candidates, bodies, fails: ['BOOM'] });

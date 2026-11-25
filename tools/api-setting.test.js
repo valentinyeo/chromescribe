@@ -36,6 +36,7 @@ function workspace() {
   fs.writeFileSync(path.join(bin, 'curl'), CURL_MOCK, { mode: 0o755 });
   for (const name of SHELL_SCRIPTS) fs.copyFileSync(path.join(REPO, name), path.join(dir, name));
   fs.copyFileSync(path.join(REPO, 'lib', 'cf_access.sh'), path.join(dir, 'lib', 'cf_access.sh'));
+  fs.copyFileSync(path.join(REPO, 'lib', 'analyze.sh'), path.join(dir, 'lib', 'analyze.sh'));
   fs.copyFileSync(path.join(REPO, 'fxtwitter_article.py'), path.join(dir, 'fxtwitter_article.py'));
   const env = {
     ...process.env,
