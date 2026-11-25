@@ -16,6 +16,7 @@ function run({required = '1', exists = false, analysis = false, fallback = false
     copyFileSync(join(repo, 'process.sh'), join(dir, 'process.sh'));
     mkdirSync(join(dir, 'lib'));
     copyFileSync(join(repo, 'lib/cf_access.sh'), join(dir, 'lib/cf_access.sh'));
+    copyFileSync(join(repo, 'lib/analyze.sh'), join(dir, 'lib/analyze.sh'));
     copyFileSync(join(repo, 'fxtwitter_article.py'), join(dir, 'fxtwitter_article.py'));
     writeFileSync(join(dir, 'upload_article.py'), `print(${JSON.stringify(JSON.stringify({data:{id:7,already_exists:exists}}))})\n`);
     writeFileSync(join(bin, 'curl'), `#!/bin/bash
@@ -44,7 +45,7 @@ done
       writeFileSync(join(bin, 'python'), `#!/bin/bash\nexec '${realPython}' "$@"\n`, {mode:0o755});
     }
     const result = spawnSync('bash', [join(dir,'process.sh'), url], {
-      encoding:'utf8', env:{...process.env, PATH:`${bin}:${process.env.PATH}`, CF_ACCESS_CLIENT_ID:'test-id', CF_ACCESS_CLIENT_SECRET:'test-secret', CHROMESCRIBE_ENV_FILE:join(dir,'missing.env'), CHROMESCRIBE_NO_OPEN:'1', REQUIRE_ANALYZE:required}
+      encoding:'utf8', env:{...process.env, PATH:`${bin}:${process.env.PATH}`, CF_ACCESS_CLIENT_ID:'test-id', CF_ACCESS_CLIENT_SECRET:'test-secret', CHROMESCRIBE_ENV_FILE:join(dir,'missing.env'), CHROMESCRIBE_NO_OPEN:'1', REQUIRE_ANALYZE:required, ANALYZE_RETRY_DELAY:'0'}
     });
     assert.equal(existsSync(join(dir,'opened')), false, result.stdout);
     const calls = existsSync(join(dir,'yt-dlp-calls')) ? readFileSync(join(dir,'yt-dlp-calls'), 'utf8').trim().split('\n') : [];

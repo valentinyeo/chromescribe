@@ -1,6 +1,7 @@
 #!/bin/bash
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cf_access.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/analyze.sh"
 
 set -uo pipefail
 
@@ -229,7 +230,7 @@ print(json.dumps({"url": url, "title": title, "markdown_content": md}))
 
     log "  Analyzing with Cloudflare Workers AI..."
     local analyze_result
-    analyze_result=$(api_call POST "/api/transcripts/$transcript_id/analyze" --max-time 240)
+    analyze_result=$(chromescribe_analyze "$transcript_id")
     if echo "$analyze_result" | grep -q '"summarized":true'; then
         local sum_wc cs_cat
         sum_wc=$(echo "$analyze_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('word_count','?'))" 2>/dev/null)

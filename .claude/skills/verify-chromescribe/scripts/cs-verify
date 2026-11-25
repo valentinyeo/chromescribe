@@ -602,6 +602,7 @@ async function launch(args) {
     '--config', join(RUN, 'wrangler.toml'),
     '--port', String(chosenPort),
     '--ip', '127.0.0.1',
+    '--test-scheduled',
     '--persist-to', join(RUN, 'state'),
     '--var', 'CHRO10_API_GATE:0',
     '--var', 'ENVIRONMENT:local',

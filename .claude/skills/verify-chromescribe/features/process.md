@@ -19,6 +19,7 @@ paths:
 - `process-article` reads an article through Jina Reader or FXTwitter and uploads it with `upload_article.py`.
 - `process-existing` stops when the link is already transcribed.
 - `process-analysis` posts to `/api/transcripts/<id>/analyze` and warns instead of failing when it is not required.
+- `process-analysis-retry` retries that post up to three times with a doubling delay, and stops once the transcript already carries a TL;DR. See [Summary repair](./summary-repair.md).
 - `process-open` opens the transcript in Edge unless `CHROMESCRIBE_NO_OPEN=1`.
 
 ## How to get to it (user POV)
@@ -40,6 +41,7 @@ Preconditions:
 - **Article summary.** The article path must print `Cloudflare summary complete` from the real analyze handler and the fake AI.
 - **Audio path.** The journey runs `process.sh https://www.youtube.com/watch?v=<id>` with `REQUIRE_ANALYZE=1`. The Worker log must show `Video ID: <id>` and `Transcribing audio with Cloudflare AI, buffer size: N`, which proves the real multipart upload reached the `/api/transcribe` handler.
 - **Audio outcome.** The real handler accepts the audio: `process.sh` exits 0, prints `Audio extracted` and `Phase 1 complete`, and writes a transcript with an id above 0.
+- **Analyze retry.** A second article run carries `[[verify:slow-summary]]` in its body and runs with `ANALYZE_MAX_TIME=1` and `ANALYZE_RETRY_DELAY=4`. The fake AI stalls that summary for 3 seconds, so the curl call times out, the helper waits, then finds the summary the server wrote. Output must carry `Analyze attempt 1/3 failed` and `Cloudflare analysis had already finished on the server`, the Worker log must show one `POST /api/transcripts/<id>/analyze`, and the stored body must have `## TL;DR`.
 - **No API stub.** The journey fails if any recorded `curl` call went somewhere other than the local instance or a faked outside host.
 
 ## Gotchas

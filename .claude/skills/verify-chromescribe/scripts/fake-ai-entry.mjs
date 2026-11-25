@@ -3,6 +3,8 @@ import worker from '../../../../dashboard/src/index.ts';
 const TRANSCRIPTION_MODEL = '@cf/openai/whisper-large-v3-turbo';
 const ANALYSIS_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const LOG_PATH = '/__verify/ai-calls';
+const SLOW_MARKER = '[[verify:slow-summary]]';
+const SLOW_MS = 3000;
 
 const calls = [];
 
@@ -74,7 +76,9 @@ const fakeAI = {
     });
     if (transcription) return whisper(input);
     if (model === ANALYSIS_MODEL) {
-      return { response: /Classify the content/.test(prompt) ? classification(input) : summary() };
+      if (/Classify the content/.test(prompt)) return { response: classification(input) };
+      if (prompt.includes(SLOW_MARKER)) await new Promise(done => setTimeout(done, SLOW_MS));
+      return { response: summary() };
     }
     throw new Error(`The local verification fake AI has no answer for ${model}`);
   },
