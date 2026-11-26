@@ -31,7 +31,7 @@ paths:
 Preconditions:
 
 - `cs-verify launch` is ok, but the journey never talks to it.
-- The journey copies `monitor.sh` and `lib/cf_access.sh` into a temp directory, with stub `curl`, `yt-dlp` and `ffmpeg` on `PATH`.
+- The journey copies `monitor.sh`, `lib/cf_access.sh` and `lib/analyze.sh` into a temp directory, with stub `curl`, `yt-dlp` and `ffmpeg` on `PATH`.
 
 - **Force one video.** Run `cs-verify journey monitor`. The journey runs `monitor.sh --force MONITOR0001 "Journey monitor video"` with `CHROMESCRIBE_TELEGRAM=0`.
 - **Upload and analysis.** stdout must show `Transcribed and uploaded as #42` and `Analysis complete (word_count=900, category=Health)`.

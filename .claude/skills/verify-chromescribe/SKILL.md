@@ -87,9 +87,9 @@ Production does each of these and the local instance does not. Each line names w
 - **VPSManager terminal.** The `extension` journey stubs the `chrome` API because the terminal at `localhost:7681` is not started.
 - **Codex through `hax`.** `cli-learn` and `cli-lens` fake `hax` and `yt-dlp`, so they prove the CLI plumbing, not the learning output.
 - **Telegram.** Notifications are off by default (`CHROMESCRIBE_TELEGRAM`). The `monitor` journey checks that no message is sent, and the pipeline `curl` wrapper answers Telegram if one is.
-- **Windows TikTok drain task.** The journeys never queue or drain TikTok; that task runs only on the Windows box.
+- **Windows TikTok drain task.** The `phone-share` journey queues full and short TikTok links through the API but no journey drains them; draining runs only on the Windows box.
 - **The Android app.** It lives in its own repo. The `phone-share`, `android-updates` and `queue` journeys drive the API it calls.
-- **Known gap: the `monitor` journey still stubs `curl` for our own API.** `queue-drain` runs the real `monitor.sh` against the local Worker for one video, which covers the force path. The channel polling path is covered only by that stub.
+- **Known gap: the `monitor` journey still stubs `curl` for our own API.** `queue-drain` runs the real `monitor.sh` against the local Worker for one video, which covers the force path. No journey drives the channel polling path, because `--force` returns before it reads `GET /api/channels?active=1`.
 
 ## Evidence
 
@@ -124,9 +124,9 @@ git status --short
 
 ## Features
 
-`features/README.md` indexes 21 mapped features, and each file carries its own `paths:` globs and `journey:` id:
+`features/README.md` indexes 22 mapped features, and each file carries its own `paths:` globs and `journey:` id:
 
-home and video pages, the home keyboard shortcuts and command menu, the article original link, add video, queue, subscriptions, reports and the public report page, stats, settings, the shared theme, the CLI query and channel commands, CLI learn and lens, `process.sh`, `queue.sh`, `monitor.sh`, the extension, the phone share API, and the Android app update API.
+home and video pages, the home keyboard shortcuts and command menu, the article original link, add video, queue, subscriptions, reports and the public report page, stats, settings, the shared theme, the CLI query and channel commands, CLI learn and lens, `process.sh`, `queue.sh`, `monitor.sh`, summary repair, the extension, the phone share API, and the Android app update API.
 
 `tools/feature-map.test.js` fails when a page route, a `dashboard/public/*.html` file, a literal `/api/` route, an API module, a shell pipeline, a `cli/chromescribe` subcommand or a `cli/README.md` command is missing from the map, when a feature file lacks front matter or the four H2 sections, or when the README index drifts.
 
