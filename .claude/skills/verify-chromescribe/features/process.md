@@ -33,7 +33,7 @@ paths:
 Preconditions:
 
 - `cs-verify launch` runs the real Worker on `127.0.0.1` with the Access gate off. The journey drives that instance; nothing is stubbed in our own code.
-- The journey copies `process.sh`, `upload_article.py`, `fxtwitter_article.py` and `lib/cf_access.sh` into a temp directory, puts a stub `yt-dlp` on `PATH` that writes a real 10 second audio file with the real `ffmpeg`, and adds a `curl` wrapper that answers only the outside network (Jina Reader, FXTwitter, YouTube oEmbed) and hands every other URL to the real `curl`.
+- The journey copies `process.sh`, `upload_article.py`, `fxtwitter_article.py`, `cf_access.py`, `lib/cf_access.sh` and `lib/analyze.sh` into a temp directory, puts a stub `yt-dlp` on `PATH` that writes a real 10 second audio file with the real `ffmpeg`, and adds a `curl` wrapper that answers only the outside network (Jina Reader, FXTwitter, YouTube oEmbed) and hands every other URL to the real `curl`.
 - It runs with `CHROMESCRIBE_API` set to the local instance and `CHROMESCRIBE_NO_OPEN=1`.
 
 - **Article path.** Run `cs-verify journey process`. The journey runs `process.sh https://example.com/journey-process-<stamp>`. It must exit 0 and print `Phase 1 complete! Article #<id>`.

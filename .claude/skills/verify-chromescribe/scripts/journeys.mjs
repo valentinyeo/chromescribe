@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, copyFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 
 const STAMP = Date.now().toString(36);
 const ROOT = join(new URL('.', import.meta.url).pathname, '..', '..', '..', '..');
@@ -926,26 +927,56 @@ printf 'audio' > "$file"
   j.check('monitor.sh sends no Telegram message by default', !calls.includes('api.telegram.org'));
 }
 
+function extensionWorker(background, transcripts) {
+  const opened = [];
+  let listener = null;
+  let settle = null;
+  const chrome = {
+    action: { onClicked: { addListener: fn => { listener = fn; } } },
+    runtime: { onInstalled: { addListener() {} }, onStartup: { addListener() {} }, onMessage: { addListener() {} } },
+    contextMenus: { create() {}, onClicked: { addListener() {} } },
+    storage: { local: { get: async fallback => fallback, set: async () => {} } },
+    tabs: { create: options => { opened.push(options.url); if (settle) { const done = settle; settle = null; done(options.url); } } },
+    alarms: { get() {}, create() {}, onAlarm: { addListener() {} } },
+  };
+  runInNewContext(background, {
+    importScripts() {},
+    chrome,
+    console,
+    URL,
+    URLSearchParams,
+    setTimeout,
+    clearTimeout,
+    fetch: async url => ({ ok: true, json: async () => ({ data: String(url).includes('/api/transcripts') ? transcripts : [] }) }),
+  }, { filename: 'background.js' });
+  return {
+    opened,
+    click: tab => new Promise((resolve, reject) => {
+      if (!listener) return reject(new Error('background.js registered no action click listener'));
+      settle = resolve;
+      try { listener(tab); } catch (error) { reject(error); }
+    }),
+  };
+}
+
 async function extension(j) {
   const manifest = JSON.parse(readFileSync(join(ROOT, 'extension', 'manifest.json'), 'utf8'));
   j.check('extension manifest is MV3 with a service worker', manifest.manifest_version === 3 && manifest.background?.service_worker === 'background.js');
   j.check('extension runs on YouTube pages', manifest.content_scripts?.some(entry => entry.matches.includes('*://*.youtube.com/*')));
+  j.check('the toolbar runs the service worker directly', !manifest.action?.default_popup && !manifest.side_panel);
   const background = readFileSync(join(ROOT, 'extension', 'background.js'), 'utf8');
-  j.check('extension sends the page to the local terminal', background.includes('const TERMINAL_BASE = "http://localhost:7681/"') && background.includes('process.bat'));
-  j.check('extension queues TikTok saves to the share API', readFileSync(join(ROOT, 'extension', 'tiktok-saves.js'), 'utf8').includes('/api/queue'));
-  const page = await j.open('/');
-  await page.addInitScript(() => {
-    window.close = () => {};
-    window.chrome = {
-      tabs: { query: (_query, done) => done([{ url: 'https://www.youtube.com/watch?v=JOURNEYEXT1' }]) },
-      runtime: { sendMessage: message => { window.__sent = message; } },
-    };
-  });
-  await page.goto('file://' + join(ROOT, 'extension', 'popup.html'));
-  await page.locator('#btn-pi').click();
-  const sent = await page.evaluate(() => window.__sent);
-  j.check('popup sends the process action for the active tab', sent?.action === 'process' && sent?.tab?.url === 'https://www.youtube.com/watch?v=JOURNEYEXT1', JSON.stringify(sent));
-  await j.shot('extension-popup');
+  const page = { url: 'https://www.youtube.com/watch?v=JOURNEYEXT1', title: 'Journey extension video' };
+  const fresh = extensionWorker(background, []);
+  const terminalUrl = await fresh.click(page);
+  const decoded = decodeURIComponent(terminalUrl);
+  j.check('toolbar click sends a new page to the local terminal', terminalUrl.startsWith('http://localhost:7681/') && decoded.includes('process.bat') && decoded.includes(page.url), terminalUrl);
+  const existing = extensionWorker(background, [{ id: 42, video_id: 'JOURNEYEXT1', title: 'Journey existing transcript' }]);
+  const existingUrl = await existing.click(page);
+  j.check('toolbar click opens an existing transcript', /\/transcript\.html\?id=42$/.test(existingUrl), existingUrl);
+  j.check('extension queues TikTok saves to the share API', readFileSync(join(ROOT, 'extension', 'tiktok-saves.js'), 'utf8').includes('periodInMinutes: 15') && readFileSync(join(ROOT, 'extension', 'tiktok-saves.js'), 'utf8').includes('/api/queue'));
+  const proofFile = join(j.proofDir, 'extension-action.json');
+  writeFileSync(proofFile, JSON.stringify({ terminal: fresh.opened, existing: existing.opened }, null, 2));
+  j.proof.push(proofFile);
 }
 
 async function phoneShare(j) {

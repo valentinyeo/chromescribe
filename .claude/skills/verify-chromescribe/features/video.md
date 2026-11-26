@@ -49,5 +49,5 @@ Preconditions:
 
 - The route is `/transcript.html?id=<id>`, not `/transcript?id=<id>`; the short form returns 404.
 - Article transcripts (`video_id` begins `article:`) move the summary into the reader column and hide the transcript side, so the journey picks a video row.
-- `Read aloud` needs the Deepgram speech API and `Summarize` needs Workers AI. Both are off locally; the journey asserts the controls are present and leaves the calls alone.
+- `Read aloud` needs the Deepgram speech API, which is not faked locally; this journey asserts the control is present and leaves the call alone. `Summarize` runs against the fake `env.AI`, and `process` and `summary-repair` prove that analyze path end to end, so this journey only checks the control.
 - `DELETE /api/transcripts/<id>` and Retranscribe change data. The journey leaves them alone; delete is proven on the home page with a scratch row.

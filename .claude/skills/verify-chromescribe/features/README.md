@@ -60,6 +60,6 @@ Coverage: 22 of 22 features mapped.
 - [queue.sh drain loop](./queue-drain.md) covers the share queue lifecycle.
 - [monitor.sh](./monitor.md) covers channel polling, force mode and Telegram gating.
 - [Summary repair](./summary-repair.md) covers the analyze retry in `process.sh` and `monitor.sh` and the daily Worker cron that fills missing TL;DRs.
-- [Chrome extension](./extension.md) covers the popup, the local terminal wiring and TikTok saves.
+- [Chrome extension](./extension.md) covers the toolbar action, the local terminal wiring and TikTok saves.
 - [Phone share API](./phone-share.md) covers `POST /api/queue` for the Android app.
 - [Android app updates](./android-updates.md) covers `/api/android/latest` and `/api/android/releases/<versionCode>/app.apk`.

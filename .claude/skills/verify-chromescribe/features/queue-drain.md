@@ -29,11 +29,11 @@ paths:
 Preconditions:
 
 - `cs-verify launch` runs the real Worker on `127.0.0.1` with the Access gate off. The journey drains that instance.
-- The journey copies `queue.sh`, `process.sh`, `monitor.sh`, `upload_article.py`, `fxtwitter_article.py` and `lib/cf_access.sh` into a temp directory, points `MONITOR_SH` at that copy of `monitor.sh`, puts a stub `yt-dlp` on `PATH`, and adds a `curl` wrapper that answers only the outside network (Jina Reader, FXTwitter, YouTube oEmbed) and hands every other URL to the real `curl`.
+- The journey copies `queue.sh`, `process.sh`, `monitor.sh`, `upload_article.py`, `fxtwitter_article.py`, `cf_access.py`, `lib/cf_access.sh` and `lib/analyze.sh` into a temp directory, points `MONITOR_SH` at that copy of `monitor.sh`, puts a stub `yt-dlp` on `PATH`, and adds a `curl` wrapper that answers only the outside network (Jina Reader, FXTwitter, YouTube oEmbed) and hands every other URL to the real `curl`.
 - It runs with `CHROMESCRIBE_API` set to the local instance and `CHROMESCRIBE_NO_OPEN=1`.
 
 - **Article drain.** The journey queues a fresh article link through `POST /api/queue` and a second link whose transcript it already wrote through `POST /api/transcribe`, then runs `bash queue.sh` with `QUEUE_PLATFORMS=article`.
-- **Claim.** Both rows must show `attempts` 1 and `started_at` in local D1 after the run.
+- **Claim.** Both rows must report at least one attempt and a `started_at` through `GET /api/queue/all` after the run; those columns are the local D1 row.
 - **Done.** The row whose transcript already exists ends `done`: `process.sh` reads `already_exists` from the real handler and prints `Already transcribed`.
 - **Transcript.** The fresh row writes its transcript through the real `/api/transcribe` handler, and a matching row appears in local D1.
 - **Done after analysis.** The fresh row ends `done`, because analysis runs through the real handler and the fake AI.
