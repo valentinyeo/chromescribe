@@ -1104,6 +1104,51 @@ async function homeCommands(j) {
   j.check('$ opens the settings page', page.url().endsWith('/settings.html'), page.url());
 }
 
+async function updateTranscript(j) {
+  const title = `Journey update target ${STAMP}`;
+  const updatedTitle = `Journey updated title ${STAMP}`;
+  let created = null;
+  let page = null;
+  try {
+    created = await createArticle(j, title);
+    j.check('scratch transcript written through the API', created?.id > 0, `id ${created?.id}`);
+    const dir = stub(j, 'update-transcript');
+    copyFileSync(join(ROOT, 'cf_access.py'), join(dir, 'cf_access.py'));
+    const script = readFileSync(join(ROOT, 'update_transcript.py'), 'utf8').replace(
+      'https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev',
+      j.base
+    );
+    writeFileSync(join(dir, 'update_transcript.py'), script);
+    const body = markdown(updatedTitle, 'Journey update marker from the updated body.') + `\n## Full Article\n\n${'Updated body text that the script writes to the transcript. '.repeat(20)}\n`;
+    const mdFile = join(dir, 'updated.md');
+    writeFileSync(mdFile, body);
+    const run = j.run('python3', [join(dir, 'update_transcript.py'), String(created.id), mdFile, updatedTitle], { env: cliEnv(j) });
+    j.check('update_transcript.py updates the transcript through the real API', run.code === 0 && run.stdout.includes('"updated":true'), run.code === 0 ? run.stdout.trim().slice(0, 160) : run.stderr.trim().slice(0, 300));
+    const row = await j.api(`/api/transcripts/${created.id}`);
+    j.check('the script changes the title in D1', row.status === 200 && row.json?.data?.title === updatedTitle, `HTTP ${row.status} ${row.json?.data?.title}`);
+    const content = await j.api(`/api/transcript/${created.id}/content`);
+    j.check('the script replaces the stored markdown', content.status === 200 && content.text === body, `HTTP ${content.status}, ${content.text.length} bytes`);
+    const expectedWords = body.split(/\s+/).filter(word => word.length > 0).length;
+    const stored = j.d1(`SELECT word_count FROM transcripts WHERE id = ${Number(created.id)}`)[0];
+    j.check('the update recomputes the word count', stored?.word_count === expectedWords, `${stored?.word_count} vs ${expectedWords}`);
+    const fields = await j.api(`/api/transcripts/${created.id}`, { method: 'PUT', body: { category: 'Journey Verification', tags: ['journey', 'update'] } });
+    const tagged = await j.api(`/api/transcripts/${created.id}`);
+    j.check('the API updates category and tags', fields.status === 200 && fields.json?.data?.updated === true && tagged.json?.data?.category === 'Journey Verification' && JSON.parse(tagged.json?.data?.tags || '[]').join(',') === 'journey,update', `HTTP ${fields.status} ${tagged.text.slice(0, 200)}`);
+    page = await j.open(`/transcript.html?id=${created.id}`);
+    await page.waitForFunction(() => document.querySelector('#title')?.textContent.trim());
+    j.check('the video page shows the updated title', (await page.textContent('#title')).trim() === updatedTitle, await page.textContent('#title'));
+    j.check('the video page shows the updated body', (await page.textContent('#content')).includes('Journey update marker'), 'updated body rendered');
+    await j.shot('updated-transcript');
+    const missing = await j.api('/api/transcripts/999999', { method: 'PUT', body: { title: 'No row' } });
+    j.check('updating an unknown transcript returns 404', missing.status === 404, `HTTP ${missing.status}`);
+    const proofLog = join(j.proofDir, 'update-transcript.json');
+    writeFileSync(proofLog, JSON.stringify({ id: created.id, title: updatedTitle, word_count: expectedWords, stdout: run.stdout.trim(), category: tagged.json?.data?.category, tags: tagged.json?.data?.tags }, null, 2));
+    j.proof.push(proofLog);
+  } finally {
+    if (created?.id) await removeTranscript(j, created.id);
+  }
+}
+
 export const journeys = {
   home,
   'home-commands': homeCommands,
@@ -1127,4 +1172,5 @@ export const journeys = {
   'phone-share': phoneShare,
   'article-source': articleSource,
   'android-updates': androidUpdates,
+  'update-transcript': updateTranscript,
 };

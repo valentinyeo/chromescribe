@@ -39,7 +39,7 @@ Each feature file starts with YAML front matter carrying `name`, `journey` and a
 
 ## Features
 
-Coverage: 22 of 22 features mapped.
+Coverage: 23 of 23 features mapped.
 
 - [Home list, search and categories](./home.md) covers `/` and `/index.html`, search, category chips, channel filtering and card delete.
 - [Home keyboard shortcuts and command menu](./home-commands.md) covers the `?` shortcut list, the `Ctrl+K` command menu, card selection and single-key navigation on `/`.
@@ -63,3 +63,4 @@ Coverage: 22 of 22 features mapped.
 - [Chrome extension](./extension.md) covers the toolbar action, the local terminal wiring and TikTok saves.
 - [Phone share API](./phone-share.md) covers `POST /api/queue` for the Android app.
 - [Android app updates](./android-updates.md) covers `/api/android/latest` and `/api/android/releases/<versionCode>/app.apk`.
+- [Update a transcript](./update-transcript.md) covers `PUT /api/transcripts/<id>` and `update_transcript.py`.
