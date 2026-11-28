@@ -39,7 +39,7 @@ Each feature file starts with YAML front matter carrying `name`, `journey` and a
 
 ## Features
 
-Coverage: 23 of 23 features mapped.
+Coverage: 24 of 24 features mapped.
 
 - [Home list, search and categories](./home.md) covers `/` and `/index.html`, search, category chips, channel filtering and card delete.
 - [Home keyboard shortcuts and command menu](./home-commands.md) covers the `?` shortcut list, the `Ctrl+K` command menu, card selection and single-key navigation on `/`.
@@ -60,6 +60,7 @@ Coverage: 23 of 23 features mapped.
 - [queue.sh drain loop](./queue-drain.md) covers the share queue lifecycle.
 - [monitor.sh](./monitor.md) covers channel polling, force mode and Telegram gating.
 - [Summary repair](./summary-repair.md) covers the analyze retry in `process.sh` and `monitor.sh` and the daily Worker cron that fills missing TL;DRs.
+- [Transcript backfill and category refine](./backfill.md) covers `backfill_summaries.sh`, `backfill_summarize.sh`, `backfill_classify.sh`, `refine_category.sh` and the summarize and classify routes.
 - [Chrome extension](./extension.md) covers the toolbar action, the local terminal wiring and TikTok saves.
 - [Phone share API](./phone-share.md) covers `POST /api/queue` for the Android app.
 - [Android app updates](./android-updates.md) covers `/api/android/latest` and `/api/android/releases/<versionCode>/app.apk`.

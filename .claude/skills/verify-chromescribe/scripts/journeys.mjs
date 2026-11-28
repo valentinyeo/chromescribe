@@ -239,6 +239,9 @@ async function home(j) {
     j.check('category chips come from the API', chips === categories + 5, `${chips} chips for ${categories} categories`);
     const scratch = page.locator('#videoGrid .card').filter({ hasText: title }).first();
     j.check('new transcript appears first on home', await scratch.count() === 1);
+    const scratchRow = (await j.api(`/api/transcripts/${created.id}`)).json?.data;
+    const readTime = (await scratch.locator('.card-readtime').textContent()).trim();
+    j.check('the card shows the transcript read time', readTime === `${Math.max(1, Math.round((scratchRow?.word_count || 0) / 200))} min read`, readTime);
     await j.shot('home-phone');
 
     await page.locator('#mobileSearchBtn').click();
@@ -272,6 +275,9 @@ async function home(j) {
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(j.url('/'), { waitUntil: 'networkidle' });
+    await page.waitForFunction(value => [...document.querySelectorAll('#videoGrid .card')].some(card => card.textContent.includes(value) && card.querySelector('.card-summary')?.textContent.trim()), title);
+    const desktopPreview = (await page.locator('#videoGrid .card').filter({ hasText: title }).first().locator('.card-summary').textContent()).trim();
+    j.check('the desktop card previews the TL;DR', desktopPreview.includes('Seed lead line'), desktopPreview.slice(0, 80));
     const card = page.locator('#videoGrid .card').filter({ hasText: title }).first();
     await card.locator('details summary').click();
     page.once('dialog', dialog => dialog.accept());
@@ -827,6 +833,58 @@ async function summaryRepair(j) {
   }
 }
 
+async function backfill(j) {
+  const title = `Journey backfill ${STAMP}`;
+  let id = 0;
+  try {
+    const created = await j.api('/api/transcribe', {
+      method: 'POST',
+      body: { url: `https://example.com/journey-backfill-${STAMP}`, markdown_content: rawMarkdown(title) },
+    });
+    id = created.json?.data?.id || 0;
+    j.check('a raw transcript is written through the API', created.status === 201 && id > 0, `HTTP ${created.status}, id ${id}`);
+    const before = id ? await j.api(`/api/transcript/${id}/content`) : { status: 0, text: '' };
+    j.check('the stored body carries no TL;DR yet', before.status === 200 && !/^## TL;DR$/m.test(before.text), `${before.text.length} bytes`);
+
+    const dir = stub(j, 'backfill');
+    mkdirSync(join(dir, 'lib'), { recursive: true });
+    copyFileSync(join(ROOT, 'lib', 'cf_access.sh'), join(dir, 'lib', 'cf_access.sh'));
+    const host = 'https://chromescribe-dashboard.ancient-glitter-9ac9.workers.dev';
+    const names = ['backfill_summaries.sh', 'backfill_summarize.sh', 'backfill_classify.sh', 'refine_category.sh'];
+    for (const name of names) {
+      writeFileSync(join(dir, name), readFileSync(join(ROOT, name), 'utf8').split(host).join(j.base));
+    }
+    const env = cliEnv(j);
+
+    const summaries = j.run('bash', [join(dir, 'backfill_summaries.sh'), String(id)], { env });
+    j.check('backfill_summaries.sh fills the missing summary', summaries.code === 0 && summaries.stdout.includes('Done. Failed: 0'), summaries.stdout.trim().split('\n').slice(-1)[0] || summaries.stderr.trim().slice(0, 120));
+    const summarized = id ? await j.api(`/api/transcript/${id}/content`) : { status: 0, text: '' };
+    j.check('backfill_summaries.sh writes the TL;DR through the real handler', summarized.status === 200 && /^## TL;DR$/m.test(summarized.text), `${summarized.text.length} bytes`);
+
+    const summarize = j.run('bash', [join(dir, 'backfill_summarize.sh'), String(id)], { env });
+    j.check('backfill_summarize.sh reports one successful id', summarize.code === 0 && summarize.stdout.includes('Done. 1 ok, 0 failed, 1 total.'), summarize.stdout.trim().split('\n').slice(-1)[0] || summarize.stderr.trim().slice(0, 120));
+
+    const classify = j.run('bash', [join(dir, 'backfill_classify.sh')], { env });
+    const classified = id ? await j.api(`/api/transcripts/${id}`) : { json: null };
+    j.check('backfill_classify.sh classifies the uncategorised row', classify.code === 0 && classify.stdout.includes('Done. Failed: 0'), classify.stdout.trim().split('\n').slice(-1)[0] || classify.stderr.trim().slice(0, 120));
+    j.check('backfill_classify.sh writes the category in D1', classified.json?.data?.category === 'Journey Verification', classified.json?.data?.category || 'no category');
+
+    const refine = j.run('bash', [join(dir, 'refine_category.sh'), 'Journey Verification'], { env });
+    const refined = id ? await j.api(`/api/transcripts/${id}`) : { json: null };
+    j.check('refine_category.sh reclassifies away from the source category', refine.code === 0 && refine.stdout.includes('Done. Failed: 0'), refine.stdout.trim().split('\n').slice(-1)[0] || refine.stderr.trim().slice(0, 120));
+    j.check('refine_category.sh excludes the source category', refined.json?.data?.category === 'Local Verification', refined.json?.data?.category || 'no category');
+
+    const dry = j.run('bash', [join(dir, 'refine_category.sh'), 'Local Verification', '--dry-run'], { env });
+    j.check('refine_category.sh --dry-run lists the category and stops', dry.code === 0 && /Found \d+ transcripts in category 'Local Verification'/.test(dry.stdout) && !dry.stdout.includes('Refining #'), dry.stdout.trim().replace(/\s+/g, ' ').slice(0, 140));
+
+    const proofFile = join(j.proofDir, 'backfill.json');
+    writeFileSync(proofFile, JSON.stringify({ id, summaries: summaries.stdout.trim(), summarize: summarize.stdout.trim(), classify: classify.stdout.trim(), refine: refine.stdout.trim(), dry_run: dry.stdout.trim() }, null, 2));
+    j.proof.push(proofFile);
+  } finally {
+    if (id) await removeTranscript(j, id);
+  }
+}
+
 async function queueDrain(j) {
   const tools = pipelineTools(j, 'queue-drain', ['queue.sh', 'process.sh', 'monitor.sh']);
   const env = { ...tools.env, MONITOR_SH: join(tools.dir, 'monitor.sh'), QUEUE_LOCK_FILE: join(tools.dir, 'queue.lock') };
@@ -930,11 +988,12 @@ printf 'audio' > "$file"
 function extensionWorker(background, transcripts) {
   const opened = [];
   let listener = null;
+  let contextListener = null;
   let settle = null;
   const chrome = {
     action: { onClicked: { addListener: fn => { listener = fn; } } },
     runtime: { onInstalled: { addListener() {} }, onStartup: { addListener() {} }, onMessage: { addListener() {} } },
-    contextMenus: { create() {}, onClicked: { addListener() {} } },
+    contextMenus: { create() {}, onClicked: { addListener: fn => { contextListener = fn; } } },
     storage: { local: { get: async fallback => fallback, set: async () => {} } },
     tabs: { create: options => { opened.push(options.url); if (settle) { const done = settle; settle = null; done(options.url); } } },
     alarms: { get() {}, create() {}, onAlarm: { addListener() {} } },
@@ -956,6 +1015,11 @@ function extensionWorker(background, transcripts) {
       settle = resolve;
       try { listener(tab); } catch (error) { reject(error); }
     }),
+    context: (info, tab) => new Promise((resolve, reject) => {
+      if (!contextListener) return reject(new Error('background.js registered no context menu listener'));
+      settle = resolve;
+      try { contextListener(info, tab); } catch (error) { reject(error); }
+    }),
   };
 }
 
@@ -973,9 +1037,14 @@ async function extension(j) {
   const existing = extensionWorker(background, [{ id: 42, video_id: 'JOURNEYEXT1', title: 'Journey existing transcript' }]);
   const existingUrl = await existing.click(page);
   j.check('toolbar click opens an existing transcript', /\/transcript\.html\?id=42$/.test(existingUrl), existingUrl);
+  const contextWorker = extensionWorker(background, []);
+  const contextLink = 'https://www.youtube.com/watch?v=JOURNEYCTX1';
+  const contextUrl = await contextWorker.context({ linkUrl: contextLink }, { url: 'https://www.youtube.com/', title: 'Journey context page' });
+  const contextDecoded = decodeURIComponent(contextUrl);
+  j.check('the context menu sends a link to the local terminal', contextUrl.startsWith('http://localhost:7681/') && contextDecoded.includes('process.bat') && contextDecoded.includes(contextLink), contextUrl);
   j.check('extension queues TikTok saves to the share API', readFileSync(join(ROOT, 'extension', 'tiktok-saves.js'), 'utf8').includes('periodInMinutes: 15') && readFileSync(join(ROOT, 'extension', 'tiktok-saves.js'), 'utf8').includes('/api/queue'));
   const proofFile = join(j.proofDir, 'extension-action.json');
-  writeFileSync(proofFile, JSON.stringify({ terminal: fresh.opened, existing: existing.opened }, null, 2));
+  writeFileSync(proofFile, JSON.stringify({ terminal: fresh.opened, existing: existing.opened, context: contextWorker.opened }, null, 2));
   j.proof.push(proofFile);
 }
 
@@ -1167,6 +1236,7 @@ export const journeys = {
   process: processPipeline,
   'queue-drain': queueDrain,
   'summary-repair': summaryRepair,
+  backfill,
   monitor,
   extension,
   'phone-share': phoneShare,
