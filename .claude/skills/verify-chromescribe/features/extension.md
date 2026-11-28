@@ -13,6 +13,7 @@ The Manifest V3 extension sends the current page to the local web terminal, adds
 ## Sub-features
 
 - `extension-toolbar` handles a toolbar click in `background.js`: it opens the existing transcript when the page is already transcribed, otherwise it sends the page to the local terminal.
+- `extension-context-menu` adds `Process with ChromeScribe` to the page and link context menus, and sends the clicked page or link to the local terminal.
 - `extension-terminal` posts the page URL to `http://localhost:7681/`, which runs `process.bat`.
 - `extension-youtube-buttons` adds Transcribe and watch-channel actions to watch, channel and card views.
 - `extension-tiktok-saves` checks TikTok favourites every 15 minutes and queues new videos through `POST /api/queue`.
@@ -22,6 +23,7 @@ The Manifest V3 extension sends the current page to the local web terminal, adds
 
 - Load `extension/` as an unpacked extension in Chrome or Edge.
 - Click the toolbar icon on a page: an already transcribed page opens its transcript, and any other page is sent to the local terminal.
+- Right-click a page or a link and choose `Process with ChromeScribe` to send it to the local terminal.
 - On YouTube, use the injected Transcribe, Watch channel and card action buttons.
 
 ## Driving it with cs-verify
@@ -34,9 +36,10 @@ Preconditions:
 - **Manifest.** Run `cs-verify journey extension`. The journey requires Manifest V3, a `background.js` service worker, a content script on `*://*.youtube.com/*`, and no `default_popup` or `side_panel` entry.
 - **Toolbar action.** The journey calls the captured `chrome.action.onClicked` listener for a fresh YouTube page. The service worker must call `chrome.tabs.create` with `http://localhost:7681/`, and the decoded URL must carry `process.bat` and the page URL.
 - **Existing transcript.** A second listener run returns one transcript with that video id from the stubbed dashboard list. The service worker must open `/transcript.html?id=42` instead of the terminal.
+- **Context menu.** The journey calls the captured `chrome.contextMenus.onClicked` listener with a YouTube link. The service worker must call `chrome.tabs.create` with `http://localhost:7681/`, and the decoded URL must carry `process.bat` and that link.
 - **Terminal wiring.** `background.js` must carry `TERMINAL_BASE = "http://localhost:7681/"` and the `process.bat` command.
 - **TikTok saves.** `tiktok-saves.js` must post to `/api/queue` on a 15-minute alarm.
-- **Proof.** `proof/extension/extension-action.json` records every URL the service worker opened.
+- **Proof.** `proof/extension/extension-action.json` records every URL the service worker opened from the toolbar and the context menu.
 
 ## Gotchas
 
